@@ -39,7 +39,7 @@
 //! let network = Network::Tidecoin;
 //! let bytes = serialize(&network.magic());
 //!
-//! assert_eq!(&bytes[..], &[0xF9, 0xBE, 0xB4, 0xD9]);
+//! assert_eq!(&bytes[..], &[0xEC, 0xFA, 0xCE, 0xA5]);
 //! ```
 
 use core::{fmt, ops, convert::From};
