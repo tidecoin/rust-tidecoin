@@ -10,7 +10,7 @@ sighashes, PSBT fields, and more. As it turned out, these changes required
 increase in scope.
 
 We have more big changes coming down the pike. 2022 is going to be a big
-year for `rust-bitcoin`, which we know is exciting for us but disruptive to
+year for `rust-tidecoin`, which we know is exciting for us but disruptive to
 downstream users who ultimately want the library to just work. Our hope is
 that by 2023 we will have eliminated large amounts of technical debt,
 modernized our APIs to meet current Rust conventions, and clarified the scope

@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Rust Bitcoin</h1>
+  <h1>Rust Tidecoin</h1>
 
   <img alt="Rust Bitcoin logo by Hunter Trujillo, see license and source files under /logo" src="./logo/rust-bitcoin.png" width="300" />
 

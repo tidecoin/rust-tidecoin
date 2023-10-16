@@ -29,7 +29,7 @@
 //! let public_key = PublicKey::new(s.generate_keypair(&mut thread_rng()).1);
 //!
 //! // Generate pay-to-pubkey-hash address.
-//! let address = Address::p2pkh(&public_key, Network::Bitcoin);
+//! let address = Address::p2pkh(&public_key, Network::Tidecoin);
 //! ```
 
 use prelude::*;
@@ -47,7 +47,6 @@ use crate::blockdata::{script, opcodes};
 use crate::blockdata::constants::{PUBKEY_ADDRESS_PREFIX_MAIN, SCRIPT_ADDRESS_PREFIX_MAIN, PUBKEY_ADDRESS_PREFIX_TEST, SCRIPT_ADDRESS_PREFIX_TEST, MAX_SCRIPT_ELEMENT_SIZE};
 use crate::network::constants::Network;
 use crate::util::base58;
-use crate::util::taproot::TapBranchHash;
 use crate::util::key::PublicKey;
 use crate::blockdata::script::Instruction;
 use crate::util::schnorr::{TapTweak, UntweakedPublicKey, TweakedPublicKey};
@@ -445,29 +444,6 @@ impl Payload {
 
         Payload::ScriptHash(ws.script_hash())
     }
-
-    /// Create a pay to taproot payload from untweaked key
-    pub fn p2tr<C: Verification>(
-        secp: &Secp256k1<C>,
-        internal_key: UntweakedPublicKey,
-        merkle_root: Option<TapBranchHash>,
-    ) -> Payload {
-        let (output_key, _parity) = internal_key.tap_tweak(secp, merkle_root);
-        Payload::WitnessProgram {
-            version: WitnessVersion::V1,
-            program: output_key.to_inner().serialize().to_vec(),
-        }
-    }
-
-    /// Create a pay to taproot payload from a pre-tweaked output key.
-    ///
-    /// This method is not recommended for use and [Payload::p2tr()] should be used where possible.
-    pub fn p2tr_tweaked(output_key: TweakedPublicKey) -> Payload {
-        Payload::WitnessProgram {
-            version: WitnessVersion::V1,
-            program: output_key.as_inner().serialize().to_vec(),
-        }
-    }
 }
 
 /// A utility struct to encode an address payload with the given parameters.
@@ -596,29 +572,6 @@ impl Address {
         }
     }
 
-    /// Creates a pay to taproot address from an untweaked key.
-    pub fn p2tr<C: Verification>(
-        secp: &Secp256k1<C>,
-        internal_key: UntweakedPublicKey,
-        merkle_root: Option<TapBranchHash>,
-        network: Network
-    ) -> Address {
-        Address {
-            network: network,
-            payload: Payload::p2tr(secp, internal_key, merkle_root),
-        }
-    }
-
-    /// Creates a pay to taproot address from a pre-tweaked output key.
-    ///
-    /// This method is not recommended for use, [`Address::p2tr()`] should be used where possible.
-    pub fn p2tr_tweaked(output_key: TweakedPublicKey, network: Network) -> Address {
-        Address {
-            network,
-            payload: Payload::p2tr_tweaked(output_key),
-        }
-    }
-
     /// Gets the address type of the address.
     ///
     /// # Returns
@@ -692,13 +645,11 @@ impl Address {
     ///
     /// let address: Address = "2N83imGV3gPwBzKJQvWJ7cRUY2SpUyU6A5e".parse().unwrap();
     /// assert!(address.is_valid_for_network(Network::Testnet));
-    /// assert!(address.is_valid_for_network(Network::Regtest));
-    /// assert!(address.is_valid_for_network(Network::Signet));
     ///
-    /// assert_eq!(address.is_valid_for_network(Network::Bitcoin), false);
+    /// assert_eq!(address.is_valid_for_network(Network::Tidecoin), false);
     ///
     /// let address: Address = "32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf".parse().unwrap();
-    /// assert!(address.is_valid_for_network(Network::Bitcoin));
+    /// assert!(address.is_valid_for_network(Network::Tidecoin));
     /// assert_eq!(address.is_valid_for_network(Network::Testnet), false);
     /// ```
     pub fn is_valid_for_network(&self, network: Network) -> bool {

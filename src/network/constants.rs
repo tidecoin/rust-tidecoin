@@ -31,7 +31,7 @@
 //! use bitcoin::network::constants::Network;
 //! use bitcoin::consensus::encode::serialize;
 //!
-//! let network = Network::Bitcoin;
+//! let network = Network::Tidecoin;
 //! let bytes = serialize(&network.magic());
 //!
 //! assert_eq!(&bytes[..], &[0xF9, 0xBE, 0xB4, 0xD9]);
@@ -78,7 +78,7 @@ impl Network {
     /// ```rust
     /// use bitcoin::network::constants::Network;
     ///
-    /// assert_eq!(Some(Network::Bitcoin), Network::from_magic(0xD9B4BEF9));
+    /// assert_eq!(Some(Network::Tidecoin), Network::from_magic(0xD9B4BEF9));
     /// assert_eq!(None, Network::from_magic(0xFFFFFFFF));
     /// ```
     pub fn from_magic(magic: u32) -> Option<Network> {
@@ -98,7 +98,7 @@ impl Network {
     /// ```rust
     /// use bitcoin::network::constants::Network;
     ///
-    /// let network = Network::Bitcoin;
+    /// let network = Network::Tidecoin;
     /// assert_eq!(network.magic(), 0xD9B4BEF9);
     /// ```
     pub fn magic(self) -> u32 {

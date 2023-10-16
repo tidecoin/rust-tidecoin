@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,7 +12,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin hash types.
+//! Tidecoin hash types.
 //!
 //! This module defines types for hashes used throughout the library. These
 //! types are needed in order to avoid mixing data of the same hash format
@@ -39,13 +39,13 @@ macro_rules! impl_hashencode {
     }
 }
 
-hash_newtype!(Txid, sha256d::Hash, 32, doc="A bitcoin transaction hash/transaction ID.");
-hash_newtype!(Wtxid, sha256d::Hash, 32, doc="A bitcoin witness transaction ID.");
-hash_newtype!(BlockHash, sha256d::Hash, 32, doc="A bitcoin block hash.");
+hash_newtype!(Txid, sha256d::Hash, 32, doc="A tidecoin transaction hash/transaction ID.");
+hash_newtype!(Wtxid, sha256d::Hash, 32, doc="A tidecoin witness transaction ID.");
+hash_newtype!(BlockHash, sha256d::Hash, 32, doc="A tidecoin block hash.");
 hash_newtype!(Sighash, sha256d::Hash, 32, doc="Hash of the transaction according to the signature algorithm");
 
 hash_newtype!(PubkeyHash, hash160::Hash, 20, doc="A hash of a public key.");
-hash_newtype!(ScriptHash, hash160::Hash, 20, doc="A hash of Bitcoin Script bytecode.");
+hash_newtype!(ScriptHash, hash160::Hash, 20, doc="A hash of Tidecoin Script bytecode.");
 hash_newtype!(WPubkeyHash, hash160::Hash, 20, doc="SegWit version of a public key hash.");
 hash_newtype!(WScriptHash, sha256::Hash, 32, doc="SegWit version of a Bitcoin Script bytecode hash.");
 

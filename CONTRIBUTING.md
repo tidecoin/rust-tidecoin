@@ -1,10 +1,10 @@
-# Contributing to rust-bitcoin
+# Contributing to rust-tidecoin
 
 :+1::tada: First off, thanks for taking the time to contribute! :tada::+1:
 
-The following is a set of guidelines for contributing to Rust Bitcoin
-implementation and other Rust Bitcoin-related projects, which are hosted in the
-[Rust Bitcoin Community](https://github.com/rust-bitcoin) on GitHub. These are
+The following is a set of guidelines for contributing to Rust Tidecoin
+implementation and other Rust Tidecoin-related projects, which are hosted in the
+[Rust Tidecoin Community](https://github.com/rust-tidecoin) on GitHub. These are
 mostly guidelines, not rules. Use your best judgment, and feel free to propose
 changes to this document in a pull request.
 
@@ -29,7 +29,7 @@ changes to this document in a pull request.
 
 ## General
 
-The Rust Bitcoin project operates an open contributor model where anyone is
+The Rust Tidecoin project operates an open contributor model where anyone is
 welcome to contribute towards development in the form of peer review,
 documentation, testing and patches.
 
@@ -44,17 +44,11 @@ you'll learn.
 
 ## Communication channels
 
-Communication about Rust Bitcoin happens primarily in
-[#bitcoin-rust](https://web.libera.chat/?channel=#bitcoin-rust) IRC chat on
-[Libera](https://libera.chat/) with the logs available at
-<https://gnusha.org/bitcoin-rust/> (starting from Jun 2021 and now on) and
-<https://gnusha.org/rust-bitcoin/> (historical archive before Jun 2021).
-
 Discussion about code base improvements happens in GitHub issues and on pull
 requests.
 
-Major projects are tracked [here](https://github.com/orgs/rust-bitcoin/projects).
-Major milestones are tracked [here](https://github.com/rust-bitcoin/rust-bitcoin/milestones).
+Major projects are tracked [here](https://github.com/orgs/rust-tidecoin/projects).
+Major milestones are tracked [here](https://github.com/rust-tidecoin/rust-tidecoin/milestones).
 
 
 ## Asking questions
