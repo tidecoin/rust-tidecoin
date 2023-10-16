@@ -1,4 +1,6 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
+// Written in 2023 by Tidecoin Foundation
+//
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,7 +14,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin network constants.
+//! Tidecoin network constants.
 //!
 //! This module provides various constants relating to the Bitcoin network
 //! protocol, such as protocol versioning and magic header bytes.
@@ -28,8 +30,8 @@
 //! # Example: encoding a network's magic bytes
 //!
 //! ```rust
-//! use bitcoin::network::constants::Network;
-//! use bitcoin::consensus::encode::serialize;
+//! use tidecoin::network::constants::Network;
+//! use tidecoin::consensus::encode::serialize;
 //!
 //! let network = Network::Tidecoin;
 //! let bytes = serialize(&network.magic());
@@ -57,7 +59,7 @@ use crate::consensus::encode::{self, Encodable, Decodable};
 /// 70001 - Support bloom filter messages `filterload`, `filterclear` `filteradd`, `merkleblock` and FILTERED_BLOCK inventory type
 /// 60002 - Support `mempool` message
 /// 60001 - Support `pong` message and nonce in `ping` message
-pub const PROTOCOL_VERSION: u32 = 70001;
+pub const PROTOCOL_VERSION: u32 = 70015;
 
 user_enum! {
     /// The cryptocurrency to act on
@@ -76,16 +78,16 @@ impl Network {
     /// # Examples
     ///
     /// ```rust
-    /// use bitcoin::network::constants::Network;
+    /// use tidecoin::network::constants::Network;
     ///
-    /// assert_eq!(Some(Network::Tidecoin), Network::from_magic(0xD9B4BEF9));
+    /// assert_eq!(Some(Network::Tidecoin), Network::from_magic(0xA5CEFAEC));
     /// assert_eq!(None, Network::from_magic(0xFFFFFFFF));
     /// ```
     pub fn from_magic(magic: u32) -> Option<Network> {
         // Note: any new entries here must be added to `magic` below
         match magic {
-            0xD9B4BEF9 => Some(Network::Tidecoin),
-            0x0709110B => Some(Network::Testnet),
+            0xA5CEFAEC => Some(Network::Tidecoin),
+            0xE6B7A5FC => Some(Network::Testnet),
             _ => None
         }
     }
@@ -99,13 +101,13 @@ impl Network {
     /// use bitcoin::network::constants::Network;
     ///
     /// let network = Network::Tidecoin;
-    /// assert_eq!(network.magic(), 0xD9B4BEF9);
+    /// assert_eq!(network.magic(), 0xA5CEFAEC);
     /// ```
     pub fn magic(self) -> u32 {
         // Note: any new entries here must be added to `from_magic` above
         match self {
-            Network::Tidecoin => 0xD9B4BEF9,
-            Network::Testnet => 0x0709110B
+            Network::Tidecoin => 0xA5CEFAEC,
+            Network::Testnet => 0xE6B7A5FC
         }
     }
 }
@@ -285,11 +287,12 @@ mod tests {
 
     #[test]
     fn serialize_test() {
-        assert_eq!(serialize(&Network::Tidecoin.magic()), &[0xf9, 0xbe, 0xb4, 0xd9]);
-        assert_eq!(serialize(&Network::Testnet.magic()), &[0x0b, 0x11, 0x09, 0x07]);
+        
+        assert_eq!(serialize(&Network::Tidecoin.magic()), &[0xec, 0xfa, 0xce, 0xa5]);
+        assert_eq!(serialize(&Network::Testnet.magic()), &[0xfc, 0xa5, 0xb7, 0xe6]);
 
-        assert_eq!(deserialize(&[0xf9, 0xbe, 0xb4, 0xd9]).ok(), Some(Network::Tidecoin.magic()));
-        assert_eq!(deserialize(&[0x0b, 0x11, 0x09, 0x07]).ok(), Some(Network::Testnet.magic()));
+        assert_eq!(deserialize(&[0xec, 0xfa, 0xce, 0xa5]).ok(), Some(Network::Tidecoin.magic()));
+        assert_eq!(deserialize(&[0xfc, 0xa5, 0xb7, 0xe6]).ok(), Some(Network::Testnet.magic()));
 
     }
 
