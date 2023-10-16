@@ -42,7 +42,7 @@ use OutPoint;
 use crate::util::key::PublicKey;
 use crate::util::address::WitnessVersion;
 
-use secp256k1::{Verification, XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey;
 
 /// A Tidecoin script.
 #[derive(Clone, Default, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -467,14 +467,6 @@ impl Script {
         self.0.len() == 22
             && self.witness_version() == Some(WitnessVersion::V0)
             && self.0[1] == opcodes::all::OP_PUSHBYTES_20.into_u8()
-    }
-
-    /// Checks whether a script pubkey is a P2TR output.
-    #[inline]
-    pub fn is_v1_p2tr(&self) -> bool {
-        self.0.len() == 34
-            && self.witness_version() == Some(WitnessVersion::V1)
-            && self.0[1] == opcodes::all::OP_PUSHBYTES_32.into_u8()
     }
 
     /// Check if this is an OP_RETURN output.

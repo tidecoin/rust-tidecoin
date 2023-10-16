@@ -13,7 +13,6 @@
 //
 
 use prelude::*;
-use core;
 
 use io;
 

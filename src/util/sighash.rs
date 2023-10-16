@@ -24,7 +24,7 @@ use prelude::*;
 
 pub use crate::blockdata::transaction::{EcdsaSighashType, SighashTypeParseError};
 use crate::blockdata::witness::Witness;
-use crate::consensus::{Encodable};
+use crate::consensus::Encodable;
 use core::{str, fmt};
 use core::ops::{Deref, DerefMut};
 use core::borrow::Borrow;
@@ -79,8 +79,6 @@ pub enum Prevouts<'u, T> where T: 'u + Borrow<TxOut> {
     /// variable can be used for multiple inputs.
     All(&'u [T]),
 }
-
-const KEY_VERSION_0: u8 = 0u8;
 
 
 /// Hashtype of an input's signature, encoded in the last byte of the signature
@@ -204,40 +202,6 @@ impl fmt::Display for Error {
 #[cfg(feature = "std")]
 impl ::std::error::Error for Error {}
 
-impl<'u, T> Prevouts<'u, T> where T: Borrow<TxOut> {
-    fn check_all(&self, tx: &Transaction) -> Result<(), Error> {
-        if let Prevouts::All(prevouts) = self {
-            if prevouts.len() != tx.input.len() {
-                return Err(Error::PrevoutsSize);
-            }
-        }
-        Ok(())
-    }
-
-    fn get_all(&self) -> Result<&[T], Error> {
-        match self {
-            Prevouts::All(prevouts) => Ok(*prevouts),
-            _ => Err(Error::PrevoutKind),
-        }
-    }
-
-    fn get(&self, input_index: usize) -> Result<&TxOut, Error> {
-        match self {
-            Prevouts::One(index, prevout) => {
-                if input_index == *index {
-                    Ok(prevout.borrow())
-                } else {
-                    Err(Error::PrevoutIndex)
-                }
-            }
-            Prevouts::All(prevouts) => prevouts
-                .get(input_index)
-                .map(|x| x.borrow())
-                .ok_or(Error::PrevoutIndex),
-        }
-    }
-}
-
 
 impl From<EcdsaSighashType> for SchnorrSighashType {
     fn from(s: EcdsaSighashType) -> Self {
@@ -253,20 +217,6 @@ impl From<EcdsaSighashType> for SchnorrSighashType {
 }
 
 impl SchnorrSighashType {
-    /// Break the sighash flag into the "real" sighash flag and the ANYONECANPAY boolean
-    pub(crate) fn split_anyonecanpay_flag(self) -> (SchnorrSighashType, bool) {
-        match self {
-            SchnorrSighashType::Default => (SchnorrSighashType::Default, false),
-            SchnorrSighashType::All => (SchnorrSighashType::All, false),
-            SchnorrSighashType::None => (SchnorrSighashType::None, false),
-            SchnorrSighashType::Single => (SchnorrSighashType::Single, false),
-            SchnorrSighashType::AllPlusAnyoneCanPay => (SchnorrSighashType::All, true),
-            SchnorrSighashType::NonePlusAnyoneCanPay => (SchnorrSighashType::None, true),
-            SchnorrSighashType::SinglePlusAnyoneCanPay => (SchnorrSighashType::Single, true),
-            SchnorrSighashType::Reserved => (SchnorrSighashType::Reserved, false),
-        }
-    }
-
     /// Create a [`SchnorrSighashType`] from raw `u8`
     pub fn from_u8(hash_ty: u8) -> Result<Self, Error> {
         match hash_ty {
@@ -414,11 +364,6 @@ impl<R: Deref<Target=Transaction>> SighashCache<R> {
         Ok(Sighash::from_engine(enc))
     }
 
-    #[inline]
-    fn common_cache(&mut self) -> &CommonCache {
-        Self::common_cache_minimal_borrow(&mut self.common_cache, &self.tx)
-    }
-
     fn common_cache_minimal_borrow<'a>(
         common_cache: &'a mut Option<CommonCache>,
         tx: &R,
@@ -502,41 +447,9 @@ impl From<io::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use util::sighash::{Error, SighashCache};
     use std::str::FromStr;
-    use secp256k1;
     extern crate serde_json;
 
-    use {Script, Transaction, TxIn, TxOut};
-
-
-    #[test]
-    fn test_sighash_errors() {
-        let dumb_tx = Transaction {
-            version: 0,
-            lock_time: 0,
-            input: vec![TxIn::default()],
-            output: vec![],
-        };
-        let mut c = SighashCache::new(&dumb_tx);
-
-        // 1.29 fixes
-        let empty_vec = vec![];
-        let two = vec![TxOut::default(), TxOut::default()];
-        let tx_out = TxOut::default();
-        assert_eq!(
-            c.legacy_signature_hash(10, &Script::default(), 0u32),
-            Err(Error::IndexOutOfInputsBounds {
-                index: 10,
-                inputs_size: 1
-            })
-        );
-    }
-
-    fn bip_341_read_json() -> serde_json::Value {
-        let json_str = include_str!("../../test_data/bip341_tests.json");
-        serde_json::from_str(json_str).expect("JSON was not well-formatted")
-    }
 
     #[test]
     fn sighashtype_fromstr_display() {

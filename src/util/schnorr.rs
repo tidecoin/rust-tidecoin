@@ -20,10 +20,9 @@
 use core::fmt;
 use prelude::*;
 
-use secp256k1::{XOnlyPublicKey as _XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey as _XOnlyPublicKey;
 
 use secp256k1;
-use hashes::Hash;
 use SchnorrSighashType;
 
 /// Deprecated re-export of [`secp256k1::XOnlyPublicKey`]

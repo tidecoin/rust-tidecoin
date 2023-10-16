@@ -39,7 +39,6 @@ use core::num::ParseIntError;
 use core::str::FromStr;
 #[cfg(feature = "std")] use std::error;
 
-use secp256k1::{Verification};
 use bech32;
 use hashes::{sha256, Hash, HashEngine};
 use hash_types::{PubkeyHash, ScriptHash};

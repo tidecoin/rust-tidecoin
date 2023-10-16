@@ -32,7 +32,7 @@ use util::psbt::{Error, error};
 use util::key::PublicKey;
 
 use util::sighash;
-use {EcdsaSighashType, SchnorrSighashType, EcdsaSig, SchnorrSig};
+use {EcdsaSighashType, SchnorrSighashType, EcdsaSig};
 
 /// Type: Non-Witness UTXO PSBT_IN_NON_WITNESS_UTXO = 0x00
 const PSBT_IN_NON_WITNESS_UTXO: u8 = 0x00;
