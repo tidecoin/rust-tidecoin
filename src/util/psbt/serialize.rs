@@ -25,19 +25,17 @@ use io;
 use blockdata::script::Script;
 use blockdata::witness::Witness;
 use blockdata::transaction::{Transaction, TxOut};
-use consensus::encode::{self, serialize, Decodable, Encodable, deserialize_partial};
-use secp256k1::{self, XOnlyPublicKey};
+use consensus::encode::{self, serialize, Decodable, Encodable};
+use secp256k1;
 use util::bip32::{ChildNumber, Fingerprint, KeySource};
 use hashes::{hash160, ripemd160, sha256, sha256d, Hash};
 use util::ecdsa::{EcdsaSig, EcdsaSigError};
 use util::psbt;
-use util::taproot::{TapBranchHash, TapLeafHash, ControlBlock, LeafVersion};
 use schnorr;
 use util::key::PublicKey;
 
-use super::map::{TapTree, PsbtSighashType};
+use super::map::{PsbtSighashType};
 
-use util::taproot::TaprootBuilder;
 /// A trait for serializing a value as raw data for insertion into PSBT
 /// key-value pairs.
 pub trait Serialize {
@@ -56,13 +54,8 @@ impl_psbt_de_serialize!(TxOut);
 impl_psbt_de_serialize!(Witness);
 impl_psbt_hash_de_serialize!(ripemd160::Hash);
 impl_psbt_hash_de_serialize!(sha256::Hash);
-impl_psbt_hash_de_serialize!(TapLeafHash);
-impl_psbt_hash_de_serialize!(TapBranchHash);
 impl_psbt_hash_de_serialize!(hash160::Hash);
 impl_psbt_hash_de_serialize!(sha256d::Hash);
-
-// taproot
-impl_psbt_de_serialize!(Vec<TapLeafHash>);
 
 impl Serialize for Script {
     fn serialize(&self) -> Vec<u8> {
@@ -204,19 +197,6 @@ impl Deserialize for PsbtSighashType {
     }
 }
 
-// Taproot related ser/deser
-impl Serialize for XOnlyPublicKey {
-    fn serialize(&self) -> Vec<u8> {
-        XOnlyPublicKey::serialize(&self).to_vec()
-    }
-}
-
-impl Deserialize for XOnlyPublicKey {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        XOnlyPublicKey::from_slice(bytes)
-            .map_err(|_| encode::Error::ParseFailed("Invalid xonly public key"))
-    }
-}
 
 impl Serialize for schnorr::SchnorrSig  {
     fn serialize(&self) -> Vec<u8> {
@@ -240,129 +220,6 @@ impl Deserialize for schnorr::SchnorrSig {
             })
     }
 }
-
-impl Serialize for (XOnlyPublicKey, TapLeafHash) {
-    fn serialize(&self) -> Vec<u8> {
-        let ser_pk = self.0.serialize();
-        let mut buf = Vec::with_capacity(ser_pk.len() + self.1.as_ref().len());
-        buf.extend(&ser_pk);
-        buf.extend(self.1.as_ref());
-        buf
-    }
-}
-
-impl Deserialize for (XOnlyPublicKey, TapLeafHash) {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        if bytes.len() < 32 {
-            return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into())
-        }
-        let a: XOnlyPublicKey = Deserialize::deserialize(&bytes[..32])?;
-        let b: TapLeafHash = Deserialize::deserialize(&bytes[32..])?;
-        Ok((a, b))
-    }
-}
-
-impl Serialize for ControlBlock {
-    fn serialize(&self) -> Vec<u8> {
-        ControlBlock::serialize(&self)
-    }
-}
-
-impl Deserialize for ControlBlock {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        Self::from_slice(bytes)
-            .map_err(|_| encode::Error::ParseFailed("Invalid control block"))
-    }
-}
-
-// Versioned Script
-impl Serialize for (Script, LeafVersion) {
-    fn serialize(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(self.0.len() + 1);
-        buf.extend(self.0.as_bytes());
-        buf.push(self.1.to_consensus());
-        buf
-    }
-}
-
-impl Deserialize for (Script, LeafVersion) {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        if bytes.is_empty() {
-            return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into())
-        }
-        // The last byte is LeafVersion.
-        let script = Script::deserialize(&bytes[..bytes.len() - 1])?;
-        let leaf_ver = LeafVersion::from_consensus(bytes[bytes.len() - 1])
-            .map_err(|_| encode::Error::ParseFailed("invalid leaf version"))?;
-        Ok((script, leaf_ver))
-    }
-}
-
-
-impl Serialize for (Vec<TapLeafHash>, KeySource) {
-    fn serialize(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity( 32 * self.0.len() + key_source_len(&self.1));
-        self.0.consensus_encode(&mut buf).expect("Vecs don't error allocation");
-        // TODO: Add support for writing into a writer for key-source
-        buf.extend(self.1.serialize());
-        buf
-    }
-}
-
-impl Deserialize for (Vec<TapLeafHash>, KeySource) {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        let (leafhash_vec, consumed) = deserialize_partial::<Vec<TapLeafHash>>(&bytes)?;
-        let key_source = KeySource::deserialize(&bytes[consumed..])?;
-        Ok((leafhash_vec, key_source))
-    }
-}
-
-impl Serialize for TapTree {
-    fn serialize(&self) -> Vec<u8> {
-        match (self.0.branch().len(), self.0.branch().last()) {
-            (1, Some(Some(root))) => {
-                let mut buf = Vec::new();
-                for leaf_info in root.leaves.iter() {
-                    // # Cast Safety:
-                    //
-                    // TaprootMerkleBranch can only have len atmost 128(TAPROOT_CONTROL_MAX_NODE_COUNT).
-                    // safe to cast from usize to u8
-                    buf.push(leaf_info.merkle_branch().as_inner().len() as u8);
-                    buf.push(leaf_info.leaf_version().to_consensus());
-                    leaf_info.script().consensus_encode(&mut buf).expect("Vecs dont err");
-                }
-                buf
-            }
-        // This should be unreachable as we Taptree is already finalized
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl Deserialize for TapTree {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        let mut builder = TaprootBuilder::new();
-        let mut bytes_iter = bytes.iter();
-        while let Some(depth) = bytes_iter.next() {
-            let version = bytes_iter.next().ok_or(encode::Error::ParseFailed("Invalid Taproot Builder"))?;
-            let (script, consumed) = deserialize_partial::<Script>(bytes_iter.as_slice())?;
-            if consumed > 0 {
-                bytes_iter.nth(consumed - 1);
-            }
-
-            let leaf_version = LeafVersion::from_consensus(*version)
-                .map_err(|_| encode::Error::ParseFailed("Leaf Version Error"))?;
-            builder = builder.add_leaf_with_ver(*depth, script, leaf_version)
-                .map_err(|_| encode::Error::ParseFailed("Tree not in DFS order"))?;
-        }
-        if builder.is_finalized() || !builder.has_hidden_nodes() {
-            Ok(TapTree(builder))
-        } else {
-            Err(encode::Error::ParseFailed("Incomplete taproot Tree"))
-        }
-    }
-}
-
 // Helper function to compute key source len
 fn key_source_len(key_source: &KeySource) -> usize {
     4 + 4 * (key_source.1).as_ref().len()
@@ -370,40 +227,7 @@ fn key_source_len(key_source: &KeySource) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use hashes::hex::FromHex;
     use super::*;
-
-    // Composes tree matching a given depth map, filled with dumb script leafs,
-    // each of which consists of a single push-int op code, with int value
-    // increased for each consecutive leaf.
-    pub fn compose_taproot_builder<'map>(opcode: u8, depth_map: impl IntoIterator<Item = &'map u8>) -> TaprootBuilder {
-        let mut val = opcode;
-        let mut builder = TaprootBuilder::new();
-        for depth in depth_map {
-            let script = Script::from_hex(&format!("{:02x}", val)).unwrap();
-            builder = builder.add_leaf(*depth, script).unwrap();
-            let (new_val, _) = val.overflowing_add(1);
-            val = new_val;
-        }
-        builder
-    }
-
-    #[test]
-    fn taptree_hidden() {
-        let mut builder = compose_taproot_builder(0x51, &[2, 2, 2]);
-        builder = builder.add_leaf_with_ver(3, Script::from_hex("b9").unwrap(), LeafVersion::from_consensus(0xC2).unwrap()).unwrap();
-        builder = builder.add_hidden_node(3, sha256::Hash::default()).unwrap();
-        assert!(TapTree::from_builder(builder.clone()).is_err());
-    }
-
-    #[test]
-    fn taptree_roundtrip() {
-        let mut builder = compose_taproot_builder(0x51, &[2, 2, 2, 3]);
-        builder = builder.add_leaf_with_ver(3, Script::from_hex("b9").unwrap(), LeafVersion::from_consensus(0xC2).unwrap()).unwrap();
-        let tree = TapTree::from_builder(builder).unwrap();
-        let tree_prime = TapTree::deserialize(&tree.serialize()).unwrap();
-        assert_eq!(tree, tree_prime);
-    }
 
     #[test]
     fn can_deserialize_non_standard_psbt_sighash_type() {

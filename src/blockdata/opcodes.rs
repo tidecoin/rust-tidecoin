@@ -661,12 +661,9 @@ impl fmt::Debug for All {
 
 /// Classification context for the opcode.
 ///
-/// Some opcodes like [`all::OP_RESERVED`] abort the script in `ClassifyContext::Legacy` context,
-/// but will act as `OP_SUCCESSx` in `ClassifyContext::TapScript` (see BIP342 for full list).
+/// Some opcodes like [`all::OP_RESERVED`] abort the script in `ClassifyContext::Legacy` context
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ClassifyContext {
-    /// Opcode used in tapscript context.
-    TapScript,
     /// Opcode used in legacy context.
     Legacy,
 }
@@ -689,16 +686,6 @@ impl All {
             | (OP_MUL, ctx) | (OP_DIV, ctx) | (OP_MOD, ctx)
             | (OP_LSHIFT, ctx) | (OP_RSHIFT, ctx) if ctx == ClassifyContext::Legacy => Class::IllegalOp,
 
-            // 87 opcodes of SuccessOp class only in TapScript context
-            (op, ClassifyContext::TapScript)
-            if op.code == 80 || op.code == 98 ||
-                (op.code >= 126 && op.code <= 129) ||
-                (op.code >= 131 && op.code <= 134) ||
-                (op.code >= 137 && op.code <= 138) ||
-                (op.code >= 141 && op.code <= 142) ||
-                (op.code >= 149 && op.code <= 153) ||
-                (op.code >= 187 && op.code <= 254) => Class::SuccessOp,
-
             // 11 opcodes of NoOp class
             (OP_NOP, _) => Class::NoOp,
             (op, _) if op.code >= OP_NOP1.code && op.code <= OP_NOP10.code => Class::NoOp,
@@ -713,10 +700,6 @@ impl All {
 
             // 71 opcodes operating equally to `OP_RETURN` only in Legacy context
             (op, ClassifyContext::Legacy) if op.code >= OP_CHECKSIGADD.code => Class::ReturnOp,
-
-            // 2 opcodes operating equally to `OP_RETURN` only in TapScript context
-            (OP_CHECKMULTISIG, ClassifyContext::TapScript)
-            | (OP_CHECKMULTISIGVERIFY, ClassifyContext::TapScript) => Class::ReturnOp,
 
             // 1 opcode of PushNum class
             (OP_PUSHNUM_NEG1, _) => Class::PushNum(-1),
@@ -886,19 +869,15 @@ mod tests {
     fn classify_test() {
         let op174 = all::OP_CHECKMULTISIG;
         assert_eq!(op174.classify(ClassifyContext::Legacy), Class::Ordinary(Ordinary::OP_CHECKMULTISIG));
-        assert_eq!(op174.classify(ClassifyContext::TapScript), Class::ReturnOp);
 
         let op175 = all::OP_CHECKMULTISIGVERIFY;
         assert_eq!(op175.classify(ClassifyContext::Legacy),  Class::Ordinary(Ordinary::OP_CHECKMULTISIGVERIFY));
-        assert_eq!(op175.classify(ClassifyContext::TapScript), Class::ReturnOp);
 
         let op186 = all::OP_CHECKSIGADD;
         assert_eq!(op186.classify(ClassifyContext::Legacy), Class::ReturnOp);
-        assert_eq!(op186.classify(ClassifyContext::TapScript), Class::Ordinary(Ordinary::OP_CHECKSIGADD));
 
         let op187 = all::OP_RETURN_187;
         assert_eq!(op187.classify(ClassifyContext::Legacy), Class::ReturnOp);
-        assert_eq!(op187.classify(ClassifyContext::TapScript), Class::SuccessOp);
     }
 
     #[test]

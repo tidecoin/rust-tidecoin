@@ -29,7 +29,6 @@ pub mod hash;
 pub mod merkleblock;
 pub mod misc;
 pub mod psbt;
-pub mod taproot;
 pub mod uint;
 pub mod bip158;
 pub mod sighash;

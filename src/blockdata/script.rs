@@ -41,10 +41,8 @@ use OutPoint;
 
 use crate::util::key::PublicKey;
 use crate::util::address::WitnessVersion;
-use crate::util::taproot::{LeafVersion, TapBranchHash, TapLeafHash};
 
-use secp256k1::{Secp256k1, Verification, XOnlyPublicKey};
-use crate::schnorr::{TapTweak, TweakedPublicKey, UntweakedPublicKey};
+use secp256k1::{Verification, XOnlyPublicKey};
 
 /// A Bitcoin script.
 #[derive(Clone, Default, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -341,18 +339,6 @@ impl Script {
         Script::new_witness_program(WitnessVersion::V0, &script_hash[..])
     }
 
-    /// Generates P2TR for script spending path using an internal public key and some optional
-    /// script tree merkle root.
-    pub fn new_v1_p2tr<C: Verification>(secp: &Secp256k1<C>, internal_key: UntweakedPublicKey, merkle_root: Option<TapBranchHash>) -> Script {
-        let (output_key, _) = internal_key.tap_tweak(secp, merkle_root);
-        Script::new_witness_program(WitnessVersion::V1, &output_key.serialize())
-    }
-
-    /// Generates P2TR for key spending path for a known [`TweakedPublicKey`].
-    pub fn new_v1_p2tr_tweaked(output_key: TweakedPublicKey) -> Script {
-        Script::new_witness_program(WitnessVersion::V1, &output_key.serialize())
-    }
-
     /// Generates P2WSH-type of scriptPubkey with a given hash of the redeem script.
     pub fn new_witness_program(version: WitnessVersion, program: &[u8]) -> Script {
         Builder::new()
@@ -403,15 +389,6 @@ impl Script {
     /// script").
     pub fn to_v0_p2wsh(&self) -> Script {
         Script::new_v0_p2wsh(&self.wscript_hash())
-    }
-
-    /// Computes P2TR output with a given internal key and a single script spending path equal to
-    /// the current script, assuming that the script is a Tapscript.
-    #[inline]
-    pub fn to_v1_p2tr<C: Verification>(&self, secp: &Secp256k1<C>, internal_key: UntweakedPublicKey) -> Script {
-        let leaf_hash = TapLeafHash::from_script(&self, LeafVersion::TapScript);
-        let merkle_root = TapBranchHash::from_inner(leaf_hash.into_inner());
-        Script::new_v1_p2tr(&secp, internal_key, Some(merkle_root))
     }
 
     /// Returns witness version of the script, if any, assuming the script is a `scriptPubkey`.

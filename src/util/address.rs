@@ -18,11 +18,11 @@
 //! # Example: creating a new address from a randomly-generated key pair
 //!
 //! ```rust
-//! use bitcoin::network::constants::Network;
-//! use bitcoin::util::address::Address;
-//! use bitcoin::PublicKey;
-//! use bitcoin::secp256k1::Secp256k1;
-//! use bitcoin::secp256k1::rand::thread_rng;
+//! use tidecoin::network::constants::Network;
+//! use tidecoin::util::address::Address;
+//! use tidecoin::PublicKey;
+//! use tidecoin::secp256k1::Secp256k1;
+//! use tidecoin::secp256k1::rand::thread_rng;
 //!
 //! // Generate random key pair.
 //! let s = Secp256k1::new();
@@ -39,7 +39,7 @@ use core::num::ParseIntError;
 use core::str::FromStr;
 #[cfg(feature = "std")] use std::error;
 
-use secp256k1::{Secp256k1, Verification, XOnlyPublicKey};
+use secp256k1::{Verification};
 use bech32;
 use hashes::{sha256, Hash, HashEngine};
 use hash_types::{PubkeyHash, ScriptHash};
@@ -49,7 +49,6 @@ use crate::network::constants::Network;
 use crate::util::base58;
 use crate::util::key::PublicKey;
 use crate::blockdata::script::Instruction;
-use crate::util::schnorr::{TapTweak, UntweakedPublicKey, TweakedPublicKey};
 
 /// Address error.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -139,8 +138,6 @@ pub enum AddressType {
     P2wpkh,
     /// Pay to witness script hash.
     P2wsh,
-    /// Pay to taproot.
-    P2tr,
 }
 
 impl fmt::Display for AddressType {
@@ -150,7 +147,6 @@ impl fmt::Display for AddressType {
             AddressType::P2sh => "p2sh",
             AddressType::P2wpkh => "p2wpkh",
             AddressType::P2wsh => "p2wsh",
-            AddressType::P2tr => "p2tr",
         })
     }
 }
@@ -163,7 +159,6 @@ impl FromStr for AddressType {
             "p2sh" => Ok(AddressType::P2sh),
             "p2wpkh" => Ok(AddressType::P2wpkh),
             "p2wsh" => Ok(AddressType::P2wsh),
-            "p2tr" => Ok(AddressType::P2tr),
             _ => Err(()),
         }
     }
@@ -181,8 +176,6 @@ impl FromStr for AddressType {
 pub enum WitnessVersion {
     /// Initial version of witness program. Used for P2WPKH and P2WPK outputs
     V0 = 0,
-    /// Version of witness program used for Taproot P2TR outputs.
-    V1 = 1,
     /// Future (unsupported) version of witness program.
     V2 = 2,
     /// Future (unsupported) version of witness program.
@@ -258,7 +251,6 @@ impl WitnessVersion {
     pub fn from_num(no: u8) -> Result<Self, Error> {
         Ok(match no {
             0 => WitnessVersion::V0,
-            1 => WitnessVersion::V1,
             2 => WitnessVersion::V2,
             3 => WitnessVersion::V3,
             4 => WitnessVersion::V4,
@@ -591,7 +583,6 @@ impl Address {
                         32 => Some(AddressType::P2wsh),
                         _ => None,
                     },
-                    WitnessVersion::V1 if prog.len() == 32 => Some(AddressType::P2tr),
                     _ => None,
                 }
             }
@@ -641,7 +632,7 @@ impl Address {
     /// network a simple comparison is not enough anymore. Instead this function can be used.
     ///
     /// ```rust
-    /// use bitcoin::{Address, Network};
+    /// use tidecoin::{Address, Network};
     ///
     /// let address: Address = "2N83imGV3gPwBzKJQvWJ7cRUY2SpUyU6A5e".parse().unwrap();
     /// assert!(address.is_valid_for_network(Network::Testnet));
@@ -653,11 +644,6 @@ impl Address {
     /// assert_eq!(address.is_valid_for_network(Network::Testnet), false);
     /// ```
     pub fn is_valid_for_network(&self, network: Network) -> bool {
-        let is_legacy = match self.address_type() {
-            Some(AddressType::P2pkh) | Some(AddressType::P2sh) => true,
-            _ => false
-        };
-
         match (self.network, network) {
             (a, b) if a == b => true,
             (Network::Tidecoin, _) | (_, Network::Tidecoin) => false,
@@ -673,18 +659,8 @@ impl Address {
     pub fn is_related_to_pubkey(&self, pubkey: &PublicKey) -> bool {
         let pubkey_hash = pubkey.pubkey_hash();
         let payload = self.payload_as_bytes();
-        let xonly_pubkey = XOnlyPublicKey::from(pubkey.inner);
 
-        (*pubkey_hash == *payload) || (xonly_pubkey.serialize() == *payload) || (*segwit_redeem_hash(&pubkey_hash) == *payload)
-    }
-
-    /// Returns true if the supplied xonly public key can be used to derive the address.
-    ///
-    /// This will only work for Taproot addresses. The Public Key is
-    /// assumed to have already been tweaked.
-    pub fn is_related_to_xonly_pubkey(&self, xonly_pubkey: &XOnlyPublicKey) -> bool {
-        let payload = self.payload_as_bytes();
-        payload == xonly_pubkey.serialize()
+        (*pubkey_hash == *payload) || (*segwit_redeem_hash(&pubkey_hash) == *payload)
     }
 
     /// Return the address payload as a byte slice
@@ -853,7 +829,6 @@ mod tests {
     use blockdata::script::Script;
     use network::constants::Network::{Tidecoin, Testnet};
     use util::key::PublicKey;
-    use secp256k1::XOnlyPublicKey;
 
     use super::*;
 
@@ -1013,7 +988,6 @@ mod tests {
             ("33iFwdLuRpW1uK1RTRqsoi8rR4NpDzk66k", Some(AddressType::P2sh)),
             ("bc1qvzvkjn4q3nszqxrv3nraga2r822xjty3ykvkuw", Some(AddressType::P2wpkh)),
             ("bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej", Some(AddressType::P2wsh)),
-            ("bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr", Some(AddressType::P2tr)),
             // Related to future extensions, addresses are valid but have no type
             // segwit v1 and len != 32
             ("bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y", None),
@@ -1237,17 +1211,6 @@ mod tests {
     }
 
     #[test]
-    fn p2tr_from_untweaked() {
-        //Test case from BIP-086
-        let internal_key = XOnlyPublicKey::from_str("cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115").unwrap();
-        let secp = Secp256k1::verification_only();
-        let address = Address::p2tr(&secp, internal_key, None, Network::Tidecoin);
-        assert_eq!(address.to_string(), "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr");
-        assert_eq!(address.address_type(), Some(AddressType::P2tr));
-        roundtrips(&address);
-    }
-
-    #[test]
     fn test_is_related_to_pubkey_p2wpkh() {
         let address_string = "bc1qhvd6suvqzjcu9pxjhrwhtrlj85ny3n2mqql5w4";
         let address = Address::from_str(address_string).expect("address");
@@ -1305,36 +1268,5 @@ mod tests {
 
         let unused_pubkey = PublicKey::from_str("02ba604e6ad9d3864eda8dc41c62668514ef7d5417d3b6db46e45cc4533bff001c").expect("pubkey");
         assert!(!address.is_related_to_pubkey(&unused_pubkey))
-    }
-
-    #[test]
-    fn test_is_related_to_pubkey_p2tr(){
-        let pubkey_string = "0347ff3dacd07a1f43805ec6808e801505a6e18245178609972a68afbc2777ff2b";
-        let pubkey = PublicKey::from_str(pubkey_string).expect("pubkey");
-        let xonly_pubkey = XOnlyPublicKey::from(pubkey.inner);
-        let tweaked_pubkey = TweakedPublicKey::dangerous_assume_tweaked(xonly_pubkey);
-        let address = Address::p2tr_tweaked(tweaked_pubkey, Network::Tidecoin);
-
-        assert_eq!(address, Address::from_str("bc1pgllnmtxs0g058qz7c6qgaqq4qknwrqj9z7rqn9e2dzhmcfmhlu4sfadf5e").expect("address"));
-
-        let result = address.is_related_to_pubkey(&pubkey);
-        assert!(result);
-
-        let unused_pubkey = PublicKey::from_str("02ba604e6ad9d3864eda8dc41c62668514ef7d5417d3b6db46e45cc4533bff001c").expect("pubkey");
-        assert!(!address.is_related_to_pubkey(&unused_pubkey));
-    }
-
-    #[test]
-    fn test_is_related_to_xonly_pubkey(){
-        let pubkey_string = "0347ff3dacd07a1f43805ec6808e801505a6e18245178609972a68afbc2777ff2b";
-        let pubkey = PublicKey::from_str(pubkey_string).expect("pubkey");
-        let xonly_pubkey = XOnlyPublicKey::from(pubkey.inner);
-        let tweaked_pubkey = TweakedPublicKey::dangerous_assume_tweaked(xonly_pubkey);
-        let address = Address::p2tr_tweaked(tweaked_pubkey, Network::Tidecoin);
-
-        assert_eq!(address, Address::from_str("bc1pgllnmtxs0g058qz7c6qgaqq4qknwrqj9z7rqn9e2dzhmcfmhlu4sfadf5e").expect("address"));
-
-        let result = address.is_related_to_xonly_pubkey(&xonly_pubkey);
-        assert!(result);
     }
 }

@@ -24,7 +24,7 @@ mod input;
 mod output;
 
 pub use self::input::{Input, PsbtSighashType};
-pub use self::output::{Output, TapTree, IncompleteTapTree};
+pub use self::output::{Output};
 
 /// A trait that describes a PSBT key-value map.
 pub(super) trait Map {

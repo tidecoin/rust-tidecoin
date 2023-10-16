@@ -40,7 +40,6 @@ use io::{self, Cursor, Read};
 
 use crate::util::endian;
 use crate::util::psbt;
-use crate::util::taproot::TapLeafHash;
 use hashes::hex::ToHex;
 
 use blockdata::transaction::{TxOut, Transaction, TxIn};
@@ -633,7 +632,6 @@ impl_vec!(TxOut);
 impl_vec!(TxIn);
 impl_vec!(Vec<u8>);
 impl_vec!(u64);
-impl_vec!(TapLeafHash);
 
 #[cfg(feature = "std")] impl_vec!(Inventory);
 #[cfg(feature = "std")] impl_vec!((u32, Address));
@@ -833,18 +831,6 @@ impl Encodable for sha256::Hash {
 }
 
 impl Decodable for sha256::Hash {
-    fn consensus_decode<D: io::Read>(d: D) -> Result<Self, Error> {
-        Ok(Self::from_inner(<<Self as Hash>::Inner>::consensus_decode(d)?))
-    }
-}
-
-impl Encodable for TapLeafHash {
-    fn consensus_encode<S: io::Write>(&self, s: S) -> Result<usize, io::Error> {
-        self.into_inner().consensus_encode(s)
-    }
-}
-
-impl Decodable for TapLeafHash {
     fn consensus_decode<D: io::Read>(d: D) -> Result<Self, Error> {
         Ok(Self::from_inner(<<Self as Hash>::Inner>::consensus_decode(d)?))
     }
@@ -1130,7 +1116,7 @@ mod tests {
         for _ in 0..10 {
             round_trip!{bool, i8, u8, i16, u16, i32, u32, i64, u64,
             (bool, i8, u16, i32), (u64, i64, u32, i32, u16, i16), (i8, u8, i16, u16, i32, u32, i64, u64),
-            [u8; 2], [u8; 4], [u8; 8], [u8; 12], [u8; 16], [u8; 32]};
+            [u8; 2], [u8; 4], [u8; 8], [u8; 12], [u8; 16], [u8; 32]}
 
             data.clear();
             data64.clear();
@@ -1139,7 +1125,7 @@ mod tests {
             data64.resize(len, 0u64);
             let mut arr33 = [0u8; 33];
             let mut arr16 = [0u16; 8];
-            round_trip_bytes!{(Vec<u8>, data), ([u8; 33], arr33), ([u16; 8], arr16), (Vec<u64>, data64)};
+            round_trip_bytes!{(Vec<u8>, data), ([u8; 33], arr33), ([u16; 8], arr16), (Vec<u64>, data64)}
 
 
         }

@@ -23,7 +23,6 @@ use blockdata::witness::Witness;
 use blockdata::transaction::{Transaction, TxOut, NonStandardSighashType, SighashTypeParseError};
 use consensus::encode;
 use hashes::{self, hash160, ripemd160, sha256, sha256d};
-use secp256k1::XOnlyPublicKey;
 use util::bip32::KeySource;
 use util::psbt;
 use util::psbt::map::Map;
@@ -32,7 +31,6 @@ use util::psbt::serialize::Deserialize;
 use util::psbt::{Error, error};
 use util::key::PublicKey;
 
-use util::taproot::{ControlBlock, LeafVersion, TapLeafHash, TapBranchHash};
 use util::sighash;
 use {EcdsaSighashType, SchnorrSighashType, EcdsaSig, SchnorrSig};
 
@@ -62,18 +60,6 @@ const PSBT_IN_SHA256: u8 = 0x0b;
 const PSBT_IN_HASH160: u8 = 0x0c;
 /// Type: HASH256 preimage PSBT_IN_HASH256 = 0x0d
 const PSBT_IN_HASH256: u8 = 0x0d;
-/// Type: Schnorr Signature in Key Spend PSBT_IN_TAP_KEY_SIG = 0x13
-const PSBT_IN_TAP_KEY_SIG: u8 = 0x13;
-/// Type: Schnorr Signature in Script Spend PSBT_IN_TAP_SCRIPT_SIG = 0x14
-const PSBT_IN_TAP_SCRIPT_SIG: u8 = 0x14;
-/// Type: Taproot Leaf Script PSBT_IN_TAP_LEAF_SCRIPT = 0x14
-const PSBT_IN_TAP_LEAF_SCRIPT: u8 = 0x15;
-/// Type: Taproot Key BIP 32 Derivation Path PSBT_IN_TAP_BIP32_DERIVATION = 0x16
-const PSBT_IN_TAP_BIP32_DERIVATION: u8 = 0x16;
-/// Type: Taproot Internal Key PSBT_IN_TAP_INTERNAL_KEY = 0x17
-const PSBT_IN_TAP_INTERNAL_KEY: u8 = 0x17;
-/// Type: Taproot Merkle Root PSBT_IN_TAP_MERKLE_ROOT = 0x18
-const PSBT_IN_TAP_MERKLE_ROOT: u8 = 0x18;
 /// Type: Proprietary Use Type PSBT_IN_PROPRIETARY = 0xFC
 const PSBT_IN_PROPRIETARY: u8 = 0xFC;
 
@@ -123,21 +109,6 @@ pub struct Input {
     /// HAS256 hash to preimage map.
     #[cfg_attr(feature = "serde", serde(with = "::serde_utils::btreemap_byte_values"))]
     pub hash256_preimages: BTreeMap<sha256d::Hash, Vec<u8>>,
-    /// Serialized schnorr signature with sighash type for key spend.
-    pub tap_key_sig: Option<SchnorrSig>,
-    /// Map of <xonlypubkey>|<leafhash> with signature.
-    #[cfg_attr(feature = "serde", serde(with = "::serde_utils::btreemap_as_seq"))]
-    pub tap_script_sigs: BTreeMap<(XOnlyPublicKey, TapLeafHash), SchnorrSig>,
-    /// Map of Control blocks to Script version pair.
-    #[cfg_attr(feature = "serde", serde(with = "::serde_utils::btreemap_as_seq"))]
-    pub tap_scripts: BTreeMap<ControlBlock, (Script, LeafVersion)>,
-    /// Map of tap root x only keys to origin info and leaf hashes contained in it.
-    #[cfg_attr(feature = "serde", serde(with = "::serde_utils::btreemap_as_seq"))]
-    pub tap_key_origins: BTreeMap<XOnlyPublicKey, (Vec<TapLeafHash>, KeySource)>,
-    /// Taproot Internal key.
-    pub tap_internal_key: Option<XOnlyPublicKey>,
-    /// Taproot Merkle root.
-    pub tap_merkle_root: Option<TapBranchHash>,
     /// Proprietary key-value pairs for this input.
     #[cfg_attr(feature = "serde", serde(with = "::serde_utils::btreemap_as_seq_byte_values"))]
     pub proprietary: BTreeMap<raw::ProprietaryKey, Vec<u8>>,
@@ -326,36 +297,6 @@ impl Input {
             PSBT_IN_HASH256 => {
                 psbt_insert_hash_pair(&mut self.hash256_preimages, raw_key, raw_value, error::PsbtHash::Hash256)?;
             }
-            PSBT_IN_TAP_KEY_SIG => {
-                impl_psbt_insert_pair! {
-                    self.tap_key_sig <= <raw_key: _>|<raw_value: SchnorrSig>
-                }
-            }
-            PSBT_IN_TAP_SCRIPT_SIG => {
-                impl_psbt_insert_pair! {
-                    self.tap_script_sigs <= <raw_key: (XOnlyPublicKey, TapLeafHash)>|<raw_value: SchnorrSig>
-                }
-            }
-            PSBT_IN_TAP_LEAF_SCRIPT => {
-                impl_psbt_insert_pair! {
-                    self.tap_scripts <= <raw_key: ControlBlock>|< raw_value: (Script, LeafVersion)>
-                }
-            }
-            PSBT_IN_TAP_BIP32_DERIVATION => {
-                impl_psbt_insert_pair! {
-                    self.tap_key_origins <= <raw_key: XOnlyPublicKey>|< raw_value: (Vec<TapLeafHash>, KeySource)>
-                }
-            }
-            PSBT_IN_TAP_INTERNAL_KEY => {
-                impl_psbt_insert_pair! {
-                    self.tap_internal_key <= <raw_key: _>|< raw_value: XOnlyPublicKey>
-                }
-            }
-            PSBT_IN_TAP_MERKLE_ROOT => {
-                impl_psbt_insert_pair! {
-                    self.tap_merkle_root <= <raw_key: _>|< raw_value: TapBranchHash>
-                }
-            }
             PSBT_IN_PROPRIETARY => {
                 let key = raw::ProprietaryKey::from_key(raw_key.clone())?;
                 match self.proprietary.entry(key) {
@@ -391,9 +332,6 @@ impl Input {
         self.sha256_preimages.extend(other.sha256_preimages);
         self.hash160_preimages.extend(other.hash160_preimages);
         self.hash256_preimages.extend(other.hash256_preimages);
-        self.tap_script_sigs.extend(other.tap_script_sigs);
-        self.tap_scripts.extend(other.tap_scripts);
-        self.tap_key_origins.extend(other.tap_key_origins);
         self.proprietary.extend(other.proprietary);
         self.unknown.extend(other.unknown);
 
@@ -401,9 +339,6 @@ impl Input {
         combine!(witness_script, self, other);
         combine!(final_script_sig, self, other);
         combine!(final_script_witness, self, other);
-        combine!(tap_key_sig, self, other);
-        combine!(tap_internal_key, self, other);
-        combine!(tap_merkle_root, self, other);
     }
 }
 
@@ -463,29 +398,7 @@ impl Map for Input {
             rv.push_map(self.hash256_preimages, PSBT_IN_HASH256)
         }
 
-        impl_psbt_get_pair! {
-            rv.push(self.tap_key_sig, PSBT_IN_TAP_KEY_SIG)
-        }
 
-        impl_psbt_get_pair! {
-            rv.push_map(self.tap_script_sigs, PSBT_IN_TAP_SCRIPT_SIG)
-        }
-
-        impl_psbt_get_pair! {
-            rv.push_map(self.tap_scripts, PSBT_IN_TAP_LEAF_SCRIPT)
-        }
-
-        impl_psbt_get_pair! {
-            rv.push_map(self.tap_key_origins, PSBT_IN_TAP_BIP32_DERIVATION)
-        }
-
-        impl_psbt_get_pair! {
-            rv.push(self.tap_internal_key, PSBT_IN_TAP_INTERNAL_KEY)
-        }
-
-        impl_psbt_get_pair! {
-            rv.push(self.tap_merkle_root, PSBT_IN_TAP_MERKLE_ROOT)
-        }
         for (key, value) in self.proprietary.iter() {
             rv.push(raw::Pair {
                 key: key.to_key(),
