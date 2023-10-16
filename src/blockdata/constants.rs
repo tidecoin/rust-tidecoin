@@ -1,4 +1,6 @@
 // Rust Tidecoin Library
+// Written in 2023 by Tidecoin Foundation
+//
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -42,9 +44,9 @@ pub const TARGET_BLOCK_SPACING: u32 = 60;
 /// How many blocks between diffchanges
 pub const DIFFCHANGE_INTERVAL: u32 = 7200;
 /// How much time on average should occur between diffchanges
-pub const DIFFCHANGE_TIMESPAN: u32 = 14 * 24 * 3600;
+pub const DIFFCHANGE_TIMESPAN: u32 = 432_000;
 /// The maximum allowed weight for a block, see BIP 141 (network rule)
-pub const MAX_BLOCK_WEIGHT: u32 = 4_000_000;
+pub const MAX_BLOCK_WEIGHT: u32 = 6_000_000;
 /// The minimum transaction weight for a valid serialized transaction
 pub const MIN_TRANSACTION_WEIGHT: u32 = 4 * 60;
 /// The factor that non-witness serialization data is multiplied by during weight calculation
@@ -60,7 +62,7 @@ pub const PUBKEY_ADDRESS_PREFIX_TEST: u8 = 111; // 0x6f
 /// Test (tesnet, signet, regtest) script address prefix.
 pub const SCRIPT_ADDRESS_PREFIX_TEST: u8 = 196; // 0xc4
 /// The maximum allowed script size.
-pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
+pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 100000;
 /// How may blocks between halvings.
 pub const SUBSIDY_HALVING_INTERVAL: u32 = 210_000;
 
@@ -107,7 +109,7 @@ fn tidecoin_genesis_tx() -> Transaction {
         .push_opcode(opcodes::all::OP_CHECKSIG)
         .into_script();
     ret.output.push(TxOut {
-        value: 50 * COIN_VALUE,
+        value: 40 * COIN_VALUE,
         script_pubkey: out_script
     });
 
