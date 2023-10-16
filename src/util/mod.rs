@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -14,7 +14,7 @@
 
 //! Utility functions.
 //!
-//! Functions needed by all parts of the Bitcoin library.
+//! Functions needed by all parts of the Tidecoin library.
 //!
 
 pub mod key;

@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -64,7 +64,7 @@ pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
 /// How may blocks between halvings.
 pub const SUBSIDY_HALVING_INTERVAL: u32 = 210_000;
 
-/// In Bitcoind this is insanely described as ~((u256)0 >> 32)
+/// In Tidecoind this is insanely described as ~((u256)0 >> 32)
 pub fn max_target(_: Network) -> Uint256 {
     Uint256::from_u64(0xFFFF).unwrap() << 208
 }
@@ -76,7 +76,7 @@ pub fn max_money(_: Network) -> u64 {
     21_000_000 * COIN_VALUE
 }
 
-/// Constructs and returns the coinbase (and only) transaction of the Bitcoin genesis block
+/// Constructs and returns the coinbase (and only) transaction of the Tidecoin genesis block
 fn bitcoin_genesis_tx() -> Transaction {
     // Base
     let mut ret = Transaction {

@@ -1,6 +1,6 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2021 by
-//   The rust-bitcoin developers
+//   The rust-tidecoin developers
 //
 // To the extent possible under law, the author(s) have dedicated all
 // copyright and related and neighboring rights to this software to

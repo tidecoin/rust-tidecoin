@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 // To the extent possible under law, the author(s) have dedicated all
@@ -11,9 +11,9 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin addresses.
+//! Tidecoin addresses.
 //!
-//! Support for ordinary base58 Bitcoin addresses and private keys.
+//! Support for ordinary base58 Tidecoin addresses and private keys.
 //!
 //! # Example: creating a new address from a randomly-generated key pair
 //!
@@ -70,7 +70,7 @@ pub enum Error {
     InvalidWitnessVersion(u8),
     /// Unable to parse witness version from string.
     UnparsableWitnessVersion(ParseIntError),
-    /// Bitcoin script opcode does not match any known witness version, the script is malformed.
+    /// Tidecoin script opcode does not match any known witness version, the script is malformed.
     MalformedWitnessVersion,
     /// The witness program must be between 2 and 40 bytes in length.
     InvalidWitnessProgramLength(usize),
@@ -330,7 +330,7 @@ impl From<WitnessVersion> for ::bech32::u5 {
 }
 
 impl From<WitnessVersion> for opcodes::All {
-    /// Converts [`WitnessVersion`] instance into corresponding Bitcoin scriptopcode (`OP_0`..`OP_16`).
+    /// Converts [`WitnessVersion`] instance into corresponding Tidecoin scriptopcode (`OP_0`..`OP_16`).
     fn from(version: WitnessVersion) -> opcodes::All {
         match version {
             WitnessVersion::V0 => opcodes::all::OP_PUSHBYTES_0,
@@ -486,7 +486,7 @@ impl<'a> fmt::Display for AddressEncoding<'a> {
     }
 }
 
-/// A Bitcoin address.
+/// A Tidecoin address.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Address {
     /// The type of the address.
@@ -494,7 +494,7 @@ pub struct Address {
     /// The network on which this address is usable.
     pub network: Network,
 }
-serde_string_impl!(Address, "a Bitcoin address");
+serde_string_impl!(Address, "a Tidecoin address");
 
 impl Address {
     /// Creates a pay to (compressed) public key hash address from a public key.
@@ -589,7 +589,7 @@ impl Address {
         }
     }
 
-    /// Checks whether or not the address is following Bitcoin standardness rules.
+    /// Checks whether or not the address is following Tidecoin standardness rules.
     ///
     /// SegWit addresses with unassigned witness versions or non-standard program sizes are
     /// considered non-standard.
@@ -610,7 +610,7 @@ impl Address {
         self.payload.script_pubkey()
     }
 
-    /// Creates a URI string *bitcoin:address* optimized to be encoded in QR codes.
+    /// Creates a URI string *tidecoin:address* optimized to be encoded in QR codes.
     ///
     /// If the address is bech32, both the schema and the address become uppercase.
     /// If the address is base58, the schema is lowercase and the address is left mixed case.
@@ -619,8 +619,8 @@ impl Address {
     /// alphanumeric mode, which is 45% more compact than the normal byte mode."
     pub fn to_qr_uri(&self) -> String {
         let schema = match self.payload {
-            Payload::WitnessProgram { .. } => "BITCOIN",
-            _ => "bitcoin",
+            Payload::WitnessProgram { .. } => "TIDECOIN",
+            _ => "tidecoin",
         };
         format!("{}:{:#}", schema, self)
     }
@@ -916,7 +916,7 @@ mod tests {
 
     #[test]
     fn test_p2wpkh() {
-        // stolen from Bitcoin transaction: b3c8c2b6cfc335abbcb2c7823a8453f55d64b2b5125a9a61e8737230cdb8ce20
+        // stolen from Tidecoin transaction: b3c8c2b6cfc335abbcb2c7823a8453f55d64b2b5125a9a61e8737230cdb8ce20
         let mut key = hex_key!("033bc8c83c52df5712229a2f72206d90192366c36428cb0c12b6af98324d97bfbc");
         let addr = Address::p2wpkh(&key, Tidecoin).unwrap();
         assert_eq!(&addr.to_string(), "bc1qvzvkjn4q3nszqxrv3nraga2r822xjty3ykvkuw");
@@ -930,7 +930,7 @@ mod tests {
 
     #[test]
     fn test_p2wsh() {
-        // stolen from Bitcoin transaction 5df912fda4becb1c29e928bec8d64d93e9ba8efa9b5b405bd683c86fd2c65667
+        // stolen from Tidecoin transaction 5df912fda4becb1c29e928bec8d64d93e9ba8efa9b5b405bd683c86fd2c65667
         let script = hex_script!("52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae");
         let addr = Address::p2wsh(&script, Tidecoin);
         assert_eq!(
@@ -943,7 +943,7 @@ mod tests {
 
     #[test]
     fn test_p2shwpkh() {
-        // stolen from Bitcoin transaction: ad3fd9c6b52e752ba21425435ff3dd361d6ac271531fc1d2144843a9f550ad01
+        // stolen from Tidecoin transaction: ad3fd9c6b52e752ba21425435ff3dd361d6ac271531fc1d2144843a9f550ad01
         let mut key = hex_key!("026c468be64d22761c30cd2f12cbc7de255d592d7904b1bab07236897cc4c2e766");
         let addr = Address::p2shwpkh(&key, Tidecoin).unwrap();
         assert_eq!(&addr.to_string(), "3QBRmWNqqBGme9er7fMkGqtZtp4gjMFxhE");
@@ -957,7 +957,7 @@ mod tests {
 
     #[test]
     fn test_p2shwsh() {
-        // stolen from Bitcoin transaction f9ee2be4df05041d0e0a35d7caa3157495ca4f93b233234c9967b6901dacf7a9
+        // stolen from Tidecoin transaction f9ee2be4df05041d0e0a35d7caa3157495ca4f93b233234c9967b6901dacf7a9
         let script = hex_script!("522103e5529d8eaa3d559903adb2e881eb06c86ac2574ffa503c45f4e942e2a693b33e2102e5f10fcdcdbab211e0af6a481f5532536ec61a5fdbf7183770cf8680fe729d8152ae");
         let addr = Address::p2shwsh(&script, Tidecoin);
         assert_eq!(&addr.to_string(), "36EqgNnsWW94SreZgBWc1ANC6wpFZwirHr");
@@ -1145,12 +1145,12 @@ mod tests {
     fn test_qr_string() {
         for el in  ["132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM", "33iFwdLuRpW1uK1RTRqsoi8rR4NpDzk66k"].iter() {
             let addr = Address::from_str(el).unwrap();
-            assert_eq!(addr.to_qr_uri(), format!("bitcoin:{}", el));
+            assert_eq!(addr.to_qr_uri(), format!("tidecoin:{}", el));
         }
 
         for el in ["bcrt1q2nfxmhd4n3c8834pj72xagvyr9gl57n5r94fsl", "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej"].iter() {
             let addr = Address::from_str(el).unwrap();
-            assert_eq!(addr.to_qr_uri(), format!("BITCOIN:{}", el.to_ascii_uppercase()) );
+            assert_eq!(addr.to_qr_uri(), format!("TIDECOIN:{}", el.to_ascii_uppercase()) );
         }
     }
 

@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,16 +12,16 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin policy.
+//! Tidecoin policy.
 //!
 //! This module exposes some constants and functions used in the reference
 //! implementation and which, as a consequence, define some network rules.
 //!
 //! # *Warning*
 //! While the constants present in this module are very unlikely to change, they do not define
-//! Bitcoin. As such they must not be relied upon as if they were consensus rules.
+//! Tidecoin. As such they must not be relied upon as if they were consensus rules.
 //!
-//! These values were taken from bitcoind v0.21.1 (194b9b8792d9b0798fdb570b79fa51f1d1f5ebaf).
+//! These values were taken from tidecoind v0.21.1 (194b9b8792d9b0798fdb570b79fa51f1d1f5ebaf).
 //!
 
 use super::blockdata::constants::{MAX_BLOCK_SIGOPS_COST, WITNESS_SCALE_FACTOR};
@@ -55,7 +55,7 @@ pub const DEFAULT_MIN_RELAY_TX_FEE: u32 = 1_000;
 /// mempools.
 pub const DEFAULT_MEMPOOL_EXPIRY: u32 = 336;
 
-/// The virtual transaction size, as computed by default by bitcoind node.
+/// The virtual transaction size, as computed by default by tidecoind node.
 pub fn get_virtual_tx_size(weight: i64, n_sigops: i64) -> i64 {
     (cmp::max(weight, n_sigops * DEFAULT_BYTES_PER_SIGOP as i64) + WITNESS_SCALE_FACTOR as i64 - 1)
         / WITNESS_SCALE_FACTOR as i64

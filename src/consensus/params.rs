@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,9 +12,9 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin consensus parameters.
+//! Tidecoin consensus parameters.
 //!
-//! This module provides a predefined set of parameters for different Bitcoin
+//! This module provides a predefined set of parameters for different Tidecoin
 //! chains (such as mainnet, testnet).
 //!
 
@@ -58,12 +58,12 @@ pub struct Params {
     pub miner_confirmation_window: u32,
     /// Proof of work limit value. It contains the lowest possible difficulty.
     ///
-    /// Note that this value differs from Bitcoin Core's powLimit field in that this value is
-    /// attainable, but Bitcoin Core's is not. Specifically, because targets in Bitcoin are always
+    /// Note that this value differs from Tidecoin Core's powLimit field in that this value is
+    /// attainable, but Tidecoin Core's is not. Specifically, because targets in Tidecoin are always
     /// rounded to the nearest float expressible in "compact form", not all targets are attainable.
     /// Still, this should not affect consensus as the only place where the non-compact form of
-    /// this is used in Bitcoin Core's consensus algorithm is in comparison and there are no
-    /// compact-expressible values between Bitcoin Core's and the limit expressed here.
+    /// this is used in Tidecoin Core's consensus algorithm is in comparison and there are no
+    /// compact-expressible values between Tidecoin Core's and the limit expressed here.
     pub pow_limit: Uint256,
     /// Expected amount of time to mine one block.
     pub pow_target_spacing: u64,

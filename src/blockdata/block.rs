@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,7 +12,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin blocks.
+//! Tidecoin blocks.
 //!
 //! A block is a bundle of transactions with a proof-of-work attached,
 //! which commits to an earlier block to form the blockchain. This
@@ -26,7 +26,7 @@ use core::fmt;
 
 use util;
 use util::Error::{BlockBadTarget, BlockBadProofOfWork};
-use util::hash::bitcoin_merkle_root;
+use util::hash::tidecoin_merkle_root;
 use hashes::{Hash, HashEngine};
 use crate::hash_types::{Wtxid, BlockHash, TxMerkleNode, WitnessMerkleNode, WitnessCommitment};
 use util::uint::Uint256;
@@ -77,7 +77,7 @@ impl BlockHeader {
     /// [`Uint256`]: ../../util/uint/struct.Uint256.html
     ///
     /// ```
-    /// use bitcoin::blockdata::block::BlockHeader;
+    /// use tidecoin::blockdata::block::BlockHeader;
     ///
     /// assert_eq!(0x1d00ffff,
     ///     BlockHeader::compact_target_from_u256(
@@ -155,7 +155,7 @@ impl BlockHeader {
     }
 }
 
-/// A Bitcoin block, which is a collection of transactions with an attached
+/// A Tidecoin block, which is a collection of transactions with an attached
 /// proof of work.
 #[derive(PartialEq, Eq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -219,7 +219,7 @@ impl Block {
     /// Computes the transaction merkle root.
     pub fn compute_merkle_root(&self) -> Option<TxMerkleNode> {
         let hashes = self.txdata.iter().map(|obj| obj.txid().as_hash());
-        bitcoin_merkle_root(hashes).map(|h| h.into())
+        tidecoin_merkle_root(hashes).map(|h| h.into())
     }
 
     /// Calculate the transaction merkle root.
@@ -246,7 +246,7 @@ impl Block {
                 t.wtxid().as_hash()
             }
         });
-        bitcoin_merkle_root(hashes).map(|h| h.into())
+        tidecoin_merkle_root(hashes).map(|h| h.into())
     }
 
     /// base_size == size of header + size of encoded transaction count.

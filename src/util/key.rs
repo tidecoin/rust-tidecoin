@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 // To the extent possible under law, the author(s) have dedicated all
@@ -11,9 +11,9 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin keys.
+//! Tidecoin keys.
 //!
-//! This module provides keys used in Bitcoin that can be roundtrip
+//! This module provides keys used in Tidecoin that can be roundtrip
 //! (de)serialized.
 
 pub use secp256k1::{XOnlyPublicKey, KeyPair};
@@ -90,7 +90,7 @@ impl From<hex::Error> for Error {
 }
 
 
-/// A Bitcoin ECDSA public key
+/// A Tidecoin ECDSA public key
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey {
     /// Whether this public key should be serialized as compressed
@@ -117,7 +117,7 @@ impl PublicKey {
         }
     }
 
-    /// Returns bitcoin 160-bit hash of the public key
+    /// Returns tidecoin 160-bit hash of the public key
     pub fn pubkey_hash(&self) -> PubkeyHash {
         if self.compressed {
             PubkeyHash::hash(&self.inner.serialize())
@@ -126,7 +126,7 @@ impl PublicKey {
         }
     }
 
-    /// Returns bitcoin 160-bit hash of the public key for witness program
+    /// Returns tidecoin 160-bit hash of the public key for witness program
     pub fn wpubkey_hash(&self) -> Option<WPubkeyHash> {
         if self.compressed {
             Some(WPubkeyHash::from_inner(
@@ -233,7 +233,7 @@ impl FromStr for PublicKey {
     }
 }
 
-/// A Bitcoin ECDSA private key
+/// A Tidecoin ECDSA private key
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct PrivateKey {
