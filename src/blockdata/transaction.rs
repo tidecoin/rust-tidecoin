@@ -222,7 +222,7 @@ impl Default for TxIn {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TxOut {
-    /// The value of the output, in satoshis.
+    /// The value of the output, in tidoshis.
     pub value: u64,
     /// The script which must be satisfied for the output to be spent.
     pub script_pubkey: Script
@@ -956,7 +956,7 @@ mod tests {
         // will also fail. But these will show you where the failure is so I'll leave them in.
         assert_eq!(realtx.version, 1);
         assert_eq!(realtx.input.len(), 1);
-        // In particular this one is easy to get backward -- in bitcoin hashes are encoded
+        // In particular this one is easy to get backward -- in tidecoin hashes are encoded
         // as little-endian 256-bit numbers rather than as data strings.
         assert_eq!(format!("{:x}", realtx.input[0].previous_output.txid),
                    "ce9ea9f6f5e422c6a9dbcddb3b9a14d1c78fab9ab520cb281aa2a74a09575da1".to_string());
@@ -990,7 +990,7 @@ mod tests {
         // will also fail. But these will show you where the failure is so I'll leave them in.
         assert_eq!(realtx.version, 2);
         assert_eq!(realtx.input.len(), 1);
-        // In particular this one is easy to get backward -- in bitcoin hashes are encoded
+        // In particular this one is easy to get backward -- in tidecoin hashes are encoded
         // as little-endian 256-bit numbers rather than as data strings.
         assert_eq!(format!("{:x}", realtx.input[0].previous_output.txid),
                    "7cac3cf9a112cf04901a51d605058615d56ffe6d04b45270e89d1720ea955859".to_string());

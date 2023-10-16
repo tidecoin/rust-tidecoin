@@ -235,7 +235,7 @@ fn parse_signed_to_satoshi(
     };
 
     let mut decimals = None;
-    let mut value: u64 = 0; // as satoshis
+    let mut value: u64 = 0; // as tidoshis
     for c in s.chars() {
         match c {
             '0'..='9' => {
@@ -340,17 +340,17 @@ impl Amount {
     pub const ZERO: Amount = Amount(0);
     /// Exactly one satoshi.
     pub const ONE_SAT: Amount = Amount(1);
-    /// Exactly one bitcoin.
+    /// Exactly one tidecoin.
     pub const ONE_BTC: Amount = Amount(100_000_000);
     /// The maximum value allowed as an amount. Useful for sanity checking.
     pub const MAX_MONEY: Amount = Amount(21_000_000 * 100_000_000);
 
-    /// Create an [Amount] with satoshi precision and the given number of satoshis.
+    /// Create an [Amount] with satoshi precision and the given number of tidoshis.
     pub fn from_sat(satoshi: u64) -> Amount {
         Amount(satoshi)
     }
 
-    /// Get the number of satoshis in this [Amount].
+    /// Get the number of tidoshis in this [Amount].
     pub fn as_sat(self) -> u64 {
         self.0
     }
@@ -365,7 +365,7 @@ impl Amount {
         Amount(u64::min_value())
     }
 
-    /// Convert from a value expressing bitcoins to an [Amount].
+    /// Convert from a value expressing tidecoins to an [Amount].
     pub fn from_btc(btc: f64) -> Result<Amount, ParseAmountError> {
         Amount::from_float_in(btc, Denomination::Tidecoin)
     }
@@ -627,17 +627,17 @@ impl SignedAmount {
     pub const ZERO: SignedAmount = SignedAmount(0);
     /// Exactly one satoshi.
     pub const ONE_SAT: SignedAmount = SignedAmount(1);
-    /// Exactly one bitcoin.
+    /// Exactly one tidecoin.
     pub const ONE_BTC: SignedAmount = SignedAmount(100_000_000);
     /// The maximum value allowed as an amount. Useful for sanity checking.
     pub const MAX_MONEY: SignedAmount = SignedAmount(21_000_000 * 100_000_000);
 
-    /// Create an [SignedAmount] with satoshi precision and the given number of satoshis.
+    /// Create an [SignedAmount] with satoshi precision and the given number of tidoshis.
     pub fn from_sat(satoshi: i64) -> SignedAmount {
         SignedAmount(satoshi)
     }
 
-    /// Get the number of satoshis in this [SignedAmount].
+    /// Get the number of tidoshis in this [SignedAmount].
     pub fn as_sat(self) -> i64 {
         self.0
     }
@@ -652,7 +652,7 @@ impl SignedAmount {
         SignedAmount(i64::min_value())
     }
 
-    /// Convert from a value expressing bitcoins to an [SignedAmount].
+    /// Convert from a value expressing tidecoins to an [SignedAmount].
     pub fn from_btc(btc: f64) -> Result<SignedAmount, ParseAmountError> {
         SignedAmount::from_float_in(btc, Denomination::Tidecoin)
     }
@@ -1732,7 +1732,7 @@ mod tests {
     #[test]
     fn denomination_string_acceptable_forms() {
         // Non-exhaustive list of valid forms.
-        let valid = vec!["BTC", "btc", "mBTC", "mbtc", "uBTC", "ubtc", "SATOSHI","Satoshi", "Satoshis", "satoshis", "SAT", "Sat", "sats", "bit", "bits", "nBTC", "pBTC"];
+        let valid = vec!["TDC", "tdc", "TIDOSHI","Tidoshi", "Tidoshis", "tidoshis", "TID", "Tid", "tids", "tide", "tides"];
         for denom in valid.iter() {
             assert!(Denomination::from_str(denom).is_ok());
         }

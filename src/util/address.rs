@@ -91,7 +91,7 @@ impl fmt::Display for Error {
             Error::InvalidBech32Variant { expected, found } => write!(f, "invalid bech32 checksum variant found {:?} when {:?} was expected", found, expected),
             Error::InvalidWitnessVersion(v) => write!(f, "invalid witness script version: {}", v),
             Error::UnparsableWitnessVersion(_) => write!(f, "incorrect format of a witness version byte"),
-            Error::MalformedWitnessVersion => f.write_str("bitcoin script opcode does not match any known witness version, the script is malformed"),
+            Error::MalformedWitnessVersion => f.write_str("tidecoin script opcode does not match any known witness version, the script is malformed"),
             Error::InvalidWitnessProgramLength(l) => write!(f, "the witness program must be between 2 and 40 bytes in length: length={}", l),
             Error::InvalidSegwitV0ProgramLength(l) => write!(f, "a v0 witness program must be either of length 20 or 32 bytes: length={}", l),
             Error::UncompressedPubkey => write!(f, "an uncompressed pubkey was used where it is not allowed"),
@@ -270,7 +270,7 @@ impl WitnessVersion {
         })
     }
 
-    /// Converts bitcoin script opcode into [`WitnessVersion`] variant.
+    /// Converts tidecoin script opcode into [`WitnessVersion`] variant.
     ///
     /// # Returns
     /// Version of the Witness program (for opcodes in range of `OP_0`..`OP_16`).
@@ -287,7 +287,7 @@ impl WitnessVersion {
         }
     }
 
-    /// Converts bitcoin script [`Instruction`] (parsed opcode) into [`WitnessVersion`] variant.
+    /// Converts tidecoin script [`Instruction`] (parsed opcode) into [`WitnessVersion`] variant.
     ///
     /// # Returns
     /// Version of the Witness program for [`Instruction::Op`] and [`Instruction::PushBytes`] with
@@ -307,8 +307,8 @@ impl WitnessVersion {
     /// Returns integer version number representation for a given [`WitnessVersion`] value.
     ///
     /// NB: this is not the same as an integer representation of the opcode signifying witness
-    /// version in bitcoin script. Thus, there is no function to directly convert witness version
-    /// into a byte since the conversion requires context (bitcoin script or just a version number).
+    /// version in tidecoin script. Thus, there is no function to directly convert witness version
+    /// into a byte since the conversion requires context (tidecoin script or just a version number).
     pub fn into_num(self) -> u8 {
         self as u8
     }

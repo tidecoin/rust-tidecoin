@@ -145,7 +145,7 @@ impl BlockHeader {
 
     /// Returns the total work of the block.
     pub fn work(&self) -> Uint256 {
-        // 2**256 / (target + 1) == ~target / (target+1) + 1    (eqn shamelessly stolen from bitcoind)
+        // 2**256 / (target + 1) == ~target / (target+1) + 1    (eqn shamelessly stolen from tidecoind)
         let mut ret = !self.target();
         let mut ret1 = self.target();
         ret1.increment();

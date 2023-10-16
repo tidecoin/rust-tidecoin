@@ -29,9 +29,9 @@
 //! use tidecoin::hashes::hex::FromHex;
 //! use tidecoin::{Block, MerkleBlock};
 //!
-//! // Get the proof from a bitcoind by running in the terminal:
+//! // Get the proof from a tidecoind by running in the terminal:
 //! // $ TXID="5a4ebf66822b0b2d56bd9dc64ece0bc38ee7844a23ff1d7320a88c5fdb2ad3e2"
-//! // $ bitcoin-cli gettxoutproof [\"$TXID\"]
+//! // $ tidecoin-cli gettxoutproof [\"$TXID\"]
 //! let mb_bytes = Vec::from_hex("01000000ba8b9cda965dd8e536670f9ddec10e53aab14b20bacad27b913719\
 //!     0000000000190760b278fe7b8565fda3b968b918d5fd997f993b23674c0af3b6fde300b38f33a5914ce6ed5b\
 //!     1b01e32f570200000002252bf9d75c4f481ebb6278d708257d1f12beb6dd30301d26c623f789b2ba6fc0e2d3\

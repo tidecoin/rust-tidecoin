@@ -299,7 +299,7 @@ mod tests {
         assert_eq!(Network::Testnet.to_string(), "testnet");
 
 
-        assert_eq!("bitcoin".parse::<Network>().unwrap(), Network::Tidecoin);
+        assert_eq!("tidecoin".parse::<Network>().unwrap(), Network::Tidecoin);
         assert_eq!("testnet".parse::<Network>().unwrap(), Network::Testnet);
         assert!("fakenet".parse::<Network>().is_err());
     }
