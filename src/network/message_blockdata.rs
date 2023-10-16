@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,10 +12,10 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin blockdata network messages.
+//! Tidecoin blockdata network messages.
 //!
 //! This module describes network messages which are used for passing
-//! Bitcoin data (blocks and transactions) around.
+//! Tidecoin data (blocks and transactions) around.
 //!
 
 use prelude::*;

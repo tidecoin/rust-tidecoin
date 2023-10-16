@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -29,8 +29,8 @@ use crate::consensus::{encode, Encodable};
 #[cfg_attr(docsrs, doc(cfg(feature = "secp-recovery")))]
 pub use self::message_signing::{MessageSignature, MessageSignatureError};
 
-/// The prefix for signed messages using Bitcoin's message signing protocol.
-pub const BITCOIN_SIGNED_MSG_PREFIX: &[u8] = b"\x18Bitcoin Signed Message:\n";
+/// The prefix for signed messages using Tidecoin's message signing protocol.
+pub const BITCOIN_SIGNED_MSG_PREFIX: &[u8] = b"\x18Tidecoin Signed Message:\n";
 
 #[cfg(feature = "secp-recovery")]
 mod message_signing {
@@ -45,7 +45,7 @@ mod message_signing {
     use util::key::PublicKey;
     use util::address::{Address, AddressType};
 
-    /// An error used for dealing with Bitcoin Signed Messages.
+    /// An error used for dealing with Tidecoin Signed Messages.
     #[cfg_attr(docsrs, doc(cfg(feature = "secp-recovery")))]
     #[derive(Debug, PartialEq, Eq)]
     pub enum MessageSignatureError {
@@ -88,7 +88,7 @@ mod message_signing {
         }
     }
 
-    /// A signature on a Bitcoin Signed Message.
+    /// A signature on a Tidecoin Signed Message.
     ///
     /// In order to use the `to_base64` and `from_base64` methods, as well as the
     /// `fmt::Display` and `str::FromStr` implementations, the `base64` feature
@@ -254,7 +254,7 @@ pub fn script_find_and_remove(haystack: &mut Vec<u8>, needle: &[u8]) -> usize {
     n_deleted
 }
 
-/// Hash message for signature using Bitcoin's message signing format.
+/// Hash message for signature using Tidecoin's message signing format.
 pub fn signed_msg_hash(msg: &str) -> sha256d::Hash {
     let mut engine = sha256d::Hash::engine();
     engine.input(BITCOIN_SIGNED_MSG_PREFIX);
@@ -324,7 +324,7 @@ mod tests {
         use ::AddressType;
 
         let secp = secp256k1::Secp256k1::new();
-        let message = "rust-bitcoin MessageSignature test";
+        let message = "rust-tidecoin MessageSignature test";
         let msg_hash = super::signed_msg_hash(&message);
         let msg = secp256k1::Message::from_slice(&msg_hash).expect("message");
 
@@ -366,7 +366,7 @@ mod tests {
         let message = "a different message from what was signed";
         let msg_hash = super::signed_msg_hash(&message);
 
-        // Signature of msg = "rust-bitcoin MessageSignature test"
+        // Signature of msg = "rust-tidecoin MessageSignature test"
         // Signed with pk "UuOGDsfLPr4HIMKQX0ipjJeRaj1geCq3yPUF2COP5ME="
         let signature_base64 = "IAM2qX24tYx/bdBTIgVLhD8QEAjrPlJpmjB4nZHdRYGIBa4DmVulAcwjPnWe6Q5iEwXH6F0pUCJP/ZeHPWS1h1o=";
         let pubkey_base64 = "A1FTfMEntPpAty3qkEo0q2Dc1FEycI10a3jmwEFy+Qr6";

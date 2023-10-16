@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,7 +12,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin serde macros.
+//! Tidecoin serde macros.
 //!
 //! This module provides internal macros used for unit tests.
 //!

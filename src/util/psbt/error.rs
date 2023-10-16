@@ -1,6 +1,6 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written by
-//   The Rust Bitcoin developers
+//   The Rust Tidecoin developers
 //
 // To the extent possible under law, the author(s) have dedicated all
 // copyright and related and neighboring rights to this software to
@@ -77,7 +77,7 @@ pub enum Error {
     /// Conflicting data during combine procedure:
     /// global extended public key has inconsistent key sources
     CombineInconsistentKeySources(ExtendedPubKey),
-    /// Serialization error in bitcoin consensus-encoded structures
+    /// Serialization error in tidecoin consensus-encoded structures
     ConsensusEncoding,
 }
 
@@ -103,7 +103,7 @@ impl fmt::Display for Error {
                 write!(f, "Preimage {:?} does not match {:?} hash {:?}", preimage, hash_type, hash )
             }
             Error::CombineInconsistentKeySources(ref s) => { write!(f, "combine conflict: {}", s) }
-            Error::ConsensusEncoding => f.write_str("bitcoin consensus or BIP-174 encoding error"),
+            Error::ConsensusEncoding => f.write_str("tidecoin consensus or BIP-174 encoding error"),
         }
     }
 }

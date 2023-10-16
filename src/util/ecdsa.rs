@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,9 +12,9 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! ECDSA Bitcoin signatures.
+//! ECDSA Tidecoin signatures.
 //!
-//! This module provides ECDSA signatures used Bitcoin that can be roundtrip (de)serialized.
+//! This module provides ECDSA signatures used Tidecoin that can be roundtrip (de)serialized.
 
 use prelude::*;
 use core::str::FromStr;
@@ -35,7 +35,7 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    /// Constructs ECDSA bitcoin signature for [`EcdsaSighashType::All`]
+    /// Constructs ECDSA tidecoin signature for [`EcdsaSighashType::All`]
     pub fn sighash_all(sig: secp256k1::ecdsa::Signature) -> EcdsaSig {
         EcdsaSig {
             sig,

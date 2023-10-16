@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,9 +12,9 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin script opcodes.
+//! Tidecoin script opcodes.
 //!
-//! Bitcoin's script uses a stack-based assembly language. This module defines
+//! Tidecoin's script uses a stack-based assembly language. This module defines
 //! all of the opcodes for that language.
 //!
 

@@ -1,6 +1,6 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written by
-//   The Rust Bitcoin developers
+//   The Rust Tidecoin developers
 //
 // To the extent possible under law, the author(s) have dedicated all
 // copyright and related and neighboring rights to this software to
@@ -25,7 +25,7 @@ use io;
 use blockdata::script::Script;
 use blockdata::witness::Witness;
 use blockdata::transaction::{Transaction, TxOut};
-use consensus::encode::{self, serialize, Decodable, Encodable};
+use consensus::encode::{self, serialize, Decodable};
 use secp256k1;
 use util::bip32::{ChildNumber, Fingerprint, KeySource};
 use hashes::{hash160, ripemd160, sha256, sha256d, Hash};
@@ -34,7 +34,7 @@ use util::psbt;
 use schnorr;
 use util::key::PublicKey;
 
-use super::map::{PsbtSighashType};
+use super::map::PsbtSighashType;
 
 /// A trait for serializing a value as raw data for insertion into PSBT
 /// key-value pairs.

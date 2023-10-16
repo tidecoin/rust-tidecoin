@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,10 +12,10 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin block data.
+//! Tidecoin block data.
 //!
 //! This module defines structures and functions for storing the blocks and
-//! transactions which make up the Bitcoin system.
+//! transactions which make up the Tidecoin system.
 //!
 
 pub mod constants;

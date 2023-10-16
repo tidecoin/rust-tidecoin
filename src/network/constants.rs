@@ -15,8 +15,9 @@
 //
 
 //! Tidecoin network constants.
+//! Tidecoin network constants.
 //!
-//! This module provides various constants relating to the Bitcoin network
+//! This module provides various constants relating to the Tidecoin network
 //! protocol, such as protocol versioning and magic header bytes.
 //!
 //! The [`Network`][1] type implements the [`Decodable`][2] and
@@ -30,6 +31,8 @@
 //! # Example: encoding a network's magic bytes
 //!
 //! ```rust
+//! use tidecoin::network::constants::Network;
+//! use tidecoin::consensus::encode::serialize;
 //! use tidecoin::network::constants::Network;
 //! use tidecoin::consensus::encode::serialize;
 //!
@@ -79,6 +82,7 @@ impl Network {
     ///
     /// ```rust
     /// use tidecoin::network::constants::Network;
+    /// use tidecoin::network::constants::Network;
     ///
     /// assert_eq!(Some(Network::Tidecoin), Network::from_magic(0xA5CEFAEC));
     /// assert_eq!(None, Network::from_magic(0xFFFFFFFF));
@@ -98,7 +102,7 @@ impl Network {
     /// # Examples
     ///
     /// ```rust
-    /// use bitcoin::network::constants::Network;
+    /// use tidecoin::network::constants::Network;
     ///
     /// let network = Network::Tidecoin;
     /// assert_eq!(network.magic(), 0xA5CEFAEC);
@@ -121,16 +125,16 @@ impl ServiceFlags {
     pub const NONE: ServiceFlags = ServiceFlags(0);
 
     /// NETWORK means that the node is capable of serving the complete block chain. It is currently
-    /// set by all Bitcoin Core non pruned nodes, and is unset by SPV clients or other light
+    /// set by all Tidecoin Core non pruned nodes, and is unset by SPV clients or other light
     /// clients.
     pub const NETWORK: ServiceFlags = ServiceFlags(1 << 0);
 
-    /// GETUTXO means the node is capable of responding to the getutxo protocol request.  Bitcoin
-    /// Core does not support this but a patch set called Bitcoin XT does.
+    /// GETUTXO means the node is capable of responding to the getutxo protocol request.  Tidecoin
+    /// Core does not support this but a patch set called Tidecoin XT does.
     /// See BIP 64 for details on how this is implemented.
     pub const GETUTXO: ServiceFlags = ServiceFlags(1 << 1);
 
-    /// BLOOM means the node is capable and willing to handle bloom-filtered connections.  Bitcoin
+    /// BLOOM means the node is capable and willing to handle bloom-filtered connections.  Tidecoin
     /// Core nodes used to support this by default, without advertising this bit, but no longer do
     /// as of protocol version 70011 (= NO_BLOOM_VERSION)
     pub const BLOOM: ServiceFlags = ServiceFlags(1 << 2);
@@ -302,7 +306,7 @@ mod tests {
         assert_eq!(Network::Testnet.to_string(), "testnet");
 
 
-        assert_eq!("bitcoin".parse::<Network>().unwrap(), Network::Tidecoin);
+        assert_eq!("tidecoin".parse::<Network>().unwrap(), Network::Tidecoin);
         assert_eq!("testnet".parse::<Network>().unwrap(), Network::Testnet);
         assert!("fakenet".parse::<Network>().is_err());
     }

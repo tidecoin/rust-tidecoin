@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,12 +12,12 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin scripts.
+//! Tidecoin scripts.
 //!
-//! Scripts define Bitcoin's digital signature scheme: a signature is formed
+//! Scripts define Tidecoin's digital signature scheme: a signature is formed
 //! from a script (the second half of which is defined by a coin to be spent,
 //! and the first half provided by the spending transaction), and is valid iff
-//! the script leaves `TRUE` on the stack after being evaluated. Bitcoin's
+//! the script leaves `TRUE` on the stack after being evaluated. Tidecoin's
 //! script is a stack-based assembly language similar in spirit to Forth.
 //!
 //! This module provides the structures and functions needed to support scripts.
@@ -42,9 +42,9 @@ use OutPoint;
 use crate::util::key::PublicKey;
 use crate::util::address::WitnessVersion;
 
-use secp256k1::{Verification, XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey;
 
-/// A Bitcoin script.
+/// A Tidecoin script.
 #[derive(Clone, Default, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Script(Box<[u8]>);
 
@@ -211,7 +211,7 @@ fn build_scriptint(n: i64) -> Vec<u8> {
 
 /// Helper to decode an integer in script format
 /// Notice that this fails on overflow: the result is the same as in
-/// bitcoind, that only 4-byte signed-magnitude values may be read as
+/// tidecoind, that only 4-byte signed-magnitude values may be read as
 /// numbers. They can be added or subtracted (and a long time ago,
 /// multiplied and divided), and this may result in numbers which
 /// can't be written out in 4 bytes or less. This is ok! The number
@@ -469,14 +469,6 @@ impl Script {
             && self.0[1] == opcodes::all::OP_PUSHBYTES_20.into_u8()
     }
 
-    /// Checks whether a script pubkey is a P2TR output.
-    #[inline]
-    pub fn is_v1_p2tr(&self) -> bool {
-        self.0.len() == 34
-            && self.witness_version() == Some(WitnessVersion::V1)
-            && self.0[1] == opcodes::all::OP_PUSHBYTES_32.into_u8()
-    }
-
     /// Check if this is an OP_RETURN output.
     pub fn is_op_return (&self) -> bool {
         match self.0.first() {
@@ -501,9 +493,9 @@ impl Script {
     }
 
     /// Returns the minimum value an output with this script should have in order to be
-    /// broadcastable on today's Bitcoin network.
+    /// broadcastable on today's Tidecoin network.
     pub fn dust_value(&self) -> ::Amount {
-        // This must never be lower than Bitcoin Core's GetDustThreshold() (as of v0.21) as it may
+        // This must never be lower than Tidecoin Core's GetDustThreshold() (as of v0.21) as it may
         // otherwise allow users to create transactions which likely can never be broadcast/confirmed.
         let sats = DUST_RELAY_TX_FEE as u64 / 1000 * // The default dust relay fee is 3000 satoshi/kB (i.e. 3 sat/vByte)
         if self.is_op_return() {

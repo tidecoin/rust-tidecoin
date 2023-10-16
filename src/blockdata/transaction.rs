@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,7 +12,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin transactions.
+//! Tidecoin transactions.
 //!
 //! A transaction describes a transfer of money. It consumes previously-unspent
 //! transaction outputs and produces new ones, satisfying the condition to spend
@@ -85,8 +85,8 @@ impl OutPoint {
     /// # Examples
     ///
     /// ```rust
-    /// use bitcoin::blockdata::constants::genesis_block;
-    /// use bitcoin::network::constants::Network;
+    /// use tidecoin::blockdata::constants::genesis_block;
+    /// use tidecoin::network::constants::Network;
     ///
     /// let block = genesis_block(Network::Tidecoin);
     /// let tx = &block.txdata[0];
@@ -222,7 +222,7 @@ impl Default for TxIn {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TxOut {
-    /// The value of the output, in satoshis.
+    /// The value of the output, in tidoshis.
     pub value: u64,
     /// The script which must be satisfied for the output to be spent.
     pub script_pubkey: Script
@@ -235,7 +235,7 @@ impl Default for TxOut {
     }
 }
 
-/// A Bitcoin transaction, which describes an authenticated movement of coins.
+/// A Tidecoin transaction, which describes an authenticated movement of coins.
 ///
 /// If any inputs have nonempty witnesses, the entire transaction is serialized
 /// in the post-BIP141 Segwit format which includes a list of witnesses. If all
@@ -261,7 +261,7 @@ impl Default for TxOut {
 /// in the original transaction format (since it has no inputs and therefore
 /// no input witnesses), a traditionally encoded transaction may have the `0001`
 /// Segwit flag in it, which confuses most Segwit parsers including the one in
-/// Bitcoin Core.
+/// Tidecoin Core.
 ///
 /// We therefore deviate from the spec by always using the Segwit witness encoding
 /// for 0-input transactions, which results in unambiguously parseable transactions.
@@ -487,7 +487,7 @@ impl Transaction {
     /// Returns the "virtual size" (vsize) of this transaction.
     ///
     /// Will be `ceil(weight / 4.0)`. Note this implements the virtual size as per [`BIP141`], which
-    /// is different to what is implemented in Bitcoin Core. The computation should be the same for
+    /// is different to what is implemented in Tidecoin Core. The computation should be the same for
     /// any remotely sane transaction, and a standardness-rule-correct version is available in the
     /// [`policy`] module.
     ///
@@ -699,7 +699,7 @@ impl Decodable for Transaction {
 }
 
 /// This type is consensus valid but an input including it would prevent the transaction from
-/// being relayed on today's Bitcoin network.
+/// being relayed on today's Tidecoin network.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NonStandardSighashType(pub u32);
 
@@ -800,7 +800,7 @@ impl EcdsaSighashType {
     /// verifying signatures, the user should retain the `n` and use it compute the signature hash
     /// message.
     pub fn from_consensus(n: u32) -> EcdsaSighashType {
-        // In Bitcoin Core, the SignatureHash function will mask the (int32) value with
+        // In Tidecoin Core, the SignatureHash function will mask the (int32) value with
         // 0x1f to (apparently) deactivate ACP when checking for SINGLE and NONE bits.
         // We however want to be matching also against on ACP-masked ALL, SINGLE, and NONE.
         // So here we re-activate ACP.
@@ -956,7 +956,7 @@ mod tests {
         // will also fail. But these will show you where the failure is so I'll leave them in.
         assert_eq!(realtx.version, 1);
         assert_eq!(realtx.input.len(), 1);
-        // In particular this one is easy to get backward -- in bitcoin hashes are encoded
+        // In particular this one is easy to get backward -- in tidecoin hashes are encoded
         // as little-endian 256-bit numbers rather than as data strings.
         assert_eq!(format!("{:x}", realtx.input[0].previous_output.txid),
                    "ce9ea9f6f5e422c6a9dbcddb3b9a14d1c78fab9ab520cb281aa2a74a09575da1".to_string());
@@ -990,7 +990,7 @@ mod tests {
         // will also fail. But these will show you where the failure is so I'll leave them in.
         assert_eq!(realtx.version, 2);
         assert_eq!(realtx.input.len(), 1);
-        // In particular this one is easy to get backward -- in bitcoin hashes are encoded
+        // In particular this one is easy to get backward -- in tidecoin hashes are encoded
         // as little-endian 256-bit numbers rather than as data strings.
         assert_eq!(format!("{:x}", realtx.input[0].previous_output.txid),
                    "7cac3cf9a112cf04901a51d605058615d56ffe6d04b45270e89d1720ea955859".to_string());

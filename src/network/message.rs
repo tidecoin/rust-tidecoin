@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,10 +12,10 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin network messages.
+//! Tidecoin network messages.
 //!
 //! This module defines the `NetworkMessage` and `RawNetworkMessage` types that
-//! are used for (de)serializing Bitcoin objects for transmission on the network.
+//! are used for (de)serializing Tidecoin objects for transmission on the network.
 //!
 
 use prelude::*;
@@ -129,7 +129,7 @@ pub struct RawNetworkMessage {
 }
 
 /// A Network message payload. Proper documentation is available on at
-/// [Bitcoin Wiki: Protocol Specification](https://en.bitcoin.it/wiki/Protocol_specification)
+/// [Tidecoin Wiki: Protocol Specification](https://en.bitcoin.it/wiki/Protocol_specification)
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum NetworkMessage {
     /// `version`

@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,7 +12,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin consensus-encodable types.
+//! Tidecoin consensus-encodable types.
 //!
 //! This is basically a replacement of the `Encodable` trait which does
 //! normalization of endianness etc., to ensure that the encoding matches
@@ -175,7 +175,7 @@ pub fn deserialize_partial<T: Decodable>(data: &[u8]) -> Result<(T, usize), Erro
 }
 
 
-/// Extensions of `Write` to encode data as per Bitcoin consensus
+/// Extensions of `Write` to encode data as per Tidecoin consensus
 pub trait WriteExt {
     /// Output a 64-bit uint
     fn emit_u64(&mut self, v: u64) -> Result<(), io::Error>;
@@ -202,7 +202,7 @@ pub trait WriteExt {
     fn emit_slice(&mut self, v: &[u8]) -> Result<(), io::Error>;
 }
 
-/// Extensions of `Read` to decode data as per Bitcoin consensus
+/// Extensions of `Read` to decode data as per Tidecoin consensus
 pub trait ReadExt {
     /// Read a 64-bit uint
     fn read_u64(&mut self) -> Result<u64, Error>;

@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -14,7 +14,7 @@
 
 //! Internal macros.
 //!
-//! Macros meant to be used inside the Rust Bitcoin library.
+//! Macros meant to be used inside the Rust Tidecoin library.
 //!
 
 macro_rules! impl_consensus_encoding {

@@ -1,6 +1,6 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written by
-//   The Rust Bitcoin developers
+//   The Rust Tidecoin developers
 //
 // To the extent possible under law, the author(s) have dedicated all
 // copyright and related and neighboring rights to this software to
@@ -12,10 +12,10 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin consensus.
+//! Tidecoin consensus.
 //!
 //! This module defines structures, functions, and traits that are needed to
-//! conform to Bitcoin consensus.
+//! conform to Tidecoin consensus.
 //!
 
 pub mod encode;

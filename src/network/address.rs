@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -12,10 +12,10 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Bitcoin network addresses.
+//! Tidecoin network addresses.
 //!
 //! This module defines the structures and functions needed to encode
-//! network addresses in Bitcoin messages.
+//! network addresses in Tidecoin messages.
 //!
 
 use prelude::*;
@@ -27,7 +27,7 @@ use io;
 use crate::network::constants::ServiceFlags;
 use crate::consensus::encode::{self, Decodable, Encodable, VarInt, ReadExt, WriteExt};
 
-/// A message which can be sent on the Bitcoin network
+/// A message which can be sent on the Tidecoin network
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Address {
     /// Services provided by the peer whose address this is

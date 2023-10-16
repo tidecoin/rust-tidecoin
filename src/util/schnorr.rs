@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 // To the extent possible under law, the author(s) have dedicated all
@@ -11,19 +11,18 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
-//! Schnorr Bitcoin keys.
+//! Schnorr Tidecoin keys.
 //!
-//! This module provides Schnorr keys used in Bitcoin, reexporting Secp256k1
+//! This module provides Schnorr keys used in Tidecoin, reexporting Secp256k1
 //! Schnorr key types.
 //!
 
 use core::fmt;
 use prelude::*;
 
-use secp256k1::{XOnlyPublicKey as _XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey as _XOnlyPublicKey;
 
 use secp256k1;
-use hashes::Hash;
 use SchnorrSighashType;
 
 /// Deprecated re-export of [`secp256k1::XOnlyPublicKey`]

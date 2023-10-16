@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //     Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -35,7 +35,7 @@ use crate::util::uint::Uint256;
 
 /// The maximum allowable sequence number
 pub const MAX_SEQUENCE: u32 = 0xFFFFFFFF;
-/// How many satoshis are in "one bitcoin"
+/// How many tidoshis are in "one tidecoin"
 pub const COIN_VALUE: u64 = 100_000_000;
 /// How many seconds between blocks we expect on average
 pub const TARGET_BLOCK_SPACING: u32 = 60;
@@ -51,9 +51,9 @@ pub const MIN_TRANSACTION_WEIGHT: u32 = 4 * 60;
 pub const WITNESS_SCALE_FACTOR: usize = 4;
 /// The maximum allowed number of signature check operations in a block
 pub const MAX_BLOCK_SIGOPS_COST: i64 = 80_000;
-/// Mainnet (bitcoin) pubkey address prefix.
+/// Mainnet (tidecoin) pubkey address prefix.
 pub const PUBKEY_ADDRESS_PREFIX_MAIN: u8 = 0; // 0x00
-/// Mainnet (bitcoin) script address prefix.
+/// Mainnet (tidecoin) script address prefix.
 pub const SCRIPT_ADDRESS_PREFIX_MAIN: u8 = 5; // 0x05
 /// Test (tesnet, signet, regtest) pubkey address prefix.
 pub const PUBKEY_ADDRESS_PREFIX_TEST: u8 = 111; // 0x6f
@@ -64,7 +64,7 @@ pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
 /// How may blocks between halvings.
 pub const SUBSIDY_HALVING_INTERVAL: u32 = 210_000;
 
-/// In Bitcoind this is insanely described as ~((u256)0 >> 32)
+/// In Tidecoind this is insanely described as ~((u256)0 >> 32)
 pub fn max_target(_: Network) -> Uint256 {
     Uint256::from_u64(0xFFFF).unwrap() << 208
 }
@@ -76,8 +76,8 @@ pub fn max_money(_: Network) -> u64 {
     21_000_000 * COIN_VALUE
 }
 
-/// Constructs and returns the coinbase (and only) transaction of the Bitcoin genesis block
-fn bitcoin_genesis_tx() -> Transaction {
+/// Constructs and returns the coinbase (and only) transaction of the Tidecoin genesis block
+fn tidecoin_genesis_tx() -> Transaction {
     // Base
     let mut ret = Transaction {
         version: 1,
@@ -117,7 +117,7 @@ fn bitcoin_genesis_tx() -> Transaction {
 
 /// Constructs and returns the genesis block
 pub fn genesis_block(network: Network) -> Block {
-    let txdata = vec![bitcoin_genesis_tx()];
+    let txdata = vec![tidecoin_genesis_tx()];
     let hash: sha256d::Hash = txdata[0].txid().into();
     let merkle_root = hash.into();
     match network {
@@ -157,12 +157,12 @@ mod test {
 
     use network::constants::Network;
     use consensus::encode::serialize;
-    use blockdata::constants::{genesis_block, bitcoin_genesis_tx};
+    use blockdata::constants::{genesis_block, tidecoin_genesis_tx};
     use blockdata::constants::{MAX_SEQUENCE, COIN_VALUE};
 
     #[test]
-    fn bitcoin_genesis_first_transaction() {
-        let gen = bitcoin_genesis_tx();
+    fn tidecoin_genesis_first_transaction() {
+        let gen = tidecoin_genesis_tx();
 
         assert_eq!(gen.version, 1);
         assert_eq!(gen.input.len(), 1);
@@ -183,7 +183,7 @@ mod test {
     }
 
     #[test]
-    fn bitcoin_genesis_full_block() {
+    fn tidecoin_genesis_full_block() {
         let gen = genesis_block(Network::Tidecoin);
     }
 

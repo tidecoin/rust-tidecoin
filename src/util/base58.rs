@@ -1,4 +1,4 @@
-// Rust Bitcoin Library
+// Rust Tidecoin Library
 // Written in 2014 by
 //   Andrew Poelstra <apoelstra@wpsoftware.net>
 //
@@ -233,7 +233,7 @@ pub fn encode_slice(data: &[u8]) -> String {
 }
 
 /// Obtain a string with the base58check encoding of a slice
-/// (Tack the first 4 256-digits of the object's Bitcoin hash onto the end.)
+/// (Tack the first 4 256-digits of the object's Tidecoin hash onto the end.)
 pub fn check_encode_slice(data: &[u8]) -> String {
     let checksum = sha256d::Hash::hash(data);
     encode_iter(
@@ -244,7 +244,7 @@ pub fn check_encode_slice(data: &[u8]) -> String {
 }
 
 /// Obtain a string with the base58check encoding of a slice
-/// (Tack the first 4 256-digits of the object's Bitcoin hash onto the end.)
+/// (Tack the first 4 256-digits of the object's Tidecoin hash onto the end.)
 pub fn check_encode_slice_to_fmt(fmt: &mut fmt::Formatter, data: &[u8]) -> fmt::Result {
     let checksum = sha256d::Hash::hash(data);
     let iter = data.iter()
@@ -283,8 +283,8 @@ mod tests {
         assert_eq!(&encode_slice(&[0, 0, 0, 0, 13, 36][..]), "1111211");
 
         // Long input (>100 bytes => has to use heap)
-        let res = encode_slice(&"BitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBit\
-        coinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoin".as_bytes());
+        let res = encode_slice(&"TidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinBit\
+        coinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoinTidecoin".as_bytes());
         let exp = "ZqC5ZdfpZRi7fjA8hbhX5pEE96MdH9hEaC1YouxscPtbJF16qVWksHWR4wwvx7MotFcs2ChbJqK8KJ9X\
         wZznwWn1JFDhhTmGo9v6GjAVikzCsBWZehu7bm22xL8b5zBR5AsBygYRwbFJsNwNkjpyFuDKwmsUTKvkULCvucPJrN5\
         QUdxpGakhqkZFL7RU4yT";
