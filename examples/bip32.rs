@@ -1,17 +1,17 @@
-extern crate bitcoin;
+extern crate tidecoin;
 
 use std::{env, process};
 use std::str::FromStr;
 
-use bitcoin::secp256k1::Secp256k1;
-use bitcoin::PublicKey;
-use bitcoin::util::bip32::ExtendedPrivKey;
-use bitcoin::util::bip32::ExtendedPubKey;
-use bitcoin::util::bip32::DerivationPath;
-use bitcoin::util::bip32::ChildNumber;
-use bitcoin::util::address::Address;
-use bitcoin::secp256k1::ffi::types::AlignedType;
-use bitcoin::hashes::hex::FromHex;
+use tidecoin::secp256k1::Secp256k1;
+use tidecoin::PublicKey;
+use tidecoin::util::bip32::ExtendedPrivKey;
+use tidecoin::util::bip32::ExtendedPubKey;
+use tidecoin::util::bip32::DerivationPath;
+use tidecoin::util::bip32::ChildNumber;
+use tidecoin::util::address::Address;
+use tidecoin::secp256k1::ffi::types::AlignedType;
+use tidecoin::hashes::hex::FromHex;
 
 fn main() {
     // This example derives root xprv from a 32-byte seed,
@@ -31,7 +31,7 @@ fn main() {
     println!("Seed: {}", seed_hex);
 
     // default network as mainnet
-    let network = bitcoin::Network::Bitcoin;
+    let network = tidecoin::Network::Tidecoin;
     println!("Network: {:?}", network);
 
     let seed = Vec::from_hex(seed_hex).unwrap();

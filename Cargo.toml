@@ -1,13 +1,12 @@
 [package]
-name = "bitcoin"
+name = "tidecoin"
 version = "0.28.2"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+authors = ["Tidecoin Foundation <tidecoins@protonmail.com>"]
 license = "CC0-1.0"
-homepage = "https://github.com/rust-bitcoin/rust-bitcoin/"
-repository = "https://github.com/rust-bitcoin/rust-bitcoin/"
-documentation = "https://docs.rs/bitcoin/"
-description = "General purpose library for using and interoperating with Bitcoin and other cryptocurrencies."
-keywords = [ "crypto", "bitcoin" ]
+homepage = "https://github.com/yarsawyer/rust-tidecoin/"
+repository = "https://github.com/yarsawyer/rust-tidecoin/"
+description = "General purpose library for using and interoperating with Tidecoin."
+keywords = [ "crypto", "tidecoin" ]
 readme = "README.md"
 exclude = ["./test_data"]
 
