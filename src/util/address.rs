@@ -685,8 +685,8 @@ impl fmt::Display for Address {
             Network::Testnet => SCRIPT_ADDRESS_PREFIX_TEST,
         };
         let bech32_hrp = match self.network {
-            Network::Tidecoin => "bc",
-            Network::Testnet => "tb",
+            Network::Tidecoin => "tbc",
+            Network::Testnet => "ttbc",
         };
         let encoding = AddressEncoding {
             payload: &self.payload,
@@ -728,8 +728,8 @@ impl FromStr for Address {
         // try bech32
         let bech32_network = match find_bech32_prefix(s) {
             // note that upper or lowercase is allowed but NOT mixed case
-            "bc" | "BC" => Some(Network::Tidecoin),
-            "tb" | "TB" => Some(Network::Testnet), // this may also be signet
+            "tbc" | "TBC" => Some(Network::Tidecoin),
+            "ttbc" | "TTBC" => Some(Network::Testnet), // this may also be signet
             _ => None,
         };
         if let Some(network) = bech32_network {
