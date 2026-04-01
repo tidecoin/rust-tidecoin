@@ -2194,6 +2194,7 @@ mod tests {
             time: BlockTime::from(seconds),
             bits: CompactTarget::from_consensus(0xbeef),
             nonce: 0xcafe,
+            auxpow: None,
         };
 
         let tx = Transaction {

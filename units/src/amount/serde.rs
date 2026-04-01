@@ -215,10 +215,10 @@ pub mod as_sat {
 }
 
 #[cfg(feature = "alloc")]
-pub mod as_btc {
-    //! Serialize and deserialize [`Amount`] and [`SignedAmount`] as JSON numbers denominated in BTC.
+pub mod as_tdc {
+    //! Serialize and deserialize [`Amount`] and [`SignedAmount`] as JSON numbers denominated in TDC.
     //!
-    //! Use with `#[serde(with = "amount::serde::as_btc")]`.
+    //! Use with `#[serde(with = "amount::serde::as_tdc")]`.
     //!
     //! [`Amount`]: crate::Amount
     //! [`SignedAmount`]: crate::SignedAmount
@@ -241,8 +241,8 @@ pub mod as_btc {
         A: TryFrom<SignedAmount>,
         <A as TryFrom<SignedAmount>>::Error: core::fmt::Display,
     {
-        let btc = f64::deserialize(d)?;
-        let amount = SignedAmount::from_btc(btc)
+        let tdc = f64::deserialize(d)?;
+        let amount = SignedAmount::from_tdc(tdc)
             .map_err(DisplayFullError)
             .map_err(serde::de::Error::custom)?;
 
@@ -251,9 +251,9 @@ pub mod as_btc {
 
     pub mod opt {
         //! Serialize and deserialize `Option<Amount>` and `Option<SignedAmount>` as JSON numbers
-        //! denominated in BTC.
+        //! denominated in TDC.
         //!
-        //! Use with `#[serde(default, with = "amount::serde::as_btc::opt")]`.
+        //! Use with `#[serde(default, with = "amount::serde::as_tdc::opt")]`.
 
         use core::fmt;
         use core::marker::PhantomData;
@@ -314,9 +314,9 @@ pub mod as_btc {
 
     pub mod vec {
         //! Serialize and deserialize `Vec<Amount>` and `Vec<SignedAmount>` as JSON numbers
-        //! denominated in BTC.
+        //! denominated in TDC.
         //!
-        //! Use with `#[serde(with = "amount::serde::as_btc::vec")]`.
+        //! Use with `#[serde(with = "amount::serde::as_tdc::vec")]`.
 
         use alloc::vec::Vec;
         use core::fmt;
@@ -377,6 +377,12 @@ pub mod as_btc {
             d.deserialize_seq(VisitVec::<A>(PhantomData))
         }
     }
+}
+
+#[cfg(feature = "alloc")]
+#[deprecated(since = "0.33.0-beta", note = "use `as_tdc`")]
+pub mod as_btc {
+    pub use super::as_tdc::*;
 }
 
 #[cfg(feature = "alloc")]
@@ -575,12 +581,12 @@ mod tests {
 
     #[test]
     #[cfg(feature = "alloc")]
-    fn can_serde_as_btc() {
+    fn can_serde_as_tdc() {
         #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
         pub struct HasAmount {
-            #[serde(with = "amount::serde::as_btc")]
+            #[serde(with = "amount::serde::as_tdc")]
             pub amount: Amount,
-            #[serde(with = "amount::serde::as_btc")]
+            #[serde(with = "amount::serde::as_tdc")]
             pub signed_amount: SignedAmount,
         }
 

@@ -173,7 +173,7 @@ pub use crate::{
         self, CompressedPublicKey, Keypair, PrivateKey, PublicKey, WifKey, XOnlyPublicKey,
     },
     crypto::pq::{PqError, PqPublicKey, PqScheme, PqSecretKey, PqSignature},
-    crypto::sighash::{self, LegacySighash, SegwitV0Sighash},
+    crypto::sighash::{self, LegacySighash, SegwitV0Sighash, Sighash512},
     network::params::{self, Params},
     network::{Network, NetworkKind},
     pow::{Target, Work},

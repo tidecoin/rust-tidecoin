@@ -71,6 +71,10 @@ pub struct Params {
     pub bip65_height: BlockHeight,
     /// Block height at which BIP-0066 becomes active.
     pub bip66_height: BlockHeight,
+    /// Block height at which auxpow activates, if any.
+    pub auxpow_start_height: Option<BlockHeight>,
+    /// Auxpow chain ID encoded into header version bits.
+    pub auxpow_chain_id: u32,
     /// Enforce BIP-0094 block storm mitigation.
     pub enforce_bip94: bool,
     /// Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
@@ -129,6 +133,8 @@ impl Params {
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
+        auxpow_start_height: None,
+        auxpow_chain_id: 8,
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
         miner_confirmation_window: BlockHeightInterval::from_u32(8064),
@@ -147,6 +153,8 @@ impl Params {
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
+        auxpow_start_height: Some(BlockHeight::from_u32(1000)),
+        auxpow_chain_id: 8,
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
         miner_confirmation_window: BlockHeightInterval::from_u32(8064),
@@ -165,6 +173,8 @@ impl Params {
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
+        auxpow_start_height: Some(BlockHeight::from_u32(0)),
+        auxpow_chain_id: 8,
         enforce_bip94: true,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(108),
         miner_confirmation_window: BlockHeightInterval::from_u32(144),

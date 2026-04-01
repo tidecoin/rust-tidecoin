@@ -2,17 +2,70 @@
 
 //! Post-quantum cryptographic types.
 //!
-//! Type definitions for the five post-quantum signature schemes used by
-//! Tidecoin: Falcon-512, Falcon-1024, ML-DSA-44, ML-DSA-65, and ML-DSA-87.
-//! This module provides key and signature containers only; actual
-//! signing and verification are delegated to the underlying PQ crypto
-//! libraries.
+//! Type definitions and crypto wrappers for the five post-quantum signature
+//! schemes used by Tidecoin: Falcon-512, Falcon-1024, ML-DSA-44, ML-DSA-65,
+//! and ML-DSA-87.
 
 use core::fmt;
+use core::ffi::c_int;
 
 use hashes::hash160;
+use pqcrypto_traits::sign::{
+    DetachedSignature as _, PublicKey as _, SecretKey as _, VerificationError,
+};
 
+use crate::network::Params;
 use crate::prelude::Vec;
+
+unsafe extern "C" {
+    fn tidecoin_falcon512_pubkey_from_sk(
+        sk: *const u8,
+        sklen: usize,
+        pk: *mut u8,
+        pklen: usize,
+    ) -> c_int;
+    fn tidecoin_falcon512_sign_legacy(
+        sig: *mut u8,
+        siglen: *mut usize,
+        msg: *const u8,
+        mlen: usize,
+        sk: *const u8,
+        sklen: usize,
+    ) -> c_int;
+    fn tidecoin_falcon512_verify(
+        sig: *const u8,
+        siglen: usize,
+        msg: *const u8,
+        mlen: usize,
+        pk: *const u8,
+        pklen: usize,
+        legacy_mode: c_int,
+    ) -> c_int;
+    fn tidecoin_falcon1024_pubkey_from_sk(
+        sk: *const u8,
+        sklen: usize,
+        pk: *mut u8,
+        pklen: usize,
+    ) -> c_int;
+    fn tidecoin_mldsa44_pubkey_from_sk(
+        sk: *const u8,
+        sklen: usize,
+        pk: *mut u8,
+        pklen: usize,
+    ) -> c_int;
+    fn tidecoin_mldsa65_pubkey_from_sk(
+        sk: *const u8,
+        sklen: usize,
+        pk: *mut u8,
+        pklen: usize,
+    ) -> c_int;
+    fn tidecoin_mldsa87_pubkey_from_sk(
+        sk: *const u8,
+        sklen: usize,
+        pk: *mut u8,
+        pklen: usize,
+    ) -> c_int;
+}
 
 /// Identifies which post-quantum signature scheme a key or signature belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -81,6 +134,43 @@ impl PqScheme {
 
     /// Public key length including the one-byte scheme prefix.
     pub fn prefixed_pubkey_len(self) -> usize { self.pubkey_len() + 1 }
+
+    /// Returns whether this scheme is allowed at the given chain height.
+    ///
+    /// Tidecoin permits only Falcon-512 before auxpow activation. Once auxpow is active,
+    /// all current PQ schemes are allowed.
+    pub fn is_allowed_at_height(self, height: u32, params: impl AsRef<Params>) -> bool {
+        match params.as_ref().auxpow_start_height {
+            Some(start_height) if height >= start_height.to_u32() => true,
+            _ => self == Self::Falcon512,
+        }
+    }
+
+    /// Generates a fresh PQ keypair for this scheme.
+    pub fn generate_keypair(self) -> (PqPublicKey, PqSecretKey) {
+        match self {
+            Self::Falcon512 => {
+                let (pk, sk) = pqcrypto_falcon::falcon512::keypair();
+                (PqPublicKey::from_backend(self, pk.as_bytes()), PqSecretKey::from_backend(self, sk.as_bytes()))
+            }
+            Self::Falcon1024 => {
+                let (pk, sk) = pqcrypto_falcon::falcon1024::keypair();
+                (PqPublicKey::from_backend(self, pk.as_bytes()), PqSecretKey::from_backend(self, sk.as_bytes()))
+            }
+            Self::MlDsa44 => {
+                let (pk, sk) = pqcrypto_mldsa::mldsa44::keypair();
+                (PqPublicKey::from_backend(self, pk.as_bytes()), PqSecretKey::from_backend(self, sk.as_bytes()))
+            }
+            Self::MlDsa65 => {
+                let (pk, sk) = pqcrypto_mldsa::mldsa65::keypair();
+                (PqPublicKey::from_backend(self, pk.as_bytes()), PqSecretKey::from_backend(self, sk.as_bytes()))
+            }
+            Self::MlDsa87 => {
+                let (pk, sk) = pqcrypto_mldsa::mldsa87::keypair();
+                (PqPublicKey::from_backend(self, pk.as_bytes()), PqSecretKey::from_backend(self, sk.as_bytes()))
+            }
+        }
+    }
 }
 
 /// A post-quantum public key.
@@ -91,6 +181,34 @@ pub struct PqPublicKey {
 }
 
 impl PqPublicKey {
+    fn from_backend(scheme: PqScheme, data: &[u8]) -> Self { Self { scheme, data: data.to_vec() } }
+
+    /// Derives the public key matching the given secret key.
+    pub fn from_secret_key(sk: &PqSecretKey) -> Result<Self, PqError> {
+        let scheme = sk.scheme();
+        let mut data = vec![0_u8; scheme.pubkey_len()];
+        let rc = unsafe {
+            match scheme {
+                PqScheme::Falcon512 =>
+                    tidecoin_falcon512_pubkey_from_sk(sk.as_bytes().as_ptr(), sk.as_bytes().len(), data.as_mut_ptr(), data.len()),
+                PqScheme::Falcon1024 =>
+                    tidecoin_falcon1024_pubkey_from_sk(sk.as_bytes().as_ptr(), sk.as_bytes().len(), data.as_mut_ptr(), data.len()),
+                PqScheme::MlDsa44 =>
+                    tidecoin_mldsa44_pubkey_from_sk(sk.as_bytes().as_ptr(), sk.as_bytes().len(), data.as_mut_ptr(), data.len()),
+                PqScheme::MlDsa65 =>
+                    tidecoin_mldsa65_pubkey_from_sk(sk.as_bytes().as_ptr(), sk.as_bytes().len(), data.as_mut_ptr(), data.len()),
+                PqScheme::MlDsa87 =>
+                    tidecoin_mldsa87_pubkey_from_sk(sk.as_bytes().as_ptr(), sk.as_bytes().len(), data.as_mut_ptr(), data.len()),
+            }
+        };
+
+        if rc != 0 {
+            return Err(PqError::BackendFailure);
+        }
+
+        Ok(Self { scheme, data })
+    }
+
     /// Parses a prefixed public key: `[scheme_prefix_byte][raw_pubkey_bytes]`.
     pub fn from_prefixed_slice(data: &[u8]) -> Result<Self, PqError> {
         let (&prefix, raw) = data.split_first().ok_or(PqError::EmptyData)?;
@@ -130,6 +248,8 @@ pub struct PqSecretKey {
 }
 
 impl PqSecretKey {
+    fn from_backend(scheme: PqScheme, data: &[u8]) -> Self { Self { scheme, data: data.to_vec() } }
+
     /// Creates a secret key from raw bytes for the given scheme.
     pub fn from_slice(scheme: PqScheme, data: &[u8]) -> Result<Self, PqError> {
         let expected = scheme.seckey_len();
@@ -164,6 +284,195 @@ impl PqSignature {
 
     /// Returns whether the signature is empty.
     pub fn is_empty(&self) -> bool { self.data.is_empty() }
+
+    /// Signs a 32-byte message digest with the given secret key.
+    pub fn sign_msg32(msg: &[u8; 32], sk: &PqSecretKey) -> Result<Self, PqError> {
+        Self::sign_message(msg, sk)
+    }
+
+    /// Signs a 64-byte message digest with the given secret key.
+    pub fn sign_msg64(msg: &[u8; 64], sk: &PqSecretKey) -> Result<Self, PqError> {
+        Self::sign_message(msg, sk)
+    }
+
+    /// Verifies a 32-byte message digest against the given public key.
+    pub fn verify_msg32(&self, msg: &[u8; 32], pk: &PqPublicKey) -> Result<(), PqError> {
+        self.verify_message(msg, pk)
+    }
+
+    /// Verifies a 64-byte message digest against the given public key.
+    pub fn verify_msg64(&self, msg: &[u8; 64], pk: &PqPublicKey) -> Result<(), PqError> {
+        self.verify_message(msg, pk)
+    }
+
+    /// Signs a 32-byte message digest using the node's Falcon-512 legacy format when applicable.
+    pub fn sign_msg32_legacy(msg: &[u8; 32], sk: &PqSecretKey) -> Result<Self, PqError> {
+        Self::sign_message_legacy(msg, sk)
+    }
+
+    /// Signs a 64-byte message digest using the node's Falcon-512 legacy format when applicable.
+    pub fn sign_msg64_legacy(msg: &[u8; 64], sk: &PqSecretKey) -> Result<Self, PqError> {
+        Self::sign_message_legacy(msg, sk)
+    }
+
+    /// Verifies a 32-byte message digest using the node's Falcon-512 legacy format when applicable.
+    pub fn verify_msg32_legacy(&self, msg: &[u8; 32], pk: &PqPublicKey) -> Result<(), PqError> {
+        self.verify_message_legacy(msg, pk)
+    }
+
+    /// Verifies a 64-byte message digest using the node's Falcon-512 legacy format when applicable.
+    pub fn verify_msg64_legacy(&self, msg: &[u8; 64], pk: &PqPublicKey) -> Result<(), PqError> {
+        self.verify_message_legacy(msg, pk)
+    }
+
+    /// Verifies a 32-byte message digest, accepting either strict or legacy Falcon-512 signatures.
+    pub fn verify_msg32_allow_legacy(
+        &self,
+        msg: &[u8; 32],
+        pk: &PqPublicKey,
+    ) -> Result<(), PqError> {
+        self.verify_message_allow_legacy(msg, pk)
+    }
+
+    /// Verifies a 64-byte message digest, accepting either strict or legacy Falcon-512 signatures.
+    pub fn verify_msg64_allow_legacy(
+        &self,
+        msg: &[u8; 64],
+        pk: &PqPublicKey,
+    ) -> Result<(), PqError> {
+        self.verify_message_allow_legacy(msg, pk)
+    }
+
+    fn sign_message(msg: &[u8], sk: &PqSecretKey) -> Result<Self, PqError> {
+        Ok(match sk.scheme() {
+            PqScheme::Falcon512 => {
+                let sk = pqcrypto_falcon::falcon512::SecretKey::from_bytes(sk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                Self::from_slice(pqcrypto_falcon::falcon512::detached_sign(msg, &sk).as_bytes())
+            }
+            PqScheme::Falcon1024 => {
+                let sk = pqcrypto_falcon::falcon1024::SecretKey::from_bytes(sk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                Self::from_slice(pqcrypto_falcon::falcon1024::detached_sign(msg, &sk).as_bytes())
+            }
+            PqScheme::MlDsa44 => {
+                let sk = pqcrypto_mldsa::mldsa44::SecretKey::from_bytes(sk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                Self::from_slice(pqcrypto_mldsa::mldsa44::detached_sign(msg, &sk).as_bytes())
+            }
+            PqScheme::MlDsa65 => {
+                let sk = pqcrypto_mldsa::mldsa65::SecretKey::from_bytes(sk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                Self::from_slice(pqcrypto_mldsa::mldsa65::detached_sign(msg, &sk).as_bytes())
+            }
+            PqScheme::MlDsa87 => {
+                let sk = pqcrypto_mldsa::mldsa87::SecretKey::from_bytes(sk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                Self::from_slice(pqcrypto_mldsa::mldsa87::detached_sign(msg, &sk).as_bytes())
+            }
+        })
+    }
+
+    fn sign_message_legacy(msg: &[u8], sk: &PqSecretKey) -> Result<Self, PqError> {
+        if sk.scheme() != PqScheme::Falcon512 {
+            return Self::sign_message(msg, sk);
+        }
+
+        let mut data = vec![0_u8; 690];
+        let mut siglen = 0_usize;
+        let rc = unsafe {
+            tidecoin_falcon512_sign_legacy(
+                data.as_mut_ptr(),
+                &mut siglen,
+                msg.as_ptr(),
+                msg.len(),
+                sk.as_bytes().as_ptr(),
+                sk.as_bytes().len(),
+            )
+        };
+        if rc != 0 {
+            return Err(PqError::BackendFailure);
+        }
+        data.truncate(siglen);
+        Ok(Self { data })
+    }
+
+    fn verify_message(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
+        match pk.scheme() {
+            PqScheme::Falcon512 => {
+                let pk = pqcrypto_falcon::falcon512::PublicKey::from_bytes(pk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                let sig = pqcrypto_falcon::falcon512::DetachedSignature::from_bytes(self.as_bytes())
+                    .map_err(|err| map_backend_signature_error(PqScheme::Falcon512, err))?;
+                pqcrypto_falcon::falcon512::verify_detached_signature(&sig, msg, &pk)
+                    .map_err(map_backend_verify_error)
+            }
+            PqScheme::Falcon1024 => {
+                let pk = pqcrypto_falcon::falcon1024::PublicKey::from_bytes(pk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                let sig = pqcrypto_falcon::falcon1024::DetachedSignature::from_bytes(self.as_bytes())
+                    .map_err(|err| map_backend_signature_error(PqScheme::Falcon1024, err))?;
+                pqcrypto_falcon::falcon1024::verify_detached_signature(&sig, msg, &pk)
+                    .map_err(map_backend_verify_error)
+            }
+            PqScheme::MlDsa44 => {
+                let pk = pqcrypto_mldsa::mldsa44::PublicKey::from_bytes(pk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                let sig = pqcrypto_mldsa::mldsa44::DetachedSignature::from_bytes(self.as_bytes())
+                    .map_err(|err| map_backend_signature_error(PqScheme::MlDsa44, err))?;
+                pqcrypto_mldsa::mldsa44::verify_detached_signature(&sig, msg, &pk)
+                    .map_err(map_backend_verify_error)
+            }
+            PqScheme::MlDsa65 => {
+                let pk = pqcrypto_mldsa::mldsa65::PublicKey::from_bytes(pk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                let sig = pqcrypto_mldsa::mldsa65::DetachedSignature::from_bytes(self.as_bytes())
+                    .map_err(|err| map_backend_signature_error(PqScheme::MlDsa65, err))?;
+                pqcrypto_mldsa::mldsa65::verify_detached_signature(&sig, msg, &pk)
+                    .map_err(map_backend_verify_error)
+            }
+            PqScheme::MlDsa87 => {
+                let pk = pqcrypto_mldsa::mldsa87::PublicKey::from_bytes(pk.as_bytes())
+                    .map_err(map_backend_key_error)?;
+                let sig = pqcrypto_mldsa::mldsa87::DetachedSignature::from_bytes(self.as_bytes())
+                    .map_err(|err| map_backend_signature_error(PqScheme::MlDsa87, err))?;
+                pqcrypto_mldsa::mldsa87::verify_detached_signature(&sig, msg, &pk)
+                    .map_err(map_backend_verify_error)
+            }
+        }
+    }
+
+    fn verify_message_legacy(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
+        if pk.scheme() != PqScheme::Falcon512 {
+            return self.verify_message(msg, pk);
+        }
+
+        let rc = unsafe {
+            tidecoin_falcon512_verify(
+                self.as_bytes().as_ptr(),
+                self.as_bytes().len(),
+                msg.as_ptr(),
+                msg.len(),
+                pk.as_bytes().as_ptr(),
+                pk.as_bytes().len(),
+                1,
+            )
+        };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(PqError::VerificationFailed)
+        }
+    }
+
+    fn verify_message_allow_legacy(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
+        match self.verify_message(msg, pk) {
+            Ok(()) => Ok(()),
+            Err(PqError::VerificationFailed) if pk.scheme() == PqScheme::Falcon512 =>
+                self.verify_message_legacy(msg, pk),
+            Err(err) => Err(err),
+        }
+    }
 }
 
 /// Errors related to post-quantum key and signature handling.
@@ -185,6 +494,10 @@ pub enum PqError {
         /// Actual number of bytes received.
         got: usize,
     },
+    /// Signature verification failed.
+    VerificationFailed,
+    /// Backend key/signature operation failed.
+    BackendFailure,
     /// The input slice was empty.
     EmptyData,
 }
@@ -197,10 +510,30 @@ impl fmt::Display for PqError {
                 write!(f, "invalid key length: expected {} bytes, got {}", expected, got),
             Self::InvalidSignatureLength { max, got } =>
                 write!(f, "invalid signature length: max {} bytes, got {}", max, got),
+            Self::VerificationFailed => write!(f, "signature verification failed"),
+            Self::BackendFailure => write!(f, "backend PQ operation failed"),
             Self::EmptyData => write!(f, "empty data"),
         }
     }
 }
+
+fn map_backend_key_error(err: pqcrypto_traits::Error) -> PqError {
+    match err {
+        pqcrypto_traits::Error::BadLength { actual, expected, .. } =>
+            PqError::InvalidKeyLength { expected, got: actual },
+        _ => PqError::EmptyData,
+    }
+}
+
+fn map_backend_signature_error(scheme: PqScheme, err: pqcrypto_traits::Error) -> PqError {
+    match err {
+        pqcrypto_traits::Error::BadLength { actual, .. } =>
+            PqError::InvalidSignatureLength { max: scheme.max_sig_len(), got: actual },
+        _ => PqError::EmptyData,
+    }
+}
+
+fn map_backend_verify_error(_err: VerificationError) -> PqError { PqError::VerificationFailed }
 
 #[cfg(feature = "std")]
 impl std::error::Error for PqError {}
@@ -349,5 +682,121 @@ mod tests {
     fn signature_error_display() {
         let err = PqError::InvalidSignatureLength { max: 752, got: 753 };
         assert_eq!(err.to_string(), "invalid signature length: max 752 bytes, got 753");
+    }
+
+    #[test]
+    fn generate_keypair_matches_length_table() {
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let (pk, sk) = scheme.generate_keypair();
+            assert_eq!(pk.scheme(), scheme);
+            assert_eq!(sk.scheme(), scheme);
+            assert_eq!(pk.as_bytes().len(), scheme.pubkey_len());
+            assert_eq!(sk.as_bytes().len(), scheme.seckey_len());
+        }
+    }
+
+    #[test]
+    fn derive_public_key_from_secret_all_schemes() {
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let (pk, sk) = scheme.generate_keypair();
+            let derived = PqPublicKey::from_secret_key(&sk).unwrap();
+            assert_eq!(derived, pk);
+        }
+    }
+
+    #[test]
+    fn sign_and_verify_msg32_all_schemes() {
+        let msg = [0x5Au8; 32];
+
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let (pk, sk) = scheme.generate_keypair();
+            let sig = PqSignature::sign_msg32(&msg, &sk).unwrap();
+            assert!(sig.len() <= scheme.max_sig_len());
+            sig.verify_msg32(&msg, &pk).unwrap();
+
+            let wrong_msg = [0xA5u8; 32];
+            assert_eq!(sig.verify_msg32(&wrong_msg, &pk).unwrap_err(), PqError::VerificationFailed);
+        }
+    }
+
+    #[test]
+    fn sign_and_verify_msg64_all_schemes() {
+        let msg = [0x33u8; 64];
+
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let (pk, sk) = scheme.generate_keypair();
+            let sig = PqSignature::sign_msg64(&msg, &sk).unwrap();
+            assert!(sig.len() <= scheme.max_sig_len());
+            sig.verify_msg64(&msg, &pk).unwrap();
+
+            let wrong_msg = [0xCCu8; 64];
+            assert_eq!(sig.verify_msg64(&wrong_msg, &pk).unwrap_err(), PqError::VerificationFailed);
+        }
+    }
+
+    #[test]
+    fn falcon512_legacy_signatures_roundtrip_for_msg32() {
+        let msg = [0x42_u8; 32];
+        let (pk, sk) = PqScheme::Falcon512.generate_keypair();
+
+        let strict = PqSignature::sign_msg32(&msg, &sk).unwrap();
+        let legacy = PqSignature::sign_msg32_legacy(&msg, &sk).unwrap();
+
+        assert_eq!(legacy.as_bytes().first().copied(), Some(0x39));
+        assert!(legacy.len() <= 690);
+        assert_ne!(legacy, strict);
+        legacy.verify_msg32_legacy(&msg, &pk).unwrap();
+        legacy.verify_msg32_allow_legacy(&msg, &pk).unwrap();
+    }
+
+    #[test]
+    fn falcon512_legacy_signatures_roundtrip_for_msg64() {
+        let msg = [0x24_u8; 64];
+        let (pk, sk) = PqScheme::Falcon512.generate_keypair();
+
+        let legacy = PqSignature::sign_msg64_legacy(&msg, &sk).unwrap();
+
+        assert_eq!(legacy.as_bytes().first().copied(), Some(0x39));
+        assert!(legacy.len() <= 690);
+        legacy.verify_msg64_legacy(&msg, &pk).unwrap();
+        legacy.verify_msg64_allow_legacy(&msg, &pk).unwrap();
+    }
+
+    #[test]
+    fn scheme_auxpow_gate_matches_node_policy() {
+        let mut params = Params::MAINNET;
+        params.auxpow_start_height = Some(crate::BlockHeight::from_u32(100));
+
+        assert!(PqScheme::Falcon512.is_allowed_at_height(0, &params));
+        assert!(!PqScheme::MlDsa44.is_allowed_at_height(0, &params));
+        assert!(PqScheme::MlDsa44.is_allowed_at_height(100, &params));
+
+        let no_auxpow = Params::MAINNET;
+        assert!(PqScheme::Falcon512.is_allowed_at_height(1_000_000, &no_auxpow));
+        assert!(!PqScheme::MlDsa87.is_allowed_at_height(1_000_000, &no_auxpow));
     }
 }

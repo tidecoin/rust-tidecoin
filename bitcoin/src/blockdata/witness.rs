@@ -9,6 +9,7 @@ use io::{BufRead, Write};
 use crate::consensus::encode::{self, Error, ParseError, WriteExt};
 use crate::consensus::{Decodable, Encodable};
 use crate::crypto::ecdsa;
+use crate::crypto::pq::{PqPublicKey, PqSignature};
 use crate::{internal_macros, WitnessScript};
 
 #[rustfmt::skip]                // Keep public re-exports separate.
@@ -49,6 +50,14 @@ internal_macros::define_extension_trait! {
             let mut witness = Witness::new();
             witness.push(signature.serialize());
             witness.push(pubkey.serialize());
+            witness
+        }
+
+        /// Constructs the witness required to spend a Tidecoin P2WSH-512 PQ output.
+        fn p2wsh512_pq(signature: PqSignature, pubkey: PqPublicKey) -> Self {
+            let mut witness = Witness::new();
+            witness.push(signature.as_bytes());
+            witness.push(pubkey.to_prefixed_bytes());
             witness
         }
 
@@ -171,5 +180,18 @@ mod test {
 
         let bytes = hex!("24000000ffffffffffffffffffffffff");
         assert!(deserialize::<Witness>(&bytes).is_err()); // OversizedVectorAllocation
+    }
+
+    #[test]
+    fn p2wsh512_pq_witness_layout() {
+        let signature = PqSignature::from_slice(&[0xAA, 0xBB, 0xCC]);
+        let mut pubkey_bytes = vec![crate::PqScheme::Falcon512.prefix()];
+        pubkey_bytes.extend(core::iter::repeat_n(0x42, crate::PqScheme::Falcon512.pubkey_len()));
+        let pubkey = PqPublicKey::from_prefixed_slice(&pubkey_bytes).unwrap();
+
+        let witness = Witness::p2wsh512_pq(signature, pubkey.clone());
+        assert_eq!(witness.len(), 2);
+        assert_eq!(witness[0], [0xAA, 0xBB, 0xCC]);
+        assert_eq!(witness[1], pubkey.to_prefixed_bytes());
     }
 }

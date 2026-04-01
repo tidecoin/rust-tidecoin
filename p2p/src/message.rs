@@ -873,6 +873,86 @@ impl std::error::Error for PongDecoderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
 }
 
+/// `sendtxrcncl` message (BIP-0330 transaction reconciliation handshake).
+#[derive(PartialEq, Eq, Clone, Debug, Copy, PartialOrd, Ord, Hash)]
+pub struct SendTxReconciliation {
+    /// Transaction reconciliation protocol version.
+    pub version: u32,
+    /// Salt used for short-ID derivation with this peer.
+    pub salt: u64,
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder type for the [`SendTxReconciliation`] message.
+    pub struct SendTxReconciliationEncoder<'e>(Encoder2<ArrayEncoder<4>, ArrayEncoder<8>>);
+}
+
+impl encoding::Encodable for SendTxReconciliation {
+    type Encoder<'e> = SendTxReconciliationEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        SendTxReconciliationEncoder::new(Encoder2::new(
+            ArrayEncoder::without_length_prefix(self.version.to_le_bytes()),
+            ArrayEncoder::without_length_prefix(self.salt.to_le_bytes()),
+        ))
+    }
+}
+
+type SendTxReconciliationInnerDecoder = Decoder2<ArrayDecoder<4>, ArrayDecoder<8>>;
+
+/// Decoder type for the [`SendTxReconciliation`] message.
+pub struct SendTxReconciliationDecoder(SendTxReconciliationInnerDecoder);
+
+impl encoding::Decoder for SendTxReconciliationDecoder {
+    type Output = SendTxReconciliation;
+    type Error = SendTxReconciliationDecoderError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, Self::Error> {
+        self.0.push_bytes(bytes).map_err(SendTxReconciliationDecoderError)
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        let (version, salt) = self.0.end().map_err(SendTxReconciliationDecoderError)?;
+        Ok(SendTxReconciliation {
+            version: u32::from_le_bytes(version),
+            salt: u64::from_le_bytes(salt),
+        })
+    }
+
+    fn read_limit(&self) -> usize { self.0.read_limit() }
+}
+
+impl encoding::Decodable for SendTxReconciliation {
+    type Decoder = SendTxReconciliationDecoder;
+
+    fn decoder() -> Self::Decoder {
+        SendTxReconciliationDecoder(Decoder2::new(ArrayDecoder::new(), ArrayDecoder::new()))
+    }
+}
+
+/// Errors occurring when decoding a [`SendTxReconciliation`] message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendTxReconciliationDecoderError(
+    <SendTxReconciliationInnerDecoder as encoding::Decoder>::Error,
+);
+
+impl From<Infallible> for SendTxReconciliationDecoderError {
+    fn from(never: Infallible) -> Self { match never {} }
+}
+
+impl fmt::Display for SendTxReconciliationDecoderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_err!(f, "sendtxrcncl error"; self.0)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SendTxReconciliationDecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+}
+
+impl_consensus_encoding!(SendTxReconciliation, version, salt);
+
 /// A Network message payload. Proper documentation is available at
 /// [Bitcoin Wiki: Protocol Specification](https://en.bitcoin.it/wiki/Protocol_specification)
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -949,6 +1029,8 @@ pub enum NetworkMessage {
     AddrV2(AddrV2Payload),
     /// `sendaddrv2`
     SendAddrV2,
+    /// `sendtxrcncl`
+    SendTxReconciliation(SendTxReconciliation),
 
     /// Any other message.
     Unknown {
@@ -1003,6 +1085,7 @@ impl NetworkMessage {
             Self::WtxidRelay => "wtxidrelay",
             Self::AddrV2(_) => "addrv2",
             Self::SendAddrV2 => "sendaddrv2",
+            Self::SendTxReconciliation(_) => "sendtxrcncl",
             Self::Unknown { .. } => "unknown",
         }
     }
@@ -1109,6 +1192,7 @@ impl Encodable for NetworkMessage {
             Self::Reject(ref dat) => dat.consensus_encode(writer),
             Self::FeeFilter(ref dat) => dat.consensus_encode(writer),
             Self::AddrV2(ref dat) => dat.consensus_encode(writer),
+            Self::SendTxReconciliation(ref dat) => dat.consensus_encode(writer),
             Self::Verack
             | Self::SendHeaders
             | Self::MemPool
@@ -1472,6 +1556,14 @@ impl encoding::Decoder for NetworkMessageDecoder {
                 })?,
             ),
             "sendaddrv2" => NetworkMessage::SendAddrV2,
+            "sendtxrcncl" => NetworkMessage::SendTxReconciliation(
+                bitcoin::consensus::encode::Decodable::consensus_decode_from_finite_reader(
+                    &mut mem_d,
+                )
+                .map_err(|_| {
+                    V1NetworkMessageDecoderError(V1NetworkMessageDecoderErrorInner::Payload)
+                })?,
+            ),
             _ => NetworkMessage::Unknown { command: self.command, payload: payload_bytes },
         };
 
@@ -1686,6 +1778,7 @@ impl Encodable for V2NetworkMessage {
             | NetworkMessage::SendHeaders
             | NetworkMessage::GetAddr
             | NetworkMessage::WtxidRelay
+            | NetworkMessage::SendTxReconciliation(_)
             | NetworkMessage::SendAddrV2
             | NetworkMessage::Alert(_)
             | NetworkMessage::Reject(_)
@@ -1980,6 +2073,8 @@ impl Decodable for V1NetworkMessage {
             "addrv2" =>
                 NetworkMessage::AddrV2(Decodable::consensus_decode_from_finite_reader(&mut mem_d)?),
             "sendaddrv2" => NetworkMessage::SendAddrV2,
+            "sendtxrcncl" =>
+                NetworkMessage::SendTxReconciliation(Decodable::consensus_decode_from_finite_reader(&mut mem_d)?),
             _ => NetworkMessage::Unknown { command: cmd, payload: raw_payload },
         };
         Ok(Self { magic, payload, payload_len, checksum })
@@ -2008,6 +2103,8 @@ impl Decodable for V2NetworkMessage {
                     "getaddr" => NetworkMessage::GetAddr,
                     "wtxidrelay" => NetworkMessage::WtxidRelay,
                     "sendaddrv2" => NetworkMessage::SendAddrV2,
+                    "sendtxrcncl" =>
+                        NetworkMessage::SendTxReconciliation(Decodable::consensus_decode_from_finite_reader(r)?),
                     "alert" =>
                         NetworkMessage::Alert(Decodable::consensus_decode_from_finite_reader(r)?),
                     "reject" =>
@@ -2238,8 +2335,16 @@ impl<'a> Arbitrary<'a> for NetworkMessage {
             33 => Ok(Self::WtxidRelay),
             34 => Ok(Self::AddrV2(u.arbitrary()?)),
             35 => Ok(Self::SendAddrV2),
+            36 => Ok(Self::SendTxReconciliation(u.arbitrary()?)),
             _ => Ok(Self::Unknown { command: u.arbitrary()?, payload: Vec::<u8>::arbitrary(u)? }),
         }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> Arbitrary<'a> for SendTxReconciliation {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self { version: u.arbitrary()?, salt: u.arbitrary()? })
     }
 }
 
@@ -2393,6 +2498,10 @@ mod test {
                 time: 0,
             }])),
             NetworkMessage::SendAddrV2,
+            NetworkMessage::SendTxReconciliation(SendTxReconciliation {
+                version: 1,
+                salt: 0x0102_0304_0506_0708,
+            }),
             NetworkMessage::CmpctBlock(cmptblock),
             NetworkMessage::GetBlockTxn(BlockTransactionsRequest::from_indices_unchecked(
                 BlockHash::from_byte_array(hash([11u8; 32]).to_byte_array()),

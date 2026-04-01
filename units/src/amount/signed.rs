@@ -44,7 +44,7 @@ mod encapsulate {
     /// #[derive(Serialize, Deserialize)]
     /// struct Foo {
     ///     // If you are using `rust-tidecoin` then `bitcoin::amount::serde::as_sat` also works.
-    ///     #[serde(with = "tidecoin_units::amount::serde::as_sat")]  // Also `serde::as_btc`.
+    ///     #[serde(with = "tidecoin_units::amount::serde::as_sat")]  // Also `serde::as_tdc`.
     ///     amount: SignedAmount,
     /// }
     /// # }
@@ -153,17 +153,33 @@ impl SignedAmount {
     ///
     /// ```
     /// # use tidecoin_units::{amount, SignedAmount};
-    /// let amount = SignedAmount::from_btc(-0.01)?;
+    /// let amount = SignedAmount::from_tdc(-0.01)?;
     /// assert_eq!(amount.to_sat(), -1_000_000);
     /// # Ok::<_, amount::ParseAmountError>(())
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn from_btc(btc: f64) -> Result<Self, ParseAmountError> {
-        Self::from_float_in(btc, Denomination::Tidecoin)
+    pub fn from_tdc(tdc: f64) -> Result<Self, ParseAmountError> {
+        Self::from_float_in(tdc, Denomination::Tidecoin)
+    }
+
+    /// Converts from a value expressing a decimal number of tidecoin to a [`SignedAmount`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates the same parsing and range errors as [`Self::from_tdc`].
+    #[cfg(feature = "alloc")]
+    #[deprecated(since = "0.33.0-beta", note = "use `from_tdc`")]
+    pub fn from_btc(btc: f64) -> Result<Self, ParseAmountError> { Self::from_tdc(btc) }
+
+    /// Converts from a value expressing a whole number of tidecoin to a [`SignedAmount`].
+    #[allow(clippy::missing_panics_doc)]
+    pub fn from_int_tdc<T: Into<i16>>(whole_tidecoin: T) -> Self {
+        Self::from_tdc_i16(whole_tidecoin.into())
     }
 
     /// Converts from a value expressing a whole number of tidecoin to a [`SignedAmount`].
     #[allow(clippy::missing_panics_doc)]
+    #[deprecated(since = "0.33.0-beta", note = "use `from_int_tdc`")]
     pub fn from_int_btc<T: Into<i16>>(whole_bitcoin: T) -> Self {
         Self::from_tdc_i16(whole_bitcoin.into())
     }
@@ -235,6 +251,15 @@ impl SignedAmount {
         self.to_string_in(denom).parse::<f64>().unwrap()
     }
 
+    /// Expresses this [`SignedAmount`] as a floating-point value in Tidecoin.
+    #[cfg(feature = "alloc")]
+    pub fn to_tdc(self) -> f64 { self.to_float_in(Denomination::Tidecoin) }
+
+    /// Expresses this [`SignedAmount`] as a floating-point value in Tidecoin.
+    #[cfg(feature = "alloc")]
+    #[deprecated(since = "0.33.0-beta", note = "use `to_tdc`")]
+    pub fn to_btc(self) -> f64 { self.to_tdc() }
+
     /// Constructs a new `SignedAmount` from a prefixed hex string.
     ///
     /// This can only parse an unsigned quantity.
@@ -264,21 +289,6 @@ impl SignedAmount {
             .map_err(|e| ParseAmountError(ParseAmountErrorInner::UnprefixedHex(e)))?;
         Self::from_sat_u64(amount)
     }
-
-    /// Expresses this [`SignedAmount`] as a floating-point value in Tidecoin.
-    ///
-    /// Please be aware of the risk of using floating-point numbers.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use tidecoin_units::amount::{self, SignedAmount, Denomination};
-    /// let amount = SignedAmount::from_sat(100_000)?;
-    /// assert_eq!(amount.to_btc(), amount.to_float_in(Denomination::Tidecoin));
-    /// # Ok::<_, amount::OutOfRangeError>(())
-    /// ```
-    #[cfg(feature = "alloc")]
-    pub fn to_btc(self) -> f64 { self.to_float_in(Denomination::Tidecoin) }
 
     /// Converts this [`SignedAmount`] in floating-point notation in the given [`Denomination`].
     ///

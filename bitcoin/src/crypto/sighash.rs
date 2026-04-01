@@ -17,7 +17,7 @@ use core::{fmt, str};
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use hashes::{hash_newtype, sha256, sha256d};
+use hashes::{hash_newtype, sha256, sha256d, sha512};
 use internals::write_err;
 use io::Write;
 
@@ -34,6 +34,15 @@ pub(crate) const UINT256_ONE: [u8; 32] = [
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0
+];
+
+/// Used for witness-v1-512 signature hash for invalid use of `SIGHASH_SINGLE`.
+#[rustfmt::skip]
+pub(crate) const UINT512_ONE: [u8; 64] = [
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ];
 
 macro_rules! impl_message_from_hash {
@@ -54,11 +63,15 @@ hash_newtype! {
     /// Hash of a transaction according to the SegWit version 0 signature algorithm.
     #[hash_newtype(forward)]
     pub struct SegwitV0Sighash(sha256d::Hash);
+
+    /// Hash of a transaction according to the Tidecoin witness-v1 SHA-512 algorithm.
+    #[hash_newtype(forward)]
+    pub struct Sighash512(sha512::Hash);
 }
 
-hashes::impl_hex_for_newtype!(LegacySighash, SegwitV0Sighash);
+hashes::impl_hex_for_newtype!(LegacySighash, SegwitV0Sighash, Sighash512);
 #[cfg(feature = "serde")]
-hashes::impl_serde_for_newtype!(LegacySighash, SegwitV0Sighash);
+hashes::impl_serde_for_newtype!(LegacySighash, SegwitV0Sighash, Sighash512);
 
 impl_message_from_hash!(LegacySighash);
 impl_message_from_hash!(SegwitV0Sighash);
@@ -74,6 +87,10 @@ impl SegwitV0Sighash {
     fn engine() -> sha256d::HashEngine { sha256d::Hash::engine() }
     fn from_engine(e: sha256d::HashEngine) -> Self { Self(sha256d::Hash::from_engine(e)) }
 }
+impl Sighash512 {
+    fn engine() -> sha512::HashEngine { sha512::Hash::engine() }
+    fn from_engine(e: sha512::HashEngine) -> Self { Self(sha512::Hash::from_engine(e)) }
+}
 
 /// Efficiently calculates signature hash message for legacy and SegWit inputs.
 #[derive(Debug)]
@@ -88,6 +105,9 @@ pub struct SighashCache<T: Borrow<Transaction>> {
 
     /// Cache for SegWit v0 inputs (the result of another round of sha256 on `common_cache`).
     segwit_cache: Option<SegwitCache>,
+
+    /// Cache for Tidecoin witness-v1 SHA-512 inputs.
+    segwit_cache_512: Option<SegwitV1512Cache>,
 }
 
 /// Common values cached between SegWit inputs.
@@ -107,6 +127,14 @@ struct SegwitCache {
     prevouts: sha256d::Hash,
     sequences: sha256d::Hash,
     outputs: sha256d::Hash,
+}
+
+/// Values cached for Tidecoin witness-v1-512 inputs.
+#[derive(Debug)]
+struct SegwitV1512Cache {
+    prevouts: sha512::Hash,
+    sequences: sha512::Hash,
+    outputs: sha512::Hash,
 }
 
 /// Hashtype of an input's signature, encoded in the last byte of the signature.
@@ -291,7 +319,7 @@ impl<R: Borrow<Transaction>> SighashCache<R> {
     /// sighashes to be valid, no fields in the transaction may change except for script_sig and
     /// witness.
     pub fn new(tx: R) -> Self {
-        Self { tx, common_cache: None, segwit_cache: None }
+        Self { tx, common_cache: None, segwit_cache: None, segwit_cache_512: None }
     }
 
     /// Returns the reference to the cached transaction.
@@ -412,6 +440,99 @@ impl<R: Borrow<Transaction>> SighashCache<R> {
         )
         .map_err(SigningDataError::unwrap_sighash)?;
         Ok(SegwitV0Sighash::from_engine(enc))
+    }
+
+    /// Encodes the Tidecoin witness-v1-512 signing data for any flag type.
+    pub fn p2wsh512_encode_signing_data_to<W: Write>(
+        &mut self,
+        mut writer: W,
+        input_index: usize,
+        witness_script: &WitnessScript,
+        amount: Amount,
+        sighash_type: EcdsaSighashType,
+    ) -> Result<(), SigningDataError<transaction::InputsIndexError>> {
+        const TAG: &[u8] = b"TidecoinSighashV1_512";
+        let zero_hash = [0; 64];
+
+        if sighash_type.is_single() && input_index >= self.tx.borrow().outputs.len() {
+            return Err(SigningDataError::sighash(transaction::InputsIndexError(
+                transaction::IndexOutOfBoundsError {
+                    index: input_index,
+                    length: self.tx.borrow().outputs.len(),
+                },
+            )));
+        }
+
+        let tag_hash = sha512::Hash::hash(TAG);
+        writer.write_all(tag_hash.as_byte_array())?;
+        writer.write_all(tag_hash.as_byte_array())?;
+
+        let (sighash, anyone_can_pay) = sighash_type.split_anyonecanpay_flag();
+
+        io::encode_to_writer(&self.tx.borrow().version, &mut writer)?;
+
+        if !anyone_can_pay {
+            writer.write_all(self.segwit_cache_512().prevouts.as_byte_array())?;
+        } else {
+            writer.write_all(&zero_hash)?;
+        }
+
+        if !anyone_can_pay
+            && sighash != EcdsaSighashType::Single
+            && sighash != EcdsaSighashType::None
+        {
+            writer.write_all(self.segwit_cache_512().sequences.as_byte_array())?;
+        } else {
+            writer.write_all(&zero_hash)?;
+        }
+
+        {
+            let txin = &self.tx.borrow().tx_in(input_index).map_err(SigningDataError::sighash)?;
+            io::encode_to_writer(&txin.previous_output, &mut writer)?;
+            io::encode_to_writer(witness_script, &mut writer)?;
+            io::encode_to_writer(&amount, &mut writer)?;
+            io::encode_to_writer(&txin.sequence, &mut writer)?;
+        }
+
+        if sighash != EcdsaSighashType::Single && sighash != EcdsaSighashType::None {
+            writer.write_all(self.segwit_cache_512().outputs.as_byte_array())?;
+        } else if sighash == EcdsaSighashType::Single {
+            let mut single_enc = sha512::Hash::engine();
+            io::encode_to_writer(&self.tx.borrow().outputs[input_index], &mut single_enc)
+                .expect("hash engine does not fail");
+            let hash = sha512::Hash::from_engine(single_enc);
+            writer.write_all(hash.as_byte_array())?;
+        } else {
+            writer.write_all(&zero_hash)?;
+        }
+
+        io::encode_to_writer(&self.tx.borrow().lock_time, &mut writer)?;
+        writer.write_all(&sighash_type.to_u32().to_le_bytes())?;
+        Ok(())
+    }
+
+    /// Computes the Tidecoin witness-v1-512 sighash to spend a p2wsh512 transaction.
+    pub fn p2wsh512_signature_hash(
+        &mut self,
+        input_index: usize,
+        witness_script: &WitnessScript,
+        amount: Amount,
+        sighash_type: EcdsaSighashType,
+    ) -> Result<Sighash512, transaction::InputsIndexError> {
+        if sighash_type.is_single() && input_index >= self.tx.borrow().outputs.len() {
+            return Ok(Sighash512::from_byte_array(UINT512_ONE));
+        }
+
+        let mut enc = Sighash512::engine();
+        self.p2wsh512_encode_signing_data_to(
+            &mut enc,
+            input_index,
+            witness_script,
+            amount,
+            sighash_type,
+        )
+        .map_err(SigningDataError::unwrap_sighash)?;
+        Ok(Sighash512::from_engine(enc))
     }
 
     /// Encodes the legacy signing data from which a signature hash for a given input index with a
@@ -612,6 +733,29 @@ impl<R: Borrow<Transaction>> SighashCache<R> {
                 prevouts: common_cache.prevouts.hash_again(),
                 sequences: common_cache.sequences.hash_again(),
                 outputs: common_cache.outputs.hash_again(),
+            }
+        })
+    }
+
+    fn segwit_cache_512(&mut self) -> &SegwitV1512Cache {
+        let tx = self.tx.borrow();
+        self.segwit_cache_512.get_or_insert_with(|| {
+            let mut enc_prevouts = sha512::Hash::engine();
+            let mut enc_sequences = sha512::Hash::engine();
+            for txin in tx.inputs.iter() {
+                enc_prevouts = hashes::encode_to_engine(&txin.previous_output, enc_prevouts);
+                enc_sequences = hashes::encode_to_engine(&txin.sequence, enc_sequences);
+            }
+            SegwitV1512Cache {
+                prevouts: sha512::Hash::from_engine(enc_prevouts),
+                sequences: sha512::Hash::from_engine(enc_sequences),
+                outputs: {
+                    let mut enc = sha512::Hash::engine();
+                    for txout in tx.outputs.iter() {
+                        io::encode_to_writer(txout, &mut enc).unwrap();
+                    }
+                    sha512::Hash::from_engine(enc)
+                },
             }
         })
     }
@@ -834,13 +978,14 @@ impl<'a> Arbitrary<'a> for EcdsaSighashType {
 
 #[cfg(test)]
 mod tests {
+    use hashes::{sha512, HashEngine as _};
     use hex_unstable::hex;
 
     use super::*;
     use crate::consensus::deserialize;
     use crate::locktime::absolute;
-    use crate::script::{ScriptPubKeyBuf, WitnessScriptBuf};
-    use crate::{hex, TxIn, TxOut};
+    use crate::script::{ScriptPubKeyBuf, ScriptPubKeyBufExt as _, WitnessScriptBuf};
+    use crate::{hex, OutPoint, TxIn, TxOut, Txid};
 
     extern crate serde_json;
 
@@ -897,15 +1042,19 @@ mod tests {
             assert_eq!(got, want);
         }
 
-        // These test vectors were stolen from libbtc, which is Copyright 2014 Jonas Schnelli MIT
-        // They were transformed by replacing {...} with run_test_sighash(...), then the ones containing
-        // OP_CODESEPARATOR in their pubkeys were removed
-        let data = include_str!("../../tests/data/legacy_sighash.json");
+        // These are the node's current JSON vectors from `src/test/data/sighash.json`.
+        let data = include_str!("../../tests/data/sighash.json");
 
         let testdata = serde_json::from_str::<Value>(data).unwrap().as_array().unwrap().clone();
         for t in testdata.iter().skip(1) {
             let tx = t.get(0).unwrap().as_str().unwrap();
             let script = t.get(1).unwrap().as_str().unwrap_or("");
+            let parsed_script = ScriptPubKeyBuf::from(hex::decode_to_vec(script).unwrap());
+            if parsed_script.instructions().flatten().any(
+                |instruction| matches!(instruction, crate::script::Instruction::Op(op) if op == crate::opcodes::all::OP_CODESEPARATOR),
+            ) {
+                continue;
+            }
             let input_index = t.get(2).unwrap().as_u64().unwrap();
             let hash_type = t.get(3).unwrap().as_i64().unwrap();
             let expected_sighash = t.get(4).unwrap().as_str().unwrap();
@@ -1088,5 +1237,172 @@ mod tests {
         bip143_p2wsh_nested_in_p2sh_sighash_all_plus_anyonecanpay, AllPlusAnyoneCanPay, "2a67f03e63a6a422125878b40b82da593be8d4efaafe88ee528af6e5a9955c6e";
         bip143_p2wsh_nested_in_p2sh_sighash_none_plus_anyonecanpay, NonePlusAnyoneCanPay, "781ba15f3779d5542ce8ecb5c18716733a5ee42a6f51488ec96154934e2c890a";
         bip143_p2wsh_nested_in_p2sh_sighash_single_plus_anyonecanpay, SinglePlusAnyoneCanPay, "511e8e52ed574121fc1b654970395502128263f62662e076dc6baf05c2e6a99b";
+    }
+
+    fn p2wsh512_test_tx() -> (Transaction, WitnessScriptBuf, Amount) {
+        let tx = Transaction {
+            version: transaction::Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![
+                TxIn {
+                    previous_output: OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
+                    ..TxIn::EMPTY_COINBASE
+                },
+                TxIn {
+                    previous_output: OutPoint { txid: Txid::from_byte_array([2; 32]), vout: 1 },
+                    sequence: Sequence::from_consensus(0xFFFF_FFFE),
+                    ..TxIn::EMPTY_COINBASE
+                },
+            ],
+            outputs: vec![
+                TxOut {
+                    amount: Amount::from_sat_u32(50_000),
+                    script_pubkey: ScriptPubKeyBuf::new(),
+                },
+                TxOut {
+                    amount: Amount::from_sat_u32(75_000),
+                    script_pubkey: ScriptPubKeyBuf::new_op_return(hex!("5152")),
+                },
+            ],
+        };
+        let witness_script = WitnessScriptBuf::from_bytes(vec![0x51, 0x21, 0x01, 0xAC]);
+        let amount = Amount::from_sat_u32(123_456);
+        (tx, witness_script, amount)
+    }
+
+    fn manual_p2wsh512_sighash(
+        tx: &Transaction,
+        input_index: usize,
+        witness_script: &WitnessScript,
+        amount: Amount,
+        sighash_type: EcdsaSighashType,
+    ) -> Sighash512 {
+        if sighash_type.is_single() && input_index >= tx.outputs.len() {
+            return Sighash512::from_byte_array(UINT512_ONE);
+        }
+
+        let (sighash, anyone_can_pay) = sighash_type.split_anyonecanpay_flag();
+        let tag_hash = sha512::Hash::hash(b"TidecoinSighashV1_512");
+        let zero_hash = [0u8; 64];
+
+        let mut enc = sha512::Hash::engine();
+        enc.input(tag_hash.as_byte_array());
+        enc.input(tag_hash.as_byte_array());
+        io::encode_to_writer(&tx.version, &mut enc).unwrap();
+
+        if !anyone_can_pay {
+            let mut prevouts = sha512::Hash::engine();
+            for txin in &tx.inputs {
+                prevouts = hashes::encode_to_engine(&txin.previous_output, prevouts);
+            }
+            enc.input(sha512::Hash::from_engine(prevouts).as_byte_array());
+        } else {
+            enc.input(&zero_hash);
+        }
+
+        if !anyone_can_pay && sighash != EcdsaSighashType::Single && sighash != EcdsaSighashType::None {
+            let mut sequences = sha512::Hash::engine();
+            for txin in &tx.inputs {
+                sequences = hashes::encode_to_engine(&txin.sequence, sequences);
+            }
+            enc.input(sha512::Hash::from_engine(sequences).as_byte_array());
+        } else {
+            enc.input(&zero_hash);
+        }
+
+        let txin = &tx.inputs[input_index];
+        io::encode_to_writer(&txin.previous_output, &mut enc).unwrap();
+        io::encode_to_writer(witness_script, &mut enc).unwrap();
+        io::encode_to_writer(&amount, &mut enc).unwrap();
+        io::encode_to_writer(&txin.sequence, &mut enc).unwrap();
+
+        if sighash != EcdsaSighashType::Single && sighash != EcdsaSighashType::None {
+            let mut outputs = sha512::Hash::engine();
+            for txout in &tx.outputs {
+                io::encode_to_writer(txout, &mut outputs).unwrap();
+            }
+            enc.input(sha512::Hash::from_engine(outputs).as_byte_array());
+        } else if sighash == EcdsaSighashType::Single {
+            let mut output = sha512::Hash::engine();
+            io::encode_to_writer(&tx.outputs[input_index], &mut output).unwrap();
+            enc.input(sha512::Hash::from_engine(output).as_byte_array());
+        } else {
+            enc.input(&zero_hash);
+        }
+
+        io::encode_to_writer(&tx.lock_time, &mut enc).unwrap();
+        enc.input(&sighash_type.to_u32().to_le_bytes());
+        Sighash512::from_engine(enc)
+    }
+
+    #[test]
+    fn p2wsh512_sighash_single_oob_returns_one() {
+        let tx = Transaction {
+            version: transaction::Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint { txid: Txid::from_byte_array(UINT256_ONE), vout: 0 },
+                ..TxIn::EMPTY_COINBASE
+            }],
+            outputs: vec![],
+        };
+        let witness_script = WitnessScriptBuf::from_bytes(vec![0x51]);
+
+        let mut cache = SighashCache::new(&tx);
+        let hash = cache
+            .p2wsh512_signature_hash(0, &witness_script, Amount::ZERO, EcdsaSighashType::Single)
+            .unwrap();
+        assert_eq!(hash, Sighash512::from_byte_array(UINT512_ONE));
+    }
+
+    #[test]
+    fn p2wsh512_sighash_matches_manual_encoding_for_all_flags() {
+        use EcdsaSighashType::*;
+
+        let (tx, witness_script, amount) = p2wsh512_test_tx();
+        let cases = [
+            All,
+            None,
+            Single,
+            AllPlusAnyoneCanPay,
+            NonePlusAnyoneCanPay,
+            SinglePlusAnyoneCanPay,
+        ];
+
+        for sighash_type in cases {
+            let mut cache = SighashCache::new(&tx);
+            let got = cache
+                .p2wsh512_signature_hash(1, &witness_script, amount, sighash_type)
+                .unwrap();
+            let want = manual_p2wsh512_sighash(&tx, 1, &witness_script, amount, sighash_type);
+            assert_eq!(got, want, "mismatch for {sighash_type}");
+        }
+    }
+
+    #[test]
+    fn p2wsh512_cached_and_uncached_match() {
+        let (tx, witness_script, amount) = p2wsh512_test_tx();
+
+        let cached = {
+            let mut cache = SighashCache::new(&tx);
+            cache
+                .p2wsh512_signature_hash(
+                    0,
+                    &witness_script,
+                    amount,
+                    EcdsaSighashType::AllPlusAnyoneCanPay,
+                )
+                .unwrap()
+        };
+
+        let uncached = manual_p2wsh512_sighash(
+            &tx,
+            0,
+            &witness_script,
+            amount,
+            EcdsaSighashType::AllPlusAnyoneCanPay,
+        );
+
+        assert_eq!(cached, uncached);
     }
 }

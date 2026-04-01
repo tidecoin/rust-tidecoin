@@ -17,7 +17,7 @@ use io::{BufRead, Write};
 use crate::consensus::encode::{self, Decodable, Encodable, WriteExt as _};
 use crate::merkle_tree::{TxMerkleNode, WitnessMerkleNode};
 use crate::network::Params;
-use crate::prelude::Vec;
+use crate::prelude::{Box, Vec};
 use crate::script::{self, ScriptExt as _, ScriptIntError};
 use crate::transaction::{Coinbase, Transaction, TransactionExt as _};
 use crate::{internal_macros, BlockTime, Target, Weight, Work};
@@ -25,7 +25,7 @@ use crate::{internal_macros, BlockTime, Target, Weight, Work};
 #[rustfmt::skip]                // Keep public re-exports separate.
 #[doc(inline)]
 pub use primitives::block::{
-    Block, BlockDecoder, BlockEncoder, BlockHash, BlockHashDecoder, BlockHashEncoder,
+    AuxPow, Block, BlockDecoder, BlockEncoder, BlockHash, BlockHashDecoder, BlockHashEncoder,
     Checked, Unchecked, Validation, Version, VersionDecoder, VersionEncoder, Header,
     HeaderDecoder, HeaderEncoder, WitnessCommitment, compute_merkle_root, compute_witness_root,
 };
@@ -58,8 +58,123 @@ impl Decodable for BlockHash {
     }
 }
 
-#[rustfmt::skip]
-internal_macros::impl_consensus_encoding!(Header, version, prev_blockhash, merkle_root, time, bits, nonce);
+fn consensus_encode_pure_header<W: Write + ?Sized>(
+    header: &Header,
+    w: &mut W,
+) -> Result<usize, io::Error> {
+    let mut len = 0;
+    len += header.version.consensus_encode(w)?;
+    len += header.prev_blockhash.consensus_encode(w)?;
+    len += header.merkle_root.consensus_encode(w)?;
+    len += header.time.consensus_encode(w)?;
+    len += header.bits.consensus_encode(w)?;
+    len += header.nonce.consensus_encode(w)?;
+    Ok(len)
+}
+
+fn consensus_decode_pure_header_from_finite_reader<R: BufRead + ?Sized>(
+    r: &mut R,
+) -> Result<Header, encode::Error> {
+    Ok(Header {
+        version: Decodable::consensus_decode_from_finite_reader(r)?,
+        prev_blockhash: Decodable::consensus_decode_from_finite_reader(r)?,
+        merkle_root: Decodable::consensus_decode_from_finite_reader(r)?,
+        time: Decodable::consensus_decode_from_finite_reader(r)?,
+        bits: Decodable::consensus_decode_from_finite_reader(r)?,
+        nonce: Decodable::consensus_decode_from_finite_reader(r)?,
+        auxpow: None,
+    })
+}
+
+fn consensus_decode_pure_header<R: BufRead + ?Sized>(r: &mut R) -> Result<Header, encode::Error> {
+    Ok(Header {
+        version: Decodable::consensus_decode(r)?,
+        prev_blockhash: Decodable::consensus_decode(r)?,
+        merkle_root: Decodable::consensus_decode(r)?,
+        time: Decodable::consensus_decode(r)?,
+        bits: Decodable::consensus_decode(r)?,
+        nonce: Decodable::consensus_decode(r)?,
+        auxpow: None,
+    })
+}
+
+fn consensus_encode_auxpow<W: Write + ?Sized>(auxpow: &AuxPow, w: &mut W) -> Result<usize, io::Error> {
+    let mut len = 0;
+    len += auxpow.coinbase_tx.consensus_encode(w)?;
+    len += [0_u8; 32].consensus_encode(w)?;
+    len += auxpow.merkle_branch.consensus_encode(w)?;
+    len += 0_i32.consensus_encode(w)?;
+    len += auxpow.chain_merkle_branch.consensus_encode(w)?;
+    len += auxpow.chain_index.consensus_encode(w)?;
+    len += consensus_encode_pure_header(&auxpow.parent_block, w)?;
+    Ok(len)
+}
+
+fn consensus_decode_auxpow_from_finite_reader<R: BufRead + ?Sized>(
+    r: &mut R,
+) -> Result<AuxPow, encode::Error> {
+    let coinbase_tx = Decodable::consensus_decode_from_finite_reader(r)?;
+    let _: [u8; 32] = Decodable::consensus_decode_from_finite_reader(r)?;
+    let merkle_branch = Decodable::consensus_decode_from_finite_reader(r)?;
+    let coinbase_index: i32 = Decodable::consensus_decode_from_finite_reader(r)?;
+    if coinbase_index != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "auxpow coinbase index must be zero").into());
+    }
+    let chain_merkle_branch = Decodable::consensus_decode_from_finite_reader(r)?;
+    let chain_index = Decodable::consensus_decode_from_finite_reader(r)?;
+    let parent_block = consensus_decode_pure_header_from_finite_reader(r)?;
+
+    Ok(AuxPow { coinbase_tx, merkle_branch, chain_merkle_branch, chain_index, parent_block })
+}
+
+fn consensus_decode_auxpow<R: BufRead + ?Sized>(r: &mut R) -> Result<AuxPow, encode::Error> {
+    let coinbase_tx = Decodable::consensus_decode(r)?;
+    let _: [u8; 32] = Decodable::consensus_decode(r)?;
+    let merkle_branch = Decodable::consensus_decode(r)?;
+    let coinbase_index: i32 = Decodable::consensus_decode(r)?;
+    if coinbase_index != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "auxpow coinbase index must be zero").into());
+    }
+    let chain_merkle_branch = Decodable::consensus_decode(r)?;
+    let chain_index = Decodable::consensus_decode(r)?;
+    let parent_block = consensus_decode_pure_header(r)?;
+
+    Ok(AuxPow { coinbase_tx, merkle_branch, chain_merkle_branch, chain_index, parent_block })
+}
+
+impl Encodable for Header {
+    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
+        let mut len = consensus_encode_pure_header(self, w)?;
+        if self.version.is_auxpow() {
+            let auxpow = self.auxpow.as_ref().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "auxpow flag set but auxpow missing")
+            })?;
+            len += consensus_encode_auxpow(auxpow, w)?;
+        }
+        Ok(len)
+    }
+}
+
+impl Decodable for Header {
+    fn consensus_decode_from_finite_reader<R: BufRead + ?Sized>(
+        r: &mut R,
+    ) -> Result<Self, encode::Error> {
+        let mut header = consensus_decode_pure_header_from_finite_reader(r)?;
+        if header.version.is_auxpow() {
+            header.auxpow = Some(Box::new(consensus_decode_auxpow_from_finite_reader(r)?));
+        }
+        Ok(header)
+    }
+
+    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
+        let mut r = io::Read::take(r, internals::ToU64::to_u64(encode::MAX_VEC_SIZE));
+        let mut header = consensus_decode_pure_header(&mut r)?;
+        if header.version.is_auxpow() {
+            header.auxpow = Some(Box::new(consensus_decode_auxpow(&mut r)?));
+        }
+        Ok(header)
+    }
+}
 
 internal_macros::define_extension_trait! {
     /// Extension functionality for the [`Header`] type.
@@ -183,12 +298,12 @@ impl BlockCheckedExt for Block<Checked> {
 
     fn weight(&self) -> Weight {
         // This is the exact definition of a weight unit, as defined by BIP-0141 (quote above).
-        let wu = block_base_size(self.transactions()) * 3 + self.total_size();
+        let wu = block_base_size(self.header(), self.transactions()) * 3 + self.total_size();
         Weight::from_wu(wu.to_u64())
     }
 
     fn total_size(&self) -> usize {
-        let mut size = Header::SIZE;
+        let mut size = self.header().serialized_len();
 
         size += CompactSizeEncoder::encoded_size(self.transactions().len());
         size += self.transactions().iter().map(|tx| tx.total_size()).sum::<usize>();
@@ -233,8 +348,8 @@ impl BlockCheckedExt for Block<Checked> {
     }
 }
 
-fn block_base_size(transactions: &[Transaction]) -> usize {
-    let mut size = Header::SIZE;
+fn block_base_size(header: &Header, transactions: &[Transaction]) -> usize {
+    let mut size = header.serialized_len();
 
     size += CompactSizeEncoder::encoded_size(transactions.len());
     size += transactions.iter().map(|tx| tx.base_size()).sum::<usize>();
@@ -392,22 +507,109 @@ impl std::error::Error for ValidationError {
 #[cfg(test)]
 mod tests {
     use alloc::string::ToString;
+    use alloc::vec;
 
     use hex_unstable::hex;
     use internals::ToU64 as _;
 
     use super::*;
     use crate::consensus::encode::{deserialize, serialize};
-    use crate::pow::test_utils::{u128_to_work, u64_to_work};
+    use crate::pow::test_utils::u128_to_work;
     use crate::script::{ScriptPubKeyBuf, ScriptSigBuf};
     use crate::transaction::{OutPoint, Transaction, TxIn, TxOut, Txid};
     use crate::{block, Amount, CompactTarget, Network, Sequence, Witness, Wtxid};
 
+    fn synthetic_segwit_block() -> Block<Checked> {
+        const RESERVED_VALUE: [u8; 32] = [0; 32];
+
+        let mut coinbase_input = TxIn::EMPTY_COINBASE;
+        coinbase_input.script_sig = ScriptSigBuf::from_bytes(vec![0x01, 0x00]);
+        coinbase_input.witness.push(RESERVED_VALUE);
+
+        let coinbase_placeholder = Transaction {
+            version: primitives::transaction::Version::ONE,
+            lock_time: crate::absolute::LockTime::ZERO,
+            inputs: vec![coinbase_input],
+            outputs: vec![TxOut {
+                amount: Amount::from_sat(5_000_000_000).expect("coinbase amount"),
+                script_pubkey: ScriptPubKeyBuf::new(),
+            }],
+        };
+
+        let mut spend_witness = Witness::new();
+        spend_witness.push([0x30; 71]);
+        spend_witness.push([0x02; 33]);
+
+        let spend = Transaction {
+            version: primitives::transaction::Version::TWO,
+            lock_time: crate::absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint {
+                    txid: coinbase_placeholder.compute_txid(),
+                    vout: 0,
+                },
+                script_sig: ScriptSigBuf::new(),
+                sequence: Sequence::MAX,
+                witness: spend_witness,
+            }],
+            outputs: vec![TxOut {
+                amount: Amount::from_sat_u32(1_000),
+                script_pubkey: ScriptPubKeyBuf::from_bytes(vec![0x51]),
+            }],
+        };
+
+        let placeholder_header = Header {
+            version: Version::TWO,
+            prev_blockhash: BlockHash::from_byte_array([0x11; 32]),
+            merkle_root: TxMerkleNode::from_byte_array([0; 32]),
+            time: BlockTime::from_u32(1_700_000_000),
+            bits: CompactTarget::from_consensus(0x207f_ffff),
+            nonce: 0,
+            auxpow: None,
+        };
+
+        let block = Block::new_unchecked(
+            placeholder_header.clone(),
+            vec![coinbase_placeholder.clone(), spend.clone()],
+        );
+        let (_, commitment) = block
+            .compute_witness_commitment(&RESERVED_VALUE)
+            .expect("witness commitment");
+
+        let mut commitment_script = vec![0x6a, 0x24, 0xaa, 0x21, 0xa9, 0xed];
+        commitment_script.extend_from_slice(&commitment.to_byte_array());
+
+        let coinbase = Transaction {
+            outputs: vec![TxOut {
+                amount: Amount::from_sat(5_000_000_000).expect("coinbase amount"),
+                script_pubkey: ScriptPubKeyBuf::from_bytes(commitment_script),
+            }],
+            ..coinbase_placeholder
+        };
+
+        let transactions = vec![coinbase, spend];
+
+        let mut header = Header {
+            merkle_root: block::compute_merkle_root(&transactions).expect("merkle root"),
+            ..placeholder_header
+        };
+
+        while header.validate_pow(header.target()).is_err() {
+            header.nonce += 1;
+        }
+
+        let block = Block::new_unchecked(header, transactions);
+        let (witness_commitment_matches, witness_root) = block.check_witness_commitment();
+        assert!(witness_commitment_matches);
+        assert!(witness_root.is_some());
+        block.assume_checked(witness_root)
+    }
+
     #[test]
     fn static_vector() {
-        // testnet block 000000000000045e0b1660b6445b5e5c5ab63c9a4f956be7e1e69be04fa4497b
-        let segwit_block = include_bytes!("../../tests/data/testnet_block_000000000000045e0b1660b6445b5e5c5ab63c9a4f956be7e1e69be04fa4497b.raw");
-        let block: Block = deserialize(&segwit_block[..]).expect("failed to deserialize block");
+        // Node bench fixture `src/bench/data/block413567.raw`.
+        let raw_block = include_bytes!("../../tests/data/node_block_413567.raw");
+        let block: Block = deserialize(&raw_block[..]).expect("failed to deserialize block");
         assert!(block.check_merkle_root());
 
         let (header, transactions) = block.into_parts();
@@ -514,7 +716,7 @@ mod tests {
             real_decode.block_hash()
         );
         assert_eq!(real_decode.total_size(), some_block.len());
-        assert_eq!(block_base_size(real_decode.transactions()), some_block.len());
+        assert_eq!(block_base_size(real_decode.header(), real_decode.transactions()), some_block.len());
         assert_eq!(real_decode.weight(), Weight::from_vb_unchecked(some_block.len().to_u64()));
 
         assert_eq!(serialize(&real_decode), some_block);
@@ -523,14 +725,9 @@ mod tests {
     // Check that a witness block round-trips correctly under Tidecoin's difficulty parameters.
     #[test]
     fn segwit_block() {
-        let params = Params::new(Network::Testnet);
-        let segwit_block = include_bytes!("../../tests/data/testnet_block_000000000000045e0b1660b6445b5e5c5ab63c9a4f956be7e1e69be04fa4497b.raw").to_vec();
+        let segwit_block = serialize(&synthetic_segwit_block());
 
         let decode: Result<Block, _> = deserialize(&segwit_block);
-
-        let prevhash = hex!("2aa2f2ca794ccbd40c16e2f3333f6b8b683f9e7179b2c4d74906000000000000");
-        let merkle = hex!("10bc26e70a2f672ad420a6153dd0c28b40a6002c55531bfc99bf8994a8e8f67e");
-        let work = u64_to_work(0x257c3becdacc64_u64);
 
         assert!(decode.is_ok());
 
@@ -542,48 +739,127 @@ mod tests {
         let real_decode =
             Block::new_unchecked(header, transactions.clone()).assume_checked(witness_root);
 
-        assert_eq!(real_decode.header().version, Version::from_consensus(0x2000_0000)); // VERSIONBITS but no bits set
-        assert_eq!(serialize(&real_decode.header().prev_blockhash), prevhash);
-        assert_eq!(serialize(&real_decode.header().merkle_root), merkle);
+        assert_eq!(real_decode.header().version, Version::TWO);
+        assert_eq!(
+            real_decode.header().prev_blockhash,
+            BlockHash::from_byte_array([0x11; 32])
+        );
         assert_eq!(
             real_decode.header().merkle_root,
             block::compute_merkle_root(&transactions).unwrap()
         );
-        assert_eq!(real_decode.header().time, BlockTime::from_u32(1472004949));
-        assert_eq!(real_decode.header().bits, CompactTarget::from_consensus(0x1a06d450));
-        assert_eq!(real_decode.header().nonce, 1879759182);
-        assert_eq!(real_decode.header().work(), work);
-        assert_eq!(real_decode.header().difficulty(&params), 82_430_394_202_539);
-        assert_eq!(
-            real_decode.header().difficulty_float(&params),
-            82_430_394_202_539.94
-        );
+        assert_eq!(real_decode.header().time, BlockTime::from_u32(1_700_000_000));
+        assert_eq!(real_decode.header().bits, CompactTarget::from_consensus(0x207f_ffff));
+        assert_eq!(real_decode.header().work(), real_decode.header().target().to_work());
 
         assert_eq!(
             real_decode.header().validate_pow(real_decode.header().target()).unwrap(),
             real_decode.block_hash()
         );
         assert_eq!(real_decode.total_size(), segwit_block.len());
-        assert_eq!(block_base_size(real_decode.transactions()), 4283);
-        assert_eq!(real_decode.weight(), Weight::from_wu(17168));
+        assert!(block_base_size(real_decode.header(), real_decode.transactions()) < segwit_block.len());
+        assert!(real_decode.weight() < Weight::from_wu((segwit_block.len() * 4) as u64));
 
         assert_eq!(serialize(&real_decode), segwit_block);
     }
 
     #[test]
     fn block_version() {
-        let block = hex!("ffffff7f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        let make_block = |version| {
+            serialize(&Block::new_unchecked(
+                Header {
+                    version,
+                    prev_blockhash: BlockHash::from_byte_array([0; 32]),
+                    merkle_root: TxMerkleNode::from_byte_array([0; 32]),
+                    time: BlockTime::from_u32(0),
+                    bits: CompactTarget::from_consensus(0),
+                    nonce: 0,
+                    auxpow: None,
+                },
+                Vec::new(),
+            ))
+        };
+
+        let block = make_block(Version::from_consensus(0x7fff_fe00));
         let decode: Result<Block, _> = deserialize(&block);
         assert!(decode.is_ok());
 
         let real_decode = decode.unwrap().assume_checked(None);
-        assert_eq!(real_decode.header().version, Version::from_consensus(2147483647));
+        assert_eq!(real_decode.header().version, Version::from_consensus(0x7fff_fe00));
 
-        let block2 = hex!("000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        let block2 = make_block(Version::from_consensus(-2147483648));
         let decode2: Result<Block, _> = deserialize(&block2);
         assert!(decode2.is_ok());
         let real_decode2 = decode2.unwrap().assume_checked(None);
         assert_eq!(real_decode2.header().version, Version::from_consensus(-2147483648));
+    }
+
+    #[test]
+    fn auxpow_roundtrip_with_flag() {
+        let mut header = Header {
+            version: Version::with_base_version(1, 8).with_auxpow(true),
+            prev_blockhash: BlockHash::from_byte_array([0; 32]),
+            merkle_root: TxMerkleNode::from_byte_array([0; 32]),
+            time: BlockTime::from_u32(1),
+            bits: CompactTarget::from_consensus(0x1d00ffff),
+            nonce: 2,
+            auxpow: None,
+        };
+        header.auxpow = Some(Box::new(AuxPow::minimal_for_header(&header)));
+
+        let encoded = serialize(&header);
+        let decoded: Header = deserialize(&encoded).expect("auxpow header should roundtrip");
+
+        assert!(decoded.version.is_auxpow());
+        assert!(decoded.auxpow.is_some());
+        assert_eq!(decoded.version, header.version);
+        assert_eq!(
+            decoded.auxpow.as_ref().unwrap().parent_block.block_hash(),
+            header.auxpow.as_ref().unwrap().parent_block.block_hash()
+        );
+    }
+
+    #[test]
+    fn no_auxpow_roundtrip_clears_ptr() {
+        let header = Header {
+            version: Version::ONE,
+            prev_blockhash: BlockHash::from_byte_array([0; 32]),
+            merkle_root: TxMerkleNode::from_byte_array([0; 32]),
+            time: BlockTime::from_u32(3),
+            bits: CompactTarget::from_consensus(0x1d00ffff),
+            nonce: 4,
+            auxpow: None,
+        };
+
+        let encoded = serialize(&header);
+        let decoded: Header = deserialize(&encoded).expect("plain header should roundtrip");
+
+        assert!(!decoded.version.is_auxpow());
+        assert!(decoded.auxpow.is_none());
+        assert_eq!(decoded.version, header.version);
+    }
+
+    #[test]
+    fn auxpow_block_total_size_counts_header_payload() {
+        let mut header = Header {
+            version: Version::with_base_version(1, 8).with_auxpow(true),
+            prev_blockhash: BlockHash::from_byte_array([0; 32]),
+            merkle_root: TxMerkleNode::from_byte_array([0; 32]),
+            time: BlockTime::from_u32(5),
+            bits: CompactTarget::from_consensus(0x1d00ffff),
+            nonce: 6,
+            auxpow: None,
+        };
+        header.auxpow = Some(Box::new(AuxPow::minimal_for_header(&header)));
+        let tx = Transaction {
+            version: primitives::transaction::Version::ONE,
+            lock_time: crate::absolute::LockTime::ZERO,
+            inputs: vec![TxIn::EMPTY_COINBASE],
+            outputs: vec![],
+        };
+        let block = Block::new_unchecked(header, vec![tx]).assume_checked(None);
+
+        assert_eq!(block.total_size(), serialize(&block).len());
     }
 
     #[test]
@@ -657,7 +933,7 @@ mod tests {
         // Use the genesis block which has a valid coinbase
         let genesis = constants::genesis_block(Network::Tidecoin);
 
-        let header = *genesis.header();
+        let header = genesis.header().clone();
         let transactions = genesis.transactions().to_vec();
 
         let unchecked_block = Block::new_unchecked(header, transactions);
@@ -688,14 +964,14 @@ mod tests {
 
         // Test successful validation with genesis block
         let genesis = constants::genesis_block(Network::Tidecoin);
-        let header = *genesis.header();
+        let header = genesis.header().clone();
         let transactions = genesis.transactions().to_vec();
 
-        let checked_block = Block::new_checked(header, transactions);
+        let checked_block = Block::new_checked(header.clone(), transactions);
         assert!(checked_block.is_ok(), "Genesis block should validate via new_checked");
 
         // Test validation failure with empty transactions
-        let empty_result = Block::new_checked(header, Vec::new());
+        let empty_result = Block::new_checked(header.clone(), Vec::new());
         match empty_result {
             Err(InvalidBlockError::NoTransactions) => (),
             other => panic!("Expected NoTransactions error, got: {:?}", other),

@@ -172,6 +172,7 @@ pub fn genesis_block(params: impl AsRef<Params>) -> Block<Checked> {
                 time: BlockTime::from_u32(1609074580),
                 bits: CompactTarget::from_consensus(0x2001ffff),
                 nonce: 11033477,
+                auxpow: None,
             },
             transactions,
         )
@@ -184,6 +185,7 @@ pub fn genesis_block(params: impl AsRef<Params>) -> Block<Checked> {
                 time: BlockTime::from_u32(1609074580),
                 bits: CompactTarget::from_consensus(0x200f0f0f),
                 nonce: 0,
+                auxpow: None,
             },
             transactions,
         )

@@ -591,7 +591,7 @@ impl HeaderAndShortIds {
         }
 
         Ok(Self {
-            header: *block.header(),
+            header: block.header().clone(),
             nonce,
             // Provide coinbase prefilled.
             prefilled_txs: prefilled,
@@ -1040,6 +1040,7 @@ mod test {
             time: BlockTime::from_u32(2),
             bits: CompactTarget::from_consensus(3),
             nonce: 4,
+            auxpow: None,
         };
         let transactions = vec![dummy_tx(&[2]), dummy_tx(&[3]), dummy_tx(&[4])];
         Block::new_unchecked(header, transactions).assume_checked(None)

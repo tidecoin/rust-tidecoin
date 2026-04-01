@@ -2,7 +2,7 @@
 
 //! Tidecoin-specific PSBT proprietary helpers.
 
-use crate::crypto::pq::PqPublicKey;
+use crate::crypto::pq::{PqPublicKey, PqSignature};
 use crate::pqhd::{self, SeedId};
 use crate::prelude::{btree_map, BTreeMap, Vec};
 use crate::psbt::map::{Input, Output};
@@ -13,6 +13,8 @@ use crate::consensus::encode::{Decodable, Encodable};
 pub const PROPRIETARY_IDENTIFIER: &[u8] = b"tidecoin";
 /// Tidecoin proprietary subtype for PQHD origin metadata.
 pub const SUBTYPE_PQHD_ORIGIN: u64 = 0x01;
+/// Tidecoin proprietary subtype for PQ partial signatures.
+pub const SUBTYPE_PQ_PARTIAL_SIGNATURE: u64 = 0x02;
 const V1_PATH_LEN: usize = 6;
 
 /// Decoded Tidecoin PQHD origin metadata.
@@ -24,6 +26,15 @@ pub struct PqhdOrigin {
     pub seed_id: SeedId,
     /// Hardened-only PQHD v1 path.
     pub path_hardened: Vec<u32>,
+}
+
+/// Decoded Tidecoin PQ partial signature metadata for a PSBT input.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PqPartialSignature {
+    /// Prefixed PQ public key bytes.
+    pub pubkey: PqPublicKey,
+    /// Raw PQ signature bytes.
+    pub signature: PqSignature,
 }
 
 impl Input {
@@ -40,6 +51,23 @@ impl Input {
     /// Returns decoded Tidecoin PQHD origin records on this input.
     pub fn pqhd_origins(&self) -> Vec<PqhdOrigin> {
         self.proprietary.iter().filter_map(|(key, value)| decode_pqhd_origin(key, value)).collect()
+    }
+
+    /// Adds a Tidecoin PQ partial signature record for this input.
+    pub fn add_pq_partial_signature(
+        &mut self,
+        pubkey: &PqPublicKey,
+        signature: &PqSignature,
+    ) -> bool {
+        add_pq_partial_signature(&mut self.proprietary, pubkey, signature)
+    }
+
+    /// Returns decoded Tidecoin PQ partial signatures on this input.
+    pub fn pq_partial_signatures(&self) -> Vec<PqPartialSignature> {
+        self.proprietary
+            .iter()
+            .filter_map(|(key, value)| decode_pq_partial_signature(key, value))
+            .collect()
     }
 }
 
@@ -111,6 +139,52 @@ pub fn add_pqhd_origin(
         key: pubkey.to_prefixed_bytes(),
     };
     let value = make_pqhd_origin_value(seed_id, path_hardened);
+
+    match proprietary.entry(key) {
+        btree_map::Entry::Vacant(entry) => {
+            entry.insert(value);
+            true
+        }
+        btree_map::Entry::Occupied(_) => false,
+    }
+}
+
+/// Decodes a Tidecoin PQ partial signature record if the key and value are valid.
+pub fn decode_pq_partial_signature(
+    key: &raw::ProprietaryKey,
+    value: &[u8],
+) -> Option<PqPartialSignature> {
+    if key.prefix != PROPRIETARY_IDENTIFIER {
+        return None;
+    }
+    if key.subtype != SUBTYPE_PQ_PARTIAL_SIGNATURE {
+        return None;
+    }
+
+    let pubkey = PqPublicKey::from_prefixed_slice(&key.key).ok()?;
+    if value.is_empty() || value.len() > pubkey.scheme().max_sig_len() {
+        return None;
+    }
+
+    Some(PqPartialSignature { pubkey, signature: PqSignature::from_slice(value) })
+}
+
+/// Adds a Tidecoin PQ partial signature record to a proprietary map.
+pub fn add_pq_partial_signature(
+    proprietary: &mut BTreeMap<raw::ProprietaryKey, Vec<u8>>,
+    pubkey: &PqPublicKey,
+    signature: &PqSignature,
+) -> bool {
+    if signature.is_empty() || signature.len() > pubkey.scheme().max_sig_len() {
+        return false;
+    }
+
+    let key = raw::ProprietaryKey {
+        prefix: PROPRIETARY_IDENTIFIER.to_vec(),
+        subtype: SUBTYPE_PQ_PARTIAL_SIGNATURE,
+        key: pubkey.to_prefixed_bytes(),
+    };
+    let value = signature.as_bytes().to_vec();
 
     match proprietary.entry(key) {
         btree_map::Entry::Vacant(entry) => {
@@ -282,5 +356,69 @@ mod tests {
         psbt_a.combine(psbt_b).unwrap();
         assert_eq!(psbt_a.inputs[0].pqhd_origins().len(), 1);
         assert_eq!(psbt_a.outputs[0].pqhd_origins().len(), 1);
+    }
+
+    #[test]
+    fn pq_partial_signature_roundtrip_and_combine() {
+        let mut psbt_a = minimal_psbt();
+        let mut psbt_b = minimal_psbt();
+
+        let pubkey_a = dummy_pubkey(0x07);
+        let pubkey_b = dummy_pubkey(0x0A);
+        let sig_a = PqSignature::from_slice(&vec![0x11; 700]);
+        let sig_b = PqSignature::from_slice(&vec![0x22; 1024]);
+
+        assert!(psbt_a.inputs[0].add_pq_partial_signature(&pubkey_a, &sig_a));
+        assert!(psbt_b.inputs[0].add_pq_partial_signature(&pubkey_b, &sig_b));
+
+        let encoded = psbt_a.serialize();
+        let decoded = Psbt::deserialize(&encoded).unwrap();
+        let partial = decoded.inputs[0].pq_partial_signatures().pop().unwrap();
+        assert_eq!(partial.pubkey, pubkey_a);
+        assert_eq!(partial.signature, sig_a);
+
+        psbt_a.combine(psbt_b).unwrap();
+        let partials = psbt_a.inputs[0].pq_partial_signatures();
+        assert_eq!(partials.len(), 2);
+        assert!(partials.iter().any(|partial| partial.pubkey == pubkey_a && partial.signature == sig_a));
+        assert!(partials.iter().any(|partial| partial.pubkey == pubkey_b && partial.signature == sig_b));
+    }
+
+    #[test]
+    fn pq_partial_signature_rejects_invalid_records() {
+        let pubkey = dummy_pubkey(0x07);
+        let key = raw::ProprietaryKey {
+            prefix: PROPRIETARY_IDENTIFIER.to_vec(),
+            subtype: SUBTYPE_PQ_PARTIAL_SIGNATURE,
+            key: pubkey.to_prefixed_bytes(),
+        };
+
+        assert!(decode_pq_partial_signature(&key, &[]).is_none());
+        assert!(decode_pq_partial_signature(
+            &key,
+            &vec![0x33; pubkey.scheme().max_sig_len() + 1]
+        )
+        .is_none());
+
+        let wrong_id = raw::ProprietaryKey {
+            prefix: b"nottide".to_vec(),
+            subtype: SUBTYPE_PQ_PARTIAL_SIGNATURE,
+            key: pubkey.to_prefixed_bytes(),
+        };
+        assert!(decode_pq_partial_signature(&wrong_id, &[0x44]).is_none());
+
+        let wrong_subtype = raw::ProprietaryKey {
+            prefix: PROPRIETARY_IDENTIFIER.to_vec(),
+            subtype: SUBTYPE_PQ_PARTIAL_SIGNATURE + 1,
+            key: pubkey.to_prefixed_bytes(),
+        };
+        assert!(decode_pq_partial_signature(&wrong_subtype, &[0x44]).is_none());
+
+        let mut psbt = minimal_psbt();
+        assert!(!psbt.inputs[0].add_pq_partial_signature(&pubkey, &PqSignature::from_slice(&[])));
+        assert!(!psbt.inputs[0].add_pq_partial_signature(
+            &pubkey,
+            &PqSignature::from_slice(&vec![0x55; pubkey.scheme().max_sig_len() + 1]),
+        ));
     }
 }

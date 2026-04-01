@@ -9,12 +9,13 @@
 
 use core::convert::Infallible;
 use core::fmt;
+use core::mem;
 #[cfg(feature = "alloc")]
 use core::marker::PhantomData;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use encoding::{ArrayDecoder, Decoder6};
+use encoding::{ArrayDecoder, Decoder6, Encodable as _};
 #[cfg(feature = "alloc")]
 use encoding::{CompactSizeEncoder, Decoder2, Encoder2, SliceEncoder, VecDecoder};
 use hashes::{sha256d, HashEngine as _};
@@ -27,11 +28,13 @@ use crate::merkle_tree::WitnessMerkleNode;
 use crate::merkle_tree::{TxMerkleNode, TxMerkleNodeDecoder, TxMerkleNodeDecoderError};
 use crate::pow::{CompactTargetDecoder, CompactTargetDecoderError};
 #[cfg(feature = "alloc")]
-use crate::prelude::Vec;
+use crate::prelude::{Box, Vec};
 use crate::time::{BlockTimeDecoder, BlockTimeDecoderError};
 use crate::{BlockTime, CompactTarget};
 #[cfg(feature = "alloc")]
-use crate::{Transaction, Wtxid};
+use crate::{Transaction, TxIn, Wtxid};
+#[cfg(feature = "alloc")]
+use crate::script::ScriptSigBuf;
 
 #[rustfmt::skip]                // Keep public re-exports separate.
 #[doc(inline)]
@@ -531,6 +534,103 @@ fn witness_commitment_from_coinbase(coinbase: &Transaction) -> Option<WitnessCom
     }
 }
 
+/// Merge-mining auxpow payload appended to a Tidecoin block header when the auxpow version bit is set.
+#[cfg(feature = "alloc")]
+#[derive(PartialEq, Eq, Clone, Debug, PartialOrd, Ord, Hash)]
+pub struct AuxPow {
+    /// The parent block's coinbase transaction.
+    pub coinbase_tx: Transaction,
+    /// The merkle branch of the coinbase transaction to the parent block merkle root.
+    pub merkle_branch: Vec<BlockHash>,
+    /// The merkle branch linking the Tidecoin block hash into the coinbase commitment.
+    pub chain_merkle_branch: Vec<BlockHash>,
+    /// Merkle tree index of the aux block hash in the coinbase.
+    pub chain_index: i32,
+    /// Parent block header. This is always encoded as a pure 80-byte header.
+    pub parent_block: Header,
+}
+
+#[cfg(feature = "alloc")]
+impl AuxPow {
+    fn consensus_bytes(&self) -> Vec<u8> {
+        let mut bytes = encoding::encode_to_vec(&self.coinbase_tx);
+        bytes.extend_from_slice(&[0; 32]); // hashBlock placeholder
+        bytes.extend_from_slice(&crate::compact_size_encode(self.merkle_branch.len()));
+        for hash in &self.merkle_branch {
+            bytes.extend_from_slice(hash.as_byte_array());
+        }
+        bytes.extend_from_slice(&0_i32.to_le_bytes()); // coinbase index placeholder
+        bytes.extend_from_slice(&crate::compact_size_encode(self.chain_merkle_branch.len()));
+        for hash in &self.chain_merkle_branch {
+            bytes.extend_from_slice(hash.as_byte_array());
+        }
+        bytes.extend_from_slice(&self.chain_index.to_le_bytes());
+        bytes.extend_from_slice(&pure_header_bytes(&self.parent_block));
+        bytes
+    }
+
+    fn consensus_len(&self) -> usize { self.consensus_bytes().len() }
+
+    /// Creates the minimal auxpow payload used by the Tidecoin node serialization tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the fixed merged-mining commitment no longer fits in a single-byte script push.
+    pub fn minimal_for_header(header: &Header) -> Self {
+        debug_assert!(header.version.is_auxpow());
+
+        let mut input_data = header.block_hash().to_byte_array().to_vec();
+        input_data.reverse();
+        input_data.push(1);
+        input_data.extend_from_slice(&[0; 7]);
+
+        let mut script_sig = Vec::with_capacity(1 + input_data.len());
+        script_sig.push(u8::try_from(input_data.len()).expect("merged-mining commitment is small"));
+        script_sig.extend_from_slice(&input_data);
+
+        let coinbase_tx = Transaction {
+            version: crate::transaction::Version::ONE,
+            lock_time: crate::absolute::LockTime::ZERO,
+            inputs: Vec::from([TxIn {
+                script_sig: ScriptSigBuf::from_bytes(script_sig),
+                ..TxIn::EMPTY_COINBASE
+            }]),
+            outputs: Vec::new(),
+        };
+
+        let parent_block = Header {
+            version: Version::ONE,
+            prev_blockhash: BlockHash::from_byte_array([0; 32]),
+            merkle_root: compute_merkle_root(core::slice::from_ref(&coinbase_tx))
+                .expect("single coinbase transaction has a merkle root"),
+            time: BlockTime::from_u32(0),
+            bits: CompactTarget::from_consensus(0),
+            nonce: 0,
+            auxpow: None,
+        };
+
+        Self {
+            coinbase_tx,
+            merkle_branch: Vec::new(),
+            chain_merkle_branch: Vec::new(),
+            chain_index: 0,
+            parent_block,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn pure_header_bytes(header: &Header) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(Header::SIZE);
+    bytes.extend_from_slice(&header.version.to_consensus().to_le_bytes());
+    bytes.extend_from_slice(header.prev_blockhash.as_byte_array());
+    bytes.extend_from_slice(header.merkle_root.as_byte_array());
+    bytes.extend_from_slice(&header.time.to_u32().to_le_bytes());
+    bytes.extend_from_slice(&header.bits.to_consensus().to_le_bytes());
+    bytes.extend_from_slice(&header.nonce.to_le_bytes());
+    bytes
+}
+
 /// Bitcoin block header.
 ///
 /// Contains all the block's information except the actual transactions, but
@@ -541,7 +641,7 @@ fn witness_commitment_from_coinbase(coinbase: &Transaction) -> Option<WitnessCom
 /// # Bitcoin Core References
 ///
 /// * [CBlockHeader definition](https://github.com/bitcoin/bitcoin/blob/345457b542b6a980ccfbc868af0970a6f91d1b82/src/primitives/block.h#L20)
-#[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
 pub struct Header {
     /// Block version, now repurposed for soft fork signalling.
     pub version: Version,
@@ -555,6 +655,9 @@ pub struct Header {
     pub bits: CompactTarget,
     /// The nonce, selected to obtain a low enough blockhash.
     pub nonce: u32,
+    /// Optional auxpow payload appended to the header when the auxpow version bit is set.
+    #[cfg(feature = "alloc")]
+    pub auxpow: Option<Box<AuxPow>>,
 }
 
 impl Header {
@@ -562,10 +665,23 @@ impl Header {
     // Serialized length of fields (version, prev_blockhash, merkle_root, time, bits, nonce)
     pub const SIZE: usize = 4 + 32 + 32 + 4 + 4 + 4; // 80
 
+    /// Returns the serialized header length, including auxpow when present.
+    #[cfg(feature = "alloc")]
+    pub fn serialized_len(&self) -> usize {
+        Self::SIZE + self.auxpow.as_ref().map_or(0, |auxpow| auxpow.consensus_len())
+    }
+
     /// Returns the block hash.
-    // This is the same as `Encodable` but done manually because `Encodable` isn't in `primitives`.
+    // This hashes only the six standard header fields; auxpow is not committed by the block hash.
     pub fn block_hash(&self) -> BlockHash {
-        let bare_hash = hashes::encode_to_engine(self, sha256d::Hash::engine()).finalize();
+        let mut bare_hash = sha256d::Hash::engine();
+        bare_hash = hashes::encode_to_engine(&self.version, bare_hash);
+        bare_hash = hashes::encode_to_engine(&self.prev_blockhash, bare_hash);
+        bare_hash = hashes::encode_to_engine(&self.merkle_root, bare_hash);
+        bare_hash = hashes::encode_to_engine(&self.time, bare_hash);
+        bare_hash = hashes::encode_to_engine(&self.bits, bare_hash);
+        bare_hash.input(&self.nonce.to_le_bytes());
+        let bare_hash = bare_hash.finalize();
         BlockHash::from_byte_array(bare_hash.to_byte_array())
     }
 }
@@ -602,15 +718,17 @@ impl fmt::UpperHex for Header {
 
 impl fmt::Debug for Header {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Header")
-            .field("block_hash", &self.block_hash())
+        let mut dbg = f.debug_struct("Header");
+        dbg.field("block_hash", &self.block_hash())
             .field("version", &self.version)
             .field("prev_blockhash", &self.prev_blockhash)
             .field("merkle_root", &self.merkle_root)
             .field("time", &self.time)
             .field("bits", &self.bits)
-            .field("nonce", &self.nonce)
-            .finish()
+            .field("nonce", &self.nonce);
+        #[cfg(feature = "alloc")]
+        dbg.field("auxpow", &self.auxpow);
+        dbg.finish()
     }
 }
 
@@ -637,8 +755,7 @@ impl std::error::Error for ParseHeaderError {
 }
 
 encoding::encoder_newtype_exact! {
-    /// The encoder for the [`Header`] type.
-    pub struct HeaderEncoder<'e>(
+    struct PureHeaderEncoder<'e>(
         encoding::Encoder6<
             VersionEncoder<'e>,
             BlockHashEncoder<'e>,
@@ -650,11 +767,127 @@ encoding::encoder_newtype_exact! {
     );
 }
 
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone)]
+struct OwnedBytesEncoder {
+    bytes: Vec<u8>,
+    emitted: bool,
+}
+
+#[cfg(feature = "alloc")]
+impl OwnedBytesEncoder {
+    fn new(bytes: Vec<u8>) -> Self { Self { bytes, emitted: false } }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::Encoder for OwnedBytesEncoder {
+    fn current_chunk(&self) -> &[u8] {
+        if self.emitted {
+            &[]
+        } else {
+            &self.bytes
+        }
+    }
+
+    fn advance(&mut self) -> bool {
+        self.emitted = true;
+        false
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::ExactSizeEncoder for OwnedBytesEncoder {
+    fn len(&self) -> usize {
+        if self.emitted {
+            0
+        } else {
+            self.bytes.len()
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+/// The encoder for the [`Header`] type.
+pub struct HeaderEncoder<'e> {
+    pure: PureHeaderEncoder<'e>,
+    auxpow: Option<OwnedBytesEncoder>,
+    pure_done: bool,
+}
+
+#[cfg(not(feature = "alloc"))]
+pub use PureHeaderEncoder as HeaderEncoder;
+
+#[cfg(feature = "alloc")]
+impl<'e> HeaderEncoder<'e> {
+    fn new(header: &'e Header) -> Self {
+        Self {
+            pure: PureHeaderEncoder::new(encoding::Encoder6::new(
+                header.version.encoder(),
+                header.prev_blockhash.encoder(),
+                header.merkle_root.encoder(),
+                header.time.encoder(),
+                header.bits.encoder(),
+                encoding::ArrayEncoder::without_length_prefix(header.nonce.to_le_bytes()),
+            )),
+            auxpow: header
+                .auxpow
+                .as_ref()
+                .map(|auxpow| OwnedBytesEncoder::new(auxpow.consensus_bytes())),
+            pure_done: false,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::Encoder for HeaderEncoder<'_> {
+    fn current_chunk(&self) -> &[u8] {
+        if self.pure_done {
+            self.auxpow.as_ref().map_or(&[], OwnedBytesEncoder::current_chunk)
+        } else {
+            self.pure.current_chunk()
+        }
+    }
+
+    fn advance(&mut self) -> bool {
+        if !self.pure_done {
+            if self.pure.advance() {
+                return true;
+            }
+            self.pure_done = true;
+            return self.auxpow.is_some();
+        }
+
+        if let Some(auxpow) = self.auxpow.as_mut() {
+            if auxpow.advance() {
+                return true;
+            }
+            self.auxpow = None;
+        }
+
+        false
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::ExactSizeEncoder for HeaderEncoder<'_> {
+    fn len(&self) -> usize {
+        self.pure.len() + self.auxpow.as_ref().map_or(0, OwnedBytesEncoder::len)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::Encodable for Header {
+    type Encoder<'e> = HeaderEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> { HeaderEncoder::new(self) }
+}
+
+#[cfg(not(feature = "alloc"))]
 impl encoding::Encodable for Header {
     type Encoder<'e> = HeaderEncoder<'e>;
 
     fn encoder(&self) -> Self::Encoder<'_> {
-        HeaderEncoder::new(encoding::Encoder6::new(
+        PureHeaderEncoder::new(encoding::Encoder6::new(
             self.version.encoder(),
             self.prev_blockhash.encoder(),
             self.merkle_root.encoder(),
@@ -674,11 +907,9 @@ type HeaderInnerDecoder = Decoder6<
     encoding::ArrayDecoder<4>, // Nonce
 >;
 
-/// The decoder for the [`Header`] type.
-pub struct HeaderDecoder(HeaderInnerDecoder);
+struct PureHeaderDecoder(HeaderInnerDecoder);
 
-impl HeaderDecoder {
-    /// Constructs a new [`Header`] decoder.
+impl PureHeaderDecoder {
     pub const fn new() -> Self {
         Self(Decoder6::new(
             VersionDecoder::new(),
@@ -702,11 +933,11 @@ impl HeaderDecoder {
     }
 }
 
-impl Default for HeaderDecoder {
+impl Default for PureHeaderDecoder {
     fn default() -> Self { Self::new() }
 }
 
-impl encoding::Decoder for HeaderDecoder {
+impl encoding::Decoder for PureHeaderDecoder {
     type Output = Header;
     type Error = HeaderDecoderError;
 
@@ -720,26 +951,24 @@ impl encoding::Decoder for HeaderDecoder {
         let (version, prev_blockhash, merkle_root, time, bits, nonce) =
             self.0.end().map_err(Self::from_inner)?;
         let nonce = u32::from_le_bytes(nonce);
-        Ok(Header { version, prev_blockhash, merkle_root, time, bits, nonce })
+        Ok(Header {
+            version,
+            prev_blockhash,
+            merkle_root,
+            time,
+            bits,
+            nonce,
+            #[cfg(feature = "alloc")]
+            auxpow: None,
+        })
     }
 
     #[inline]
     fn read_limit(&self) -> usize { self.0.read_limit() }
 }
 
-impl encoding::Decodable for Header {
-    type Decoder = HeaderDecoder;
-    fn decoder() -> Self::Decoder {
-        HeaderDecoder(Decoder6::new(
-            VersionDecoder::new(),
-            BlockHashDecoder::new(),
-            TxMerkleNodeDecoder::new(),
-            BlockTimeDecoder::new(),
-            CompactTargetDecoder::new(),
-            encoding::ArrayDecoder::new(),
-        ))
-    }
-}
+#[cfg(not(feature = "alloc"))]
+pub use PureHeaderDecoder as HeaderDecoder;
 
 /// An error consensus decoding a `Header`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -757,6 +986,9 @@ pub enum HeaderDecoderError {
     Bits(CompactTargetDecoderError),
     /// Error while decoding the `nonce`.
     Nonce(encoding::UnexpectedEofError),
+    /// Error while decoding the auxpow payload.
+    #[cfg(feature = "alloc")]
+    AuxPow(Box<AuxPowDecoderError>),
 }
 
 impl From<Infallible> for HeaderDecoderError {
@@ -772,6 +1004,8 @@ impl fmt::Display for HeaderDecoderError {
             Self::Time(ref e) => write_err!(f, "header decoder error"; e),
             Self::Bits(ref e) => write_err!(f, "header decoder error"; e),
             Self::Nonce(ref e) => write_err!(f, "header decoder error"; e),
+            #[cfg(feature = "alloc")]
+            Self::AuxPow(ref e) => write_err!(f, "header decoder error"; e),
         }
     }
 }
@@ -786,8 +1020,370 @@ impl std::error::Error for HeaderDecoderError {
             Self::Time(ref e) => Some(e),
             Self::Bits(ref e) => Some(e),
             Self::Nonce(ref e) => Some(e),
+            #[cfg(feature = "alloc")]
+            Self::AuxPow(ref e) => Some(e),
         }
     }
+}
+
+#[cfg(feature = "alloc")]
+enum AuxPowDecoderState {
+    CoinbaseTx(crate::transaction::TransactionDecoder),
+    HashBlock(encoding::ArrayDecoder<32>, Transaction),
+    MerkleBranch(VecDecoder<BlockHash>, Transaction),
+    CoinbaseIndex(encoding::ArrayDecoder<4>, Transaction, Vec<BlockHash>),
+    ChainMerkleBranch(VecDecoder<BlockHash>, Transaction, Vec<BlockHash>),
+    ChainIndex(encoding::ArrayDecoder<4>, Transaction, Vec<BlockHash>, Vec<BlockHash>),
+    ParentBlock(PureHeaderDecoder, Transaction, Vec<BlockHash>, Vec<BlockHash>, i32),
+    Done(AuxPow),
+    Errored,
+}
+
+/// An error consensus decoding an auxpow payload.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuxPowDecoderError {
+    /// Error while decoding the parent coinbase transaction.
+    CoinbaseTx(crate::transaction::TransactionDecoderError),
+    /// Error while decoding the legacy `hashBlock` placeholder.
+    HashBlock(encoding::UnexpectedEofError),
+    /// Error while decoding the parent coinbase merkle branch.
+    MerkleBranch(<VecDecoder<BlockHash> as encoding::Decoder>::Error),
+    /// Error while decoding the legacy parent coinbase index placeholder.
+    CoinbaseIndex(encoding::UnexpectedEofError),
+    /// Error while decoding the chain merkle branch.
+    ChainMerkleBranch(<VecDecoder<BlockHash> as encoding::Decoder>::Error),
+    /// Error while decoding the chain index.
+    ChainIndex(encoding::UnexpectedEofError),
+    /// Error while decoding the pure parent block header.
+    ParentBlock(Box<HeaderDecoderError>),
+    /// The serialized parent coinbase index placeholder was non-zero.
+    InvalidCoinbaseIndex(i32),
+    /// The auxpow payload ended before all required fields were present.
+    EarlyEnd(&'static str),
+}
+
+#[cfg(feature = "alloc")]
+impl fmt::Display for AuxPowDecoderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CoinbaseTx(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::HashBlock(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::MerkleBranch(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::CoinbaseIndex(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::ChainMerkleBranch(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::ChainIndex(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::ParentBlock(e) => write_err!(f, "auxpow decoder error"; e),
+            Self::InvalidCoinbaseIndex(index) =>
+                write!(f, "auxpow decoder error: coinbase index must be zero, got {}", index),
+            Self::EarlyEnd(field) => write!(f, "auxpow decoder error: early end while decoding {}", field),
+        }
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "std"))]
+impl std::error::Error for AuxPowDecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::CoinbaseTx(e) => Some(e),
+            Self::HashBlock(e) => Some(e),
+            Self::MerkleBranch(e) => Some(e),
+            Self::CoinbaseIndex(e) => Some(e),
+            Self::ChainMerkleBranch(e) => Some(e),
+            Self::ChainIndex(e) => Some(e),
+            Self::ParentBlock(e) => Some(e),
+            Self::InvalidCoinbaseIndex(_) | Self::EarlyEnd(_) => None,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+struct AuxPowDecoder {
+    state: AuxPowDecoderState,
+}
+
+#[cfg(feature = "alloc")]
+impl AuxPowDecoder {
+    pub const fn new() -> Self {
+        Self { state: AuxPowDecoderState::CoinbaseTx(crate::transaction::TransactionDecoder::new()) }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Default for AuxPowDecoder {
+    fn default() -> Self { Self::new() }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::Decoder for AuxPowDecoder {
+    type Output = AuxPow;
+    type Error = AuxPowDecoderError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, Self::Error> {
+        use AuxPowDecoderError as E;
+        use AuxPowDecoderState as S;
+
+        loop {
+            match &mut self.state {
+                S::CoinbaseTx(decoder) =>
+                    if decoder.push_bytes(bytes).map_err(E::CoinbaseTx)? {
+                        return Ok(true);
+                    },
+                S::HashBlock(decoder, _) =>
+                    if decoder.push_bytes(bytes).map_err(E::HashBlock)? {
+                        return Ok(true);
+                    },
+                S::MerkleBranch(decoder, _) =>
+                    if decoder.push_bytes(bytes).map_err(E::MerkleBranch)? {
+                        return Ok(true);
+                    },
+                S::CoinbaseIndex(decoder, ..) =>
+                    if decoder.push_bytes(bytes).map_err(E::CoinbaseIndex)? {
+                        return Ok(true);
+                    },
+                S::ChainMerkleBranch(decoder, ..) =>
+                    if decoder.push_bytes(bytes).map_err(E::ChainMerkleBranch)? {
+                        return Ok(true);
+                    },
+                S::ChainIndex(decoder, ..) =>
+                    if decoder.push_bytes(bytes).map_err(E::ChainIndex)? {
+                        return Ok(true);
+                    },
+                S::ParentBlock(decoder, ..) =>
+                    if decoder.push_bytes(bytes).map_err(|e| E::ParentBlock(Box::new(e)))? {
+                        return Ok(true);
+                    },
+                S::Done(..) => return Ok(false),
+                S::Errored => panic!("call to push_bytes() after auxpow decoder errored"),
+            }
+
+            match mem::replace(&mut self.state, S::Errored) {
+                S::CoinbaseTx(decoder) => {
+                    let coinbase_tx = decoder.end().map_err(E::CoinbaseTx)?;
+                    self.state = S::HashBlock(encoding::ArrayDecoder::new(), coinbase_tx);
+                }
+                S::HashBlock(decoder, coinbase_tx) => {
+                    let _ = decoder.end().map_err(E::HashBlock)?;
+                    self.state = S::MerkleBranch(VecDecoder::<BlockHash>::new(), coinbase_tx);
+                }
+                S::MerkleBranch(decoder, coinbase_tx) => {
+                    let merkle_branch = decoder.end().map_err(E::MerkleBranch)?;
+                    self.state =
+                        S::CoinbaseIndex(encoding::ArrayDecoder::new(), coinbase_tx, merkle_branch);
+                }
+                S::CoinbaseIndex(decoder, coinbase_tx, merkle_branch) => {
+                    let index = i32::from_le_bytes(decoder.end().map_err(E::CoinbaseIndex)?);
+                    if index != 0 {
+                        return Err(E::InvalidCoinbaseIndex(index));
+                    }
+                    self.state = S::ChainMerkleBranch(
+                        VecDecoder::<BlockHash>::new(),
+                        coinbase_tx,
+                        merkle_branch,
+                    );
+                }
+                S::ChainMerkleBranch(decoder, coinbase_tx, merkle_branch) => {
+                    let chain_merkle_branch = decoder.end().map_err(E::ChainMerkleBranch)?;
+                    self.state = S::ChainIndex(
+                        encoding::ArrayDecoder::new(),
+                        coinbase_tx,
+                        merkle_branch,
+                        chain_merkle_branch,
+                    );
+                }
+                S::ChainIndex(decoder, coinbase_tx, merkle_branch, chain_merkle_branch) => {
+                    let chain_index = i32::from_le_bytes(decoder.end().map_err(E::ChainIndex)?);
+                    self.state = S::ParentBlock(
+                        PureHeaderDecoder::new(),
+                        coinbase_tx,
+                        merkle_branch,
+                        chain_merkle_branch,
+                        chain_index,
+                    );
+                }
+                S::ParentBlock(decoder, coinbase_tx, merkle_branch, chain_merkle_branch, chain_index) => {
+                    let parent_block = decoder.end().map_err(|e| E::ParentBlock(Box::new(e)))?;
+                    self.state = S::Done(AuxPow {
+                        coinbase_tx,
+                        merkle_branch,
+                        chain_merkle_branch,
+                        chain_index,
+                        parent_block,
+                    });
+                    return Ok(false);
+                }
+                S::Done(auxpow) => {
+                    self.state = S::Done(auxpow);
+                    return Ok(false);
+                }
+                S::Errored => unreachable!("checked above"),
+            }
+        }
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        use AuxPowDecoderError as E;
+        use AuxPowDecoderState as S;
+
+        match self.state {
+            S::CoinbaseTx(_) => Err(E::EarlyEnd("coinbase transaction")),
+            S::HashBlock(..) => Err(E::EarlyEnd("auxpow hashBlock placeholder")),
+            S::MerkleBranch(..) => Err(E::EarlyEnd("coinbase merkle branch")),
+            S::CoinbaseIndex(..) => Err(E::EarlyEnd("coinbase merkle index")),
+            S::ChainMerkleBranch(..) => Err(E::EarlyEnd("chain merkle branch")),
+            S::ChainIndex(..) => Err(E::EarlyEnd("chain index")),
+            S::ParentBlock(header_decoder, coinbase_tx, merkle_branch, chain_merkle_branch, chain_index) => {
+                let parent_block =
+                    header_decoder.end().map_err(|e| E::ParentBlock(Box::new(e)))?;
+                Ok(AuxPow {
+                    coinbase_tx,
+                    merkle_branch,
+                    chain_merkle_branch,
+                    chain_index,
+                    parent_block,
+                })
+            }
+            S::Done(auxpow) => Ok(auxpow),
+            S::Errored => panic!("call to end() after auxpow decoder errored"),
+        }
+    }
+
+    fn read_limit(&self) -> usize {
+        use AuxPowDecoderState as S;
+
+        match &self.state {
+            S::CoinbaseTx(decoder) => decoder.read_limit(),
+            S::HashBlock(decoder, _) => decoder.read_limit(),
+            S::MerkleBranch(decoder, _) => decoder.read_limit(),
+            S::CoinbaseIndex(decoder, ..) => decoder.read_limit(),
+            S::ChainMerkleBranch(decoder, ..) => decoder.read_limit(),
+            S::ChainIndex(decoder, ..) => decoder.read_limit(),
+            S::ParentBlock(decoder, ..) => decoder.read_limit(),
+            S::Done(..) => 0,
+            S::Errored => 0,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+enum HeaderDecoderState {
+    Pure(PureHeaderDecoder),
+    AuxPow(Box<(Header, AuxPowDecoder)>),
+    Done(Header),
+    Errored,
+}
+
+/// The decoder for the [`Header`] type.
+#[cfg(feature = "alloc")]
+pub struct HeaderDecoder {
+    state: HeaderDecoderState,
+}
+
+#[cfg(feature = "alloc")]
+impl HeaderDecoder {
+    /// Constructs a new [`Header`] decoder.
+    pub const fn new() -> Self { Self { state: HeaderDecoderState::Pure(PureHeaderDecoder::new()) } }
+}
+
+#[cfg(feature = "alloc")]
+impl Default for HeaderDecoder {
+    fn default() -> Self { Self::new() }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::Decoder for HeaderDecoder {
+    type Output = Header;
+    type Error = HeaderDecoderError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, Self::Error> {
+        use HeaderDecoderState as S;
+
+        loop {
+            match &mut self.state {
+                S::Pure(decoder) =>
+                    if decoder.push_bytes(bytes)? {
+                        return Ok(true);
+                    },
+                S::AuxPow(state) =>
+                    if state
+                        .1
+                        .push_bytes(bytes)
+                        .map_err(|e| HeaderDecoderError::AuxPow(Box::new(e)))?
+                    {
+                        return Ok(true);
+                    },
+                S::Done(..) => return Ok(false),
+                S::Errored => panic!("call to push_bytes() after header decoder errored"),
+            }
+
+            match mem::replace(&mut self.state, S::Errored) {
+                S::Pure(decoder) => {
+                    let header = decoder.end()?;
+                    if header.version.is_auxpow() {
+                        self.state = S::AuxPow(Box::new((header, AuxPowDecoder::new())));
+                    } else {
+                        self.state = S::Done(header);
+                        return Ok(false);
+                    }
+                }
+                S::AuxPow(state) => {
+                    let (mut header, decoder) = *state;
+                    header.auxpow = Some(Box::new(
+                        decoder.end().map_err(|e| HeaderDecoderError::AuxPow(Box::new(e)))?,
+                    ));
+                    self.state = S::Done(header);
+                    return Ok(false);
+                }
+                S::Done(header) => {
+                    self.state = S::Done(header);
+                    return Ok(false);
+                }
+                S::Errored => unreachable!("checked above"),
+            }
+        }
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        use HeaderDecoderState as S;
+
+        match self.state {
+            S::Pure(decoder) => decoder.end(),
+            S::AuxPow(state) => {
+                let (mut header, decoder) = *state;
+                header.auxpow = Some(Box::new(
+                    decoder.end().map_err(|e| HeaderDecoderError::AuxPow(Box::new(e)))?,
+                ));
+                Ok(header)
+            }
+            S::Done(header) => Ok(header),
+            S::Errored => panic!("call to end() after header decoder errored"),
+        }
+    }
+
+    fn read_limit(&self) -> usize {
+        use HeaderDecoderState as S;
+
+        match &self.state {
+            S::Pure(decoder) => decoder.read_limit(),
+            S::AuxPow(state) => state.1.read_limit(),
+            S::Done(..) => 0,
+            S::Errored => 0,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::Decodable for Header {
+    type Decoder = HeaderDecoder;
+
+    fn decoder() -> Self::Decoder { HeaderDecoder::new() }
+}
+
+#[cfg(not(feature = "alloc"))]
+impl encoding::Decodable for Header {
+    type Decoder = HeaderDecoder;
+
+    fn decoder() -> Self::Decoder { HeaderDecoder::new() }
 }
 
 impl From<Header> for BlockHash {
@@ -827,6 +1423,17 @@ impl Version {
     /// BIP-0009 compatible version number that does not signal for any softforks.
     pub const NO_SOFT_FORK_SIGNALLING: Self = Self(Self::USE_VERSION_BITS as i32);
 
+    /// Auxpow header flag.
+    pub const VERSION_AUXPOW: i32 = 1 << 8;
+    /// First bit used by the embedded auxpow chain id.
+    pub const VERSION_START_BIT: u8 = 16;
+    /// Starting value of the embedded chain id region.
+    pub const VERSION_CHAIN_START: i32 = 1 << Self::VERSION_START_BIT;
+    /// Mask for version-bits top bits that must be ignored for base-version extraction.
+    pub const VERSION_AUXPOW_TOP_MASK: i32 = (1 << 28) | (1 << 29) | (1 << 30);
+    /// Mask of the embedded auxpow chain id field already shifted into place.
+    pub const MASK_AUXPOW_CHAINID_SHIFTED: i32 = 0x001f << Self::VERSION_START_BIT;
+
     /// BIP-0009 soft fork signal bits mask.
     const VERSION_BITS_MASK: u32 = 0x1FFF_FFFF;
 
@@ -846,6 +1453,46 @@ impl Version {
     /// This is the data type used in consensus code in Bitcoin Core.
     #[inline]
     pub const fn to_consensus(self) -> i32 { self.0 }
+
+    /// Returns whether the auxpow flag is set.
+    pub const fn is_auxpow(self) -> bool { (self.0 & Self::VERSION_AUXPOW) != 0 }
+
+    /// Returns this version with the auxpow flag enabled or disabled.
+    #[must_use]
+    pub const fn with_auxpow(self, enabled: bool) -> Self {
+        if enabled {
+            Self(self.0 | Self::VERSION_AUXPOW)
+        } else {
+            Self(self.0 & !Self::VERSION_AUXPOW)
+        }
+    }
+
+    /// Returns the base version with auxpow and embedded chain-id bits stripped.
+    pub const fn base_version(self) -> i32 {
+        (self.0 & !Self::VERSION_AUXPOW) & !Self::MASK_AUXPOW_CHAINID_SHIFTED
+    }
+
+    /// Returns the auxpow chain id when auxpow is active, or zero otherwise.
+    pub const fn chain_id(self) -> i32 {
+        if self.is_auxpow() {
+            (self.0 & Self::MASK_AUXPOW_CHAINID_SHIFTED) >> Self::VERSION_START_BIT
+        } else {
+            0
+        }
+    }
+
+    /// Builds a version from a base version and chain id, leaving the auxpow flag unset.
+    pub const fn with_base_version(base_version: i32, chain_id: i32) -> Self {
+        Self(base_version | (chain_id << Self::VERSION_START_BIT))
+    }
+
+    /// Returns whether the provided base version is valid for embedding a chain id.
+    pub const fn is_valid_base_version(base_version: i32) -> bool {
+        (base_version & !Self::VERSION_AUXPOW_TOP_MASK) < Self::VERSION_CHAIN_START
+    }
+
+    /// Returns whether this is the legacy version-1 header.
+    pub const fn is_legacy(self) -> bool { self.0 == 1 }
 
     /// Checks whether the version number is signalling a soft fork at the given bit.
     ///
@@ -986,6 +1633,8 @@ impl<'a> Arbitrary<'a> for Header {
             time: u.arbitrary()?,
             bits: CompactTarget::from_consensus(u.arbitrary()?),
             nonce: u.arbitrary()?,
+            #[cfg(feature = "alloc")]
+            auxpow: None,
         })
     }
 }
@@ -1029,6 +1678,8 @@ mod tests {
             time: BlockTime::from(2),
             bits: CompactTarget::from_consensus(3),
             nonce: 4,
+            #[cfg(feature = "alloc")]
+            auxpow: None,
         }
     }
 
@@ -1109,7 +1760,7 @@ mod tests {
     fn block_new_unchecked() {
         let header = dummy_header();
         let transactions = vec![];
-        let block = Block::new_unchecked(header, transactions.clone());
+        let block = Block::new_unchecked(header.clone(), transactions.clone());
         assert_eq!(block.header, header);
         assert_eq!(block.transactions, transactions);
     }
@@ -1119,7 +1770,7 @@ mod tests {
     fn block_assume_checked() {
         let header = dummy_header();
         let transactions = vec![];
-        let block = Block::new_unchecked(header, transactions.clone());
+        let block = Block::new_unchecked(header.clone(), transactions.clone());
         let witness_root = Some(WitnessMerkleNode::from_byte_array([0x88; 32]));
         let checked_block = block.assume_checked(witness_root);
         assert_eq!(checked_block.header(), &header);
@@ -1132,7 +1783,7 @@ mod tests {
     fn block_into_parts() {
         let header = dummy_header();
         let transactions = vec![];
-        let block = Block::new_unchecked(header, transactions.clone());
+        let block = Block::new_unchecked(header.clone(), transactions.clone());
         let (block_header, block_transactions) = block.into_parts();
         assert_eq!(block_header, header);
         assert_eq!(block_transactions, transactions);
@@ -1259,7 +1910,7 @@ mod tests {
     fn block_block_hash() {
         let header = dummy_header();
         let transactions = vec![];
-        let block = Block::new_unchecked(header, transactions);
+        let block = Block::new_unchecked(header.clone(), transactions);
         assert_eq!(block.block_hash(), header.block_hash());
     }
 
@@ -1282,7 +1933,7 @@ mod tests {
     fn block_hash_from_block() {
         let header = dummy_header();
         let transactions = vec![];
-        let block = Block::new_unchecked(header, transactions);
+        let block = Block::new_unchecked(header.clone(), transactions);
         let block_hash: BlockHash = BlockHash::from(block);
         assert_eq!(block_hash, header.block_hash());
     }
@@ -1292,7 +1943,7 @@ mod tests {
     fn block_hash_from_block_ref() {
         let header = dummy_header();
         let transactions = vec![];
-        let block = Block::new_unchecked(header, transactions);
+        let block = Block::new_unchecked(header.clone(), transactions);
         let block_hash: BlockHash = BlockHash::from(&block);
         assert_eq!(block_hash, header.block_hash());
     }
@@ -1302,7 +1953,7 @@ mod tests {
     fn header_debug() {
         let header = dummy_header();
         let expected = format!(
-            "Header {{ block_hash: {:?}, version: {:?}, prev_blockhash: {:?}, merkle_root: {:?}, time: {:?}, bits: {:?}, nonce: {:?} }}",
+            "Header {{ block_hash: {:?}, version: {:?}, prev_blockhash: {:?}, merkle_root: {:?}, time: {:?}, bits: {:?}, nonce: {:?}, auxpow: None }}",
             header.block_hash(),
             header.version,
             header.prev_blockhash,
@@ -1312,6 +1963,30 @@ mod tests {
             header.nonce
         );
         assert_eq!(format!("{:?}", header), expected);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn version_auxpow_helpers_roundtrip() {
+        let version = Version::with_base_version(1, 8).with_auxpow(true);
+        assert!(version.is_auxpow());
+        assert_eq!(version.base_version(), 1);
+        assert_eq!(version.chain_id(), 8);
+        assert!(!version.is_legacy());
+        assert!(Version::from_consensus(version.base_version()).is_legacy());
+        assert!(Version::is_valid_base_version(1));
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn auxpow_payload_does_not_change_header_hash() {
+        let mut header = dummy_header();
+        header.version = Version::with_base_version(1, 8).with_auxpow(true);
+
+        let expected = header.block_hash();
+        header.auxpow = Some(Box::new(AuxPow::minimal_for_header(&header)));
+
+        assert_eq!(header.block_hash(), expected);
     }
 
     #[test]
@@ -1327,6 +2002,7 @@ mod tests {
             time: BlockTime::from(seconds),
             bits: CompactTarget::from_consensus(0xbeef),
             nonce: 0xcafe,
+            auxpow: None,
         };
 
         let want = concat!(
@@ -1435,6 +2111,7 @@ mod tests {
             time: BlockTime::from(1_742_979_600), // 26 Mar 2025 9:00 UTC
             bits: CompactTarget::from_consensus(12_345_678),
             nonce: 1024,
+            auxpow: None,
         };
 
         let block: u32 = 741_521;

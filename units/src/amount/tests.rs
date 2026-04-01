@@ -122,13 +122,18 @@ fn from_str_zero_without_denomination() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn from_int_btc() {
     let amt = Amount::from_tdc_u16(2);
+    assert_eq!(sat(200_000_000), amt);
+    let amt = Amount::from_int_tdc(2_u16);
     assert_eq!(sat(200_000_000), amt);
     let amt = Amount::from_int_btc(2_u16);
     assert_eq!(sat(200_000_000), amt);
 
     let amt = SignedAmount::from_tdc_i16(-2);
+    assert_eq!(ssat(-200_000_000), amt);
+    let amt = SignedAmount::from_int_tdc(-2_i16);
     assert_eq!(ssat(-200_000_000), amt);
     let amt = SignedAmount::from_int_btc(-2_i16);
     assert_eq!(ssat(-200_000_000), amt);
@@ -398,13 +403,13 @@ fn floating_point() {
         Err(amt_err(ParseAmountErrorInner::OutOfRange(OutOfRangeError::too_big(true))))
     );
 
-    let tdc = move |f| SignedAmount::from_btc(f).unwrap();
+    let tdc = move |f| SignedAmount::from_tdc(f).unwrap();
     assert_eq!(tdc(2.5).to_float_in(D::Tidecoin), 2.5);
     assert_eq!(tdc(-2.5).to_float_in(D::CentiTidecoin), -250.0);
     assert_eq!(tdc(-2.5).to_float_in(D::MilliTidecoin), -2500.0);
     assert_eq!(tdc(2.5).to_float_in(D::Tidoshi), 250_000_000.0);
 
-    let tdc = move |f| Amount::from_btc(f).unwrap();
+    let tdc = move |f| Amount::from_tdc(f).unwrap();
     assert_eq!(&tdc(0.0012).to_float_in(D::Tidecoin).to_string(), "0.0012");
 }
 
@@ -1507,20 +1512,20 @@ fn signed_sub() {
 
 #[test]
 #[cfg(feature = "alloc")]
-fn to_btc() {
-    assert_eq!(Amount::ONE_TDC.to_btc(), 1.0);
-    assert_eq!(Amount::ONE_SAT.to_btc(), 0.000_000_01);
-    assert_eq!(Amount::ZERO.to_btc(), 0.0);
+fn to_tdc() {
+    assert_eq!(Amount::ONE_TDC.to_tdc(), 1.0);
+    assert_eq!(Amount::ONE_SAT.to_tdc(), 0.000_000_01);
+    assert_eq!(Amount::ZERO.to_tdc(), 0.0);
 
-    assert_eq!(SignedAmount::ONE_TDC.to_btc(), 1.0);
-    assert_eq!(SignedAmount::ONE_SAT.to_btc(), 0.000_000_01);
-    assert_eq!(SignedAmount::ZERO.to_btc(), 0.0);
+    assert_eq!(SignedAmount::ONE_TDC.to_tdc(), 1.0);
+    assert_eq!(SignedAmount::ONE_SAT.to_tdc(), 0.000_000_01);
+    assert_eq!(SignedAmount::ZERO.to_tdc(), 0.0);
 
     let amt_pairs = [(200_000_000, 2.0), (50_000_000, 0.5), (100_000, 0.001), (1, 0.000_000_01)];
     for (sats, btc) in amt_pairs {
-        assert_eq!(ssat(sats).to_btc(), btc);
-        assert_eq!(ssat(-sats).to_btc(), -btc);
-        assert_eq!(sat(sats as u64).to_btc(), btc);
+        assert_eq!(ssat(sats).to_tdc(), btc);
+        assert_eq!(ssat(-sats).to_tdc(), -btc);
+        assert_eq!(sat(sats as u64).to_tdc(), btc);
     }
 }
 

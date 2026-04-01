@@ -52,14 +52,15 @@ fn build_test_block(num_tx: usize) -> Vec<u8> {
         time: BlockTime::from_u32(0),
         bits: CompactTarget::from_consensus(0x1d00ffff),
         nonce: 0,
+        auxpow: None,
     };
 
     serialize(&Block::new_unchecked(header, txs))
 }
 
 fn bench_block(c: &mut Criterion) {
-    let raw_block = include_bytes!("../../bitcoin/tests/data/mainnet_block_000000000000000000000c835b2adcaedc20fdf6ee440009c249452c726dafae.raw");
-    assert_eq!(raw_block.len(), 1_381_836);
+    let raw_block = include_bytes!("../../bitcoin/tests/data/node_block_413567.raw");
+    assert_eq!(raw_block.len(), 999_887);
     let block: Block = deserialize(&raw_block[..]).unwrap();
 
     let mut g = c.benchmark_group("block");
@@ -102,7 +103,7 @@ fn bench_block(c: &mut Criterion) {
 }
 
 fn bench_decode_and_validate(c: &mut Criterion) {
-    let raw_block = include_bytes!("../../bitcoin/tests/data/mainnet_block_000000000000000000000c835b2adcaedc20fdf6ee440009c249452c726dafae.raw");
+    let raw_block = include_bytes!("../../bitcoin/tests/data/node_block_413567.raw");
 
     let mut g = c.benchmark_group("decode_and_validate");
     g.measurement_time(Duration::from_secs(10)).warm_up_time(Duration::from_secs(3));

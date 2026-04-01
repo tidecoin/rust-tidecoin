@@ -2004,6 +2004,7 @@ mod tests {
             time: start_time,
             bits: bits_start,
             nonce: 0,
+            auxpow: None,
         };
 
         let current = Header {
@@ -2013,6 +2014,7 @@ mod tests {
             time: end_time,
             bits: bits_end,
             nonce: 0,
+            auxpow: None,
         };
 
         // Tidecoin mainnet (enforce_bip94 = false): should use current.bits
@@ -2316,6 +2318,7 @@ mod tests {
             time: 0x651b_c919.into(), // 2023-10-03 18:56:09 GMT +11 -> 1696359369 -> 651BC919
             bits: CompactTarget::from_consensus(0x1704_ed7f),
             nonce: 0xc637_a163,
+            auxpow: None,
         }
     }
 
@@ -2338,6 +2341,7 @@ mod tests {
                 time: BlockTime::from_u32(1609074580),
                 bits: CompactTarget::from_consensus(0x1704_ed7f),
                 nonce: 0,
+                auxpow: None,
             })
         }
 
@@ -2407,6 +2411,7 @@ mod tests {
             time: current_time.into(),
             bits: pow_limit,
             nonce: 0,
+            auxpow: None,
         };
 
         // Timestamp within 2 * pow_target_spacing
@@ -2424,6 +2429,7 @@ mod tests {
                 time: (current_time - 60).into(),
                 bits: want,
                 nonce: 0,
+                auxpow: None,
             })
         };
 

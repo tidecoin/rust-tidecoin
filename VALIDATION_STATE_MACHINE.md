@@ -38,7 +38,7 @@ Bring the library to a state where:
 | Taproot removal | `done` | orchestrator + workers | Hidden taproot modules and key/consensus hooks are removed; `is_p2tr()` and dead taproot serde artifacts are gone; `OP_CHECKSIGADD` is retained only as a disabled node-compatibility opcode byte |
 | Unused code and warnings | `done` | orchestrator | Strict clippy gate is clean |
 | Test coverage migration | `done` | orchestrator + workers | PQ coverage landed; node-style key/address, WIF, genesis, policy, and doctest coverage expanded; no live `#[ignore]` tests remain |
-| PQ/Falcon runtime parity | `ready_to_fix` | orchestrator + explorers | PQHD KDF/path validation and PSBT proprietary-origin support are now implemented; remaining validated gaps are the real PQ backend, descriptor/wallet integration, interpreter/runtime behavior, corpus migration, and transport; see `FALCON_PQ_GAP_REPORT.md` |
+| PQ/Falcon runtime parity | `ready_to_fix` | orchestrator + explorers | PQHD KDF/path validation, PSBT proprietary-origin helpers, PQ public-key derivation, and Falcon legacy-mode signing/verification helpers are implemented; remaining validated gaps are deterministic PQHD keygen, secret-key codec parity, interpreter/runtime behavior, corpus migration, and transport; see `FALCON_PQ_GAP_REPORT.md` |
 | Final verification | `done` | orchestrator | Workspace compile/test/lint/doc gates are green after the latest ignore audit and taproot-surface cleanup |
 | Regtest legacy compatibility | `done` | orchestrator + worker | Dedicated regtest legacy address/WIF prefixes now round-trip and are covered by node-backed tests |
 | Repository remote and publish | `done` | orchestrator | `origin` points at the Tidecoin repository and the validated tree is published at `origin/v2` (`d8bbe1e`) |
@@ -185,3 +185,32 @@ Bring the library to a state where:
   - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and `SignatureHash512` is still missing
   - node PQ script/transaction/multisig/policy corpora are not yet migrated as executable Rust coverage
   - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
+
+### Phase 8
+
+- State: `done`
+- Objective: close the next verified PQ runtime gap with node-backed backend behavior
+- Completed in this phase:
+  - added a small C compatibility bridge in `bitcoin/c_src/**` plus `bitcoin/build.rs` to reuse PQClean internals already present in the dependency graph
+  - implemented `PqPublicKey::from_secret_key()` in `bitcoin/src/crypto/pq.rs` for Falcon-512, Falcon-1024, ML-DSA-44, ML-DSA-65, and ML-DSA-87
+  - implemented explicit Falcon-512 legacy helpers in `bitcoin/src/crypto/pq.rs`:
+    - `sign_msg32_legacy`
+    - `sign_msg64_legacy`
+    - `verify_msg32_legacy`
+    - `verify_msg64_legacy`
+    - `verify_msg32_allow_legacy`
+    - `verify_msg64_allow_legacy`
+  - added regression coverage for:
+    - secret-to-public-key derivation across all five schemes
+    - Falcon-512 legacy signature generation/verification for 32-byte and 64-byte messages
+  - re-ran verification successfully:
+    - `cargo test -p tidecoin --lib crypto::pq`
+    - `cargo check -p tidecoin --all-features --tests --examples`
+    - `cargo test --workspace`
+    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- Remaining open risks:
+  - deterministic PQHD key generation from the derived stream material is still missing
+  - prefixed/legacy PQ secret-key codec parity with node `DecodeSecretKey` / `EncodeSecretKey` is still missing
+  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
+  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
+  - the optional validation API still points at upstream `bitcoinconsensus`, not a Tidecoin-specific validation surface
