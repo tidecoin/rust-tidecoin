@@ -147,17 +147,6 @@ macro_rules! kgen_impl {
         }
     }
 
-    impl $typename {
-        pub fn keygen_from_seed(&mut self,
-            logn: u32, seed: &[u8], sign_key: &mut [u8], vrfy_key: &mut [u8])
-        {
-            assert!(logn >= ($logn_min) && logn <= ($logn_max));
-            keygen_inner_seeded(logn, seed, sign_key, vrfy_key,
-                &mut self.tmp_i8, &mut self.tmp_u16,
-                &mut self.tmp_u32, &mut self.tmp_fxr);
-        }
-    }
-
     impl Default for $typename {
         fn default() -> Self {
             Self {
@@ -216,19 +205,6 @@ fn keygen_inner<T: CryptoRng + RngCore>(logn: u32, rng: &mut T,
     // the seed.
     let mut seed = [0u8; 32];
     rng.fill_bytes(&mut seed);
-
-    keygen_inner_seeded(logn, &seed, sign_key, vrfy_key,
-        tmp_i8, tmp_u16, tmp_u32, tmp_fxr);
-}
-
-fn keygen_inner_seeded(logn: u32, seed: &[u8],
-    sign_key: &mut [u8], vrfy_key: &mut [u8],
-    tmp_i8: &mut [i8], tmp_u16: &mut [u16],
-    tmp_u32: &mut [u32], tmp_fxr: &mut [fxp::FXR])
-{
-    assert!(2 <= logn && logn <= 10);
-    assert!(sign_key.len() == sign_key_size(logn));
-    assert!(vrfy_key.len() == vrfy_key_size(logn));
 
     let n = 1usize << logn;
 

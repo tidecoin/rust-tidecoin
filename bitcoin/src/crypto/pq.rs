@@ -8,12 +8,11 @@
 
 use core::fmt;
 
+use falcon::prelude::FnDsaKeyPair as FalconKeyPair;
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
 use fn_dsa::{
-    sign_key_size, vrfy_key_size, signature_size,
+    signature_size,
     FN_DSA_LOGN_512, FN_DSA_LOGN_1024,
-    KeyPairGenerator,
-    KeyPairGeneratorStandard,
     SigningKey, SigningKeyStandard,
     VerifyingKey, VerifyingKeyStandard,
     DOMAIN_NONE, HASH_ID_ORIGINAL_FALCON,
@@ -24,6 +23,7 @@ use ml_kem::{
     MlKem512,
 };
 use ml_kem::kem::{Decapsulate, Encapsulate};
+use rand_core::RngCore;
 
 use crate::network::Params;
 use crate::prelude::Vec;
@@ -122,18 +122,16 @@ impl PqScheme {
     pub fn generate_keypair(self) -> (PqPublicKey, PqSecretKey) {
         match self {
             Self::Falcon512 => {
-                let mut kg = KeyPairGeneratorStandard::default();
-                let mut sk = [0u8; sign_key_size(FN_DSA_LOGN_512)];
-                let mut vk = [0u8; vrfy_key_size(FN_DSA_LOGN_512)];
-                kg.keygen(FN_DSA_LOGN_512, &mut rand_core::OsRng, &mut sk, &mut vk);
-                (PqPublicKey::from_backend(self, &vk), PqSecretKey::from_backend(self, &sk))
+                let mut seed = [0u8; 48];
+                rand_core::OsRng.fill_bytes(&mut seed);
+                let keypair = FalconKeyPair::generate_deterministic(&seed, FN_DSA_LOGN_512).expect("Falcon-512 keygen");
+                (PqPublicKey::from_backend(self, keypair.public_key()), PqSecretKey::from_backend(self, keypair.private_key()))
             }
             Self::Falcon1024 => {
-                let mut kg = KeyPairGeneratorStandard::default();
-                let mut sk = [0u8; sign_key_size(FN_DSA_LOGN_1024)];
-                let mut vk = [0u8; vrfy_key_size(FN_DSA_LOGN_1024)];
-                kg.keygen(FN_DSA_LOGN_1024, &mut rand_core::OsRng, &mut sk, &mut vk);
-                (PqPublicKey::from_backend(self, &vk), PqSecretKey::from_backend(self, &sk))
+                let mut seed = [0u8; 48];
+                rand_core::OsRng.fill_bytes(&mut seed);
+                let keypair = FalconKeyPair::generate_deterministic(&seed, FN_DSA_LOGN_1024).expect("Falcon-1024 keygen");
+                (PqPublicKey::from_backend(self, keypair.public_key()), PqSecretKey::from_backend(self, keypair.private_key()))
             }
             Self::MlDsa44 => {
                 let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(&mut rand_core::OsRng).expect("ML-DSA-44 keygen");
@@ -163,11 +161,8 @@ impl PqScheme {
                     Self::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let mut kg = KeyPairGeneratorStandard::default();
-                let mut sk = vec![0u8; sign_key_size(logn)];
-                let mut vk = vec![0u8; vrfy_key_size(logn)];
-                kg.keygen_from_seed(logn, seed, &mut sk, &mut vk);
-                Ok((PqPublicKey { scheme: self, data: vk }, PqSecretKey { scheme: self, data: sk }))
+                let keypair = FalconKeyPair::generate_deterministic(seed, logn).map_err(|_| PqError::BackendFailure)?;
+                Ok((PqPublicKey::from_backend(self, keypair.public_key()), PqSecretKey::from_backend(self, keypair.private_key())))
             }
             Self::MlDsa44 => {
                 let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
@@ -204,17 +199,9 @@ impl PqPublicKey {
     /// Derives the public key matching the given secret key.
     pub fn from_secret_key(sk: &PqSecretKey) -> Result<Self, PqError> {
         let scheme = sk.scheme();
-        let mut data = vec![0_u8; scheme.pubkey_len()];
-        let rc = match scheme {
+        let data = match scheme {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                let decoded = SigningKeyStandard::decode(sk.as_bytes());
-                match decoded {
-                    Some(signing_key) => {
-                        signing_key.to_verifying_key(&mut data);
-                        0
-                    }
-                    None => -1,
-                }
+                FalconKeyPair::public_key_from_private(sk.as_bytes()).map_err(|_| PqError::BackendFailure)?
             }
             _ => {
                 let result: Result<Vec<u8>, PqError> = match scheme {
@@ -235,16 +222,9 @@ impl PqPublicKey {
                     }
                     _ => unreachable!(),
                 };
-                match result {
-                    Ok(pk_bytes) => { data.copy_from_slice(&pk_bytes); 0 }
-                    Err(_) => -1,
-                }
+                result?
             },
         };
-
-        if rc != 0 {
-            return Err(PqError::BackendFailure);
-        }
 
         Ok(Self { scheme, data })
     }
