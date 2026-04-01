@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: CC0-1.0
+
+//! # Rust Tidecoin Unit Types
+//!
+//! This library provides basic types used by the Rust Tidecoin ecosystem.
+//!
+//! If you are using `rust-tidecoin` then you do not need to access this crate directly. Everything
+//! here is re-exported in `rust-tidecoin` at the same path. Also the same re-exports exist in
+//! `primitives` if you are using that crate instead of `tidecoin`.
+//!
+//! # Examples
+//!
+//! ```
+//! // Exactly the same as `use tidecoin::{amount, Amount}`.
+//! use tidecoin_units::{amount, Amount};
+//!
+//! let _amount = Amount::from_sat(1_000)?;
+//! # Ok::<_, amount::OutOfRangeError>(())
+//! ```
+
+#![no_std]
+// Coding conventions.
+#![warn(missing_docs)]
+#![warn(deprecated_in_future)]
+#![doc(test(attr(warn(unused))))]
+// Exclude lints we don't think are valuable.
+#![allow(clippy::uninlined_format_args)] // Allow `format!("{}", x)` instead of enforcing `format!("{x}")`
+// Extra restriction lints.
+#![warn(clippy::indexing_slicing)] // Avoid implicit panics from indexing/slicing.
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "encoding")]
+pub extern crate encoding;
+
+#[cfg(feature = "serde")]
+pub extern crate serde;
+
+#[cfg(feature = "arbitrary")]
+pub extern crate arbitrary;
+
+#[doc(hidden)]
+pub mod _export {
+    /// A re-export of `core::*`.
+    pub mod _core {
+        pub use core::*;
+    }
+}
+
+mod fee;
+mod internal_macros;
+
+pub mod amount;
+pub mod block;
+pub mod fee_rate;
+pub mod locktime;
+pub mod parse_int;
+pub mod pow;
+pub mod result;
+pub mod sequence;
+pub mod time;
+pub mod weight;
+
+#[doc(inline)]
+#[rustfmt::skip]
+pub use self::{
+    amount::{Amount, SignedAmount},
+    block::{BlockHeight, BlockHeightInterval, BlockMtp, BlockMtpInterval},
+    fee_rate::FeeRate,
+    locktime::{absolute, relative},
+    pow::CompactTarget,
+    result::NumOpResult,
+    sequence::Sequence,
+    time::BlockTime,
+    weight::Weight
+};
+
+#[deprecated(since = "1.0.0-rc.0", note = "use `BlockHeightInterval` instead")]
+#[doc(hidden)]
+pub type BlockInterval = BlockHeightInterval;

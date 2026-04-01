@@ -1,0 +1,43 @@
+[package]
+name = "tidecoin-consensus-encoding"
+version = "0.1.0"
+authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>", "Nick Johnson <nick@yonson.dev>", "Tobin C. Harding <me@tobin.cc>"]
+license = "CC0-1.0"
+homepage = "https://github.com/nicenemo/rust-tidecoin/"
+documentation = "https://docs.rs/tidecoin-consensus-encoding/"
+repository = "https://github.com/nicenemo/rust-tidecoin/"
+description = "Consensus encoding and decoding"
+categories = ["cryptography::cryptocurrencies"]
+keywords = ["tidecoin", "no-std"]
+readme = "README.md"
+edition = "2021"
+rust-version = "1.74.0"
+exclude = ["tests", "contrib"]
+
+[features]
+default = ["std"]
+std = ["alloc", "internals/std"]
+alloc = ["internals/alloc"]
+
+[dependencies]
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0" }
+
+[dev-dependencies]
+hex = { package = "hex-conservative", version = "0.3.2" }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[[example]]
+name = "encoder"
+required-features = ["alloc"]
+
+[lints]
+workspace = true
+
+[package.metadata.rbmt.test]
+examples = ["encoder:alloc"]
+
+[package.metadata.rbmt.prerelease]
+enabled = true

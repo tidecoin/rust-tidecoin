@@ -1,0 +1,28 @@
+#![cfg_attr(fuzzing, no_main)]
+#![cfg_attr(not(fuzzing), allow(unused))]
+
+use std::fmt::{self, Write as _};
+
+use libfuzzer_sys::fuzz_target;
+
+// faster than String, we don't need to actually produce the value, just check absence of panics
+struct NullWriter;
+
+impl fmt::Write for NullWriter {
+    fn write_str(&mut self, _s: &str) -> fmt::Result { Ok(()) }
+
+    fn write_char(&mut self, _c: char) -> fmt::Result { Ok(()) }
+}
+
+#[cfg(not(fuzzing))]
+fn main() {}
+
+fn do_test(data: &[u8]) {
+    let mut writer = NullWriter;
+    let script = bitcoin::WitnessScript::from_bytes(data);
+    write!(writer, "{script}").unwrap();
+}
+
+fuzz_target!(|data| {
+    do_test(data);
+});
