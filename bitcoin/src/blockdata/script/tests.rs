@@ -797,7 +797,7 @@ fn script_ord() {
 }
 
 #[test]
-#[cfg(feature = "bitcoinconsensus")]
+#[cfg(all(feature = "bitcoinconsensus", not(feature = "tidecoin-node-validation")))]
 fn bitcoinconsensus() {
     use crate::consensus_validation::ScriptPubKeyExt as _;
 

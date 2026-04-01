@@ -4,11 +4,12 @@ This file is updated as issues are validated and moved through the state machine
 
 ## Open
 
-- `ready_to_fix` Implement runtime script support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and `SignatureHash512`, then migrate the node PQ script/transaction/multisig/policy corpora.
-- `ready_to_fix` Replace or remove the optional `bitcoinconsensus` validation surface in `bitcoin/src/consensus_validation.rs`, since it validates against Bitcoin Core semantics rather than Tidecoin node semantics.
+- None in the currently tracked library-scope validation set.
 
 ## Closed
 
+- `done` Implement the Tidecoin validation/runtime surface in `bitcoin/src/consensus_validation.rs`, `bitcoin/src/consensus_validation_node.rs`, and `bitcoin/src/consensus_validation_tidecoin.rs`, then migrate the node PQ script/transaction/asset/multisig corpora with additional mixed witness-v0/v1-512 and legacy base-signature regression coverage.
+- `done` Fence off the optional `bitcoinconsensus` validation surface in `bitcoin/src/consensus_validation.rs` so Tidecoin-only flags and `p2wsh512` outputs fail explicitly instead of being forwarded to Bitcoin Core semantics.
 - `done` Record the validated Falcon/PQ runtime gap report in `FALCON_PQ_GAP_REPORT.md` and align the tracker with the current node-vs-Rust compatibility status.
 - `done` Implement the first PQHD parity slice: node-mirrored PQHD v1 KDF/path validation in `bitcoin/src/pqhd.rs`, Tidecoin PSBT PQHD origin helpers in `bitcoin/src/psbt/tidecoin.rs`, and regression coverage for roundtrip/combine/malformed cases.
 - `done` Implement PQ public-key derivation and Falcon legacy-mode signing/verification parity in `bitcoin/src/crypto/pq.rs` using a small node-compatible PQClean bridge, with regression coverage across all five schemes.

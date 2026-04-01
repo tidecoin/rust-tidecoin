@@ -1,7 +1,7 @@
 # Porting Gap Analysis: rust-tidecoin Library
 
 Generated: 2026-04-01
-Revalidated after the AuxPoW, `Sighash512`, PQHD/PSBT, PQ crypto-bridge, ML-KEM-512, and `bip324_pq` transport passes.
+Revalidated after the AuxPoW, `Sighash512`, PQHD/PSBT, PQ crypto-bridge, ML-KEM-512, `bip324_pq`, and node-backed validation/runtime passes.
 
 Node source: `/home/kiel/work/tidecoin-node`
 Rust source: `/home/kiel/work/rust-tidecoin`
@@ -33,34 +33,22 @@ Out of scope:
 - `pqhd(...)` key-expression parsing, deterministic derivation, and wallet descriptor string generation
 - ML-KEM-512 keypair / deterministic keypair / encapsulate / deterministic encapsulate / decapsulate helpers in [bitcoin/src/crypto/pq.rs](bitcoin/src/crypto/pq.rs)
 - Tidecoin v2 PQ packet cipher parity in [p2p/src/bip324_pq.rs](p2p/src/bip324_pq.rs), including node-derived FSChaCha20 / FSChaCha20Poly1305 / `bip324_pq` tests
+- Tidecoin-specific validation/runtime surface in [bitcoin/src/consensus_validation.rs](bitcoin/src/consensus_validation.rs), [bitcoin/src/consensus_validation_node.rs](bitcoin/src/consensus_validation_node.rs), and [bitcoin/src/consensus_validation_tidecoin.rs](bitcoin/src/consensus_validation_tidecoin.rs)
+- node PQ execution corpus migration covering `script_tests_pq.json`, `tx_valid_pq.json`, `tx_invalid_pq.json`, `script_assets_test.json`, mixed witness-v0/v1-512 cases, PQ multisig cases, committed-hash cases, and legacy base-signature cases
 - stale unused `legacy_sighash.json` and mainnet/testnet `.raw` fixtures
 - Tidecoin-facing dust/sighash docs that still used `BTC/kB` or "today's Bitcoin network" wording
 - P2P message cleanup audit: `NetworkMessage` already demotes legacy `reject` payloads to `Unknown`, while `message_network::Alert` is intentionally retained because Tidecoin node still sends the final alert to peers at protocol version `<= 70012`
 
 ## Remaining Library-Scope Gaps
 
-### 1. Tidecoin-specific validation surface
+No confirmed library-scope protocol gaps remain from the original report.
 
-The optional validation API is still wired to upstream `bitcoinconsensus`, not Tidecoin-node semantics.
+Follow-up work that may still be desirable, but was not part of the original library-scope gap list:
 
-Rust state:
-- [bitcoin/src/consensus_validation.rs](bitcoin/src/consensus_validation.rs)
-- [bitcoin/Cargo.toml](bitcoin/Cargo.toml)
-
-This matters because Tidecoin-specific PQ script flags and runtime behavior are not available there.
-
-### 2. PQ execution corpus migration
-
-Rust still does not execute the node PQ corpora:
-
-- [src/test/data/script_tests_pq.json](/home/kiel/work/tidecoin-node/src/test/data/script_tests_pq.json)
-- [src/test/data/tx_valid_pq.json](/home/kiel/work/tidecoin-node/src/test/data/tx_valid_pq.json)
-- [src/test/data/tx_invalid_pq.json](/home/kiel/work/tidecoin-node/src/test/data/tx_invalid_pq.json)
-- [src/test/pq_multisig_tests.cpp](/home/kiel/work/tidecoin-node/src/test/pq_multisig_tests.cpp)
-
-This remains blocked on the absence of a Tidecoin script/runtime validation layer in the library.
+- expose additional node policy entry points such as witness-standardness or standard-tx helpers if callers need policy parity instead of consensus/runtime parity
+- continue expanding imported node cases as new Tidecoin node behavior lands upstream
 
 ## Priority Order
 
-1. Decide the fate of the Bitcoin-specific validation API
-2. PQ corpus migration, if a Tidecoin validation/runtime layer is added
+1. Keep the node-backed validation bridge green as Tidecoin node evolves
+2. Add extra policy wrappers only if downstream callers need them

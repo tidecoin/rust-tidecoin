@@ -5,7 +5,8 @@
 //! This is a library that supports the Tidecoin network protocol and associated primitives. It is
 //! designed for Rust programs built to work with the Tidecoin network.
 //!
-//! Except for its dependency on libsecp256k1 (and optionally libbitcoinconsensus), this library is
+//! Except for its dependency on libsecp256k1 (and optionally libbitcoinconsensus for the
+//! Bitcoin-compatible validation subset), this library is
 //! written entirely in Rust. It illustrates the benefits of strong type safety, including ownership
 //! and lifetime, for financial and/or cryptographic software.
 //!
@@ -15,7 +16,8 @@
 //!
 //! * `arbitrary` (dependency) - arbitrary type implementations for testing.
 //! * `base64` (dependency) - enables encoding of PSBTs and message signatures.
-//! * `bitcoinconsensus` (dependency) - enables validating scripts and transactions.
+//! * `bitcoinconsensus` (dependency) - enables script and transaction validation, including
+//!   Tidecoin's PQ validation path.
 //! * `default` - enables `std` and `secp-recovery`.
 //! * `rand` (transitive dependency) - makes it more convenient to generate random values.
 //! * `serde` (dependency) - implements `serde`-based serialization and deserialization.

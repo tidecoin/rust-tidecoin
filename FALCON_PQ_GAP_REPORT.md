@@ -1,6 +1,6 @@
 # Falcon/PQ Gap Report
 
-This report captures the Falcon/PQ behaviors that are still missing from the Rust port after the latest validation and fixing pass.
+This report captures the Falcon/PQ behaviors revalidated against the Rust port after the latest validation and fixing pass.
 
 Validation basis:
 
@@ -24,20 +24,25 @@ Validation basis:
 - Tidecoin PSBT PQHD origin and PQ partial-signature helpers in [bitcoin/src/psbt/tidecoin.rs](bitcoin/src/psbt/tidecoin.rs)
 - PQ witness helper `Witness::p2wsh512_pq()` in [bitcoin/src/blockdata/witness.rs](bitcoin/src/blockdata/witness.rs)
 - Tidecoin v2 PQ packet cipher parity in [p2p/src/bip324_pq.rs](p2p/src/bip324_pq.rs)
+- Tidecoin validation/runtime behavior for PQ scripts in [bitcoin/src/consensus_validation.rs](bitcoin/src/consensus_validation.rs), [bitcoin/src/consensus_validation_node.rs](bitcoin/src/consensus_validation_node.rs), and [bitcoin/src/consensus_validation_tidecoin.rs](bitcoin/src/consensus_validation_tidecoin.rs)
+- node-backed executable PQ corpus coverage for:
+  - `script_tests_pq.json`
+  - `tx_valid_pq.json`
+  - `tx_invalid_pq.json`
+  - `script_assets_test.json`
+  - mixed witness-v0/v1-512 cases
+  - PQ multisig mixed/negative/limit cases
+  - committed-hash mixed/failure cases
+  - legacy base-signature verification cases
 
 ## Remaining Validated Gaps
 
-1. Interpreter/runtime PQ behavior is still missing.
-Node implements `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ signature execution in [src/script/interpreter.h](/home/kiel/work/tidecoin-node/src/script/interpreter.h) and [src/script/interpreter.cpp](/home/kiel/work/tidecoin-node/src/script/interpreter.cpp).
-Rust still does not expose a Tidecoin script interpreter or validation runtime. The optional validation module is still Bitcoin-specific in [bitcoin/src/consensus_validation.rs](bitcoin/src/consensus_validation.rs).
+No confirmed Falcon/PQ library-scope runtime gaps remain in the previously tracked set.
 
-2. Node PQ script/transaction/multisig corpora are still not migrated as executable Rust coverage.
-The node executes `script_tests_pq.json`, `tx_valid_pq.json`, `tx_invalid_pq.json`, PQ asset tests, and PQ multisig tests in:
-- [src/test/script_tests.cpp](/home/kiel/work/tidecoin-node/src/test/script_tests.cpp)
-- [src/test/transaction_tests.cpp](/home/kiel/work/tidecoin-node/src/test/transaction_tests.cpp)
-- [src/test/script_assets_tests.cpp](/home/kiel/work/tidecoin-node/src/test/script_assets_tests.cpp)
-- [src/test/pq_multisig_tests.cpp](/home/kiel/work/tidecoin-node/src/test/pq_multisig_tests.cpp)
-Rust has coverage for crypto containers, PQHD, PSBT metadata, and witness layout, but not the node PQ execution corpora.
+Optional future expansion areas, if the library needs to expose more of the node surface:
+
+- additional node policy helpers layered above the current validation bridge
+- future node PQ vectors beyond the currently imported script, transaction, asset, and multisig cases
 
 ## Bottom Line
 
@@ -50,6 +55,8 @@ The Rust port now has real PQ crypto primitives for:
 - ML-KEM-512 keypair / encapsulate / decapsulate helpers
 - strict signing/verification
 - Falcon-512 legacy signing/verification
+- Tidecoin runtime validation behavior for PQ scripts, `OP_SHA512`, and witness-v1-512
+- node-backed PQ script, transaction, asset, and multisig regression coverage
 - Tidecoin v2 PQ transport key derivation and packet encryption/decryption
 
-The remaining missing layers are Tidecoin runtime validation behavior and node PQ corpus migration.
+The remaining work is maintenance and future parity growth, not an identified missing Falcon/PQ library slice from this report.

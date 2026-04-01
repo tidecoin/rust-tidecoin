@@ -297,4 +297,61 @@ Bring the library to a state where:
     - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Remaining open risks:
   - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
-  - the optional validation API still points at upstream `bitcoinconsensus`, not a Tidecoin-specific validation surface
+  - the optional validation API still lacks Tidecoin-native execution semantics even though Tidecoin-only paths are no longer forwarded to `bitcoinconsensus`
+
+### Phase 13
+
+- State: `done`
+- Objective: stop the optional validation API from misrepresenting Tidecoin support while the local runtime remains unimplemented
+- Completed in this phase:
+  - added Tidecoin-only validation flag constants in `bitcoin/src/consensus_validation.rs` for:
+    - `VERIFY_PQ_STRICT`
+    - `VERIFY_WITNESS_V1_512`
+    - `VERIFY_SHA512`
+  - changed `bitcoin/src/consensus_validation.rs` so Tidecoin-only flags and `p2wsh512` outputs return explicit unsupported errors instead of being forwarded to upstream `bitcoinconsensus`
+  - added focused regression coverage proving:
+    - Tidecoin-only flags are rejected explicitly
+    - `p2wsh512` outputs are rejected explicitly
+    - the existing Bitcoin-compatible validation path still works
+  - updated crate/docs tracking to reflect that `bitcoinconsensus` now covers only the Bitcoin-compatible subset
+  - re-ran verification successfully:
+    - `cargo test -p tidecoin --lib consensus_validation --features bitcoinconsensus`
+    - `cargo test -p tidecoin --lib blockdata::script::tests::bitcoinconsensus --features bitcoinconsensus`
+    - `cargo check -p tidecoin --all-features --tests --examples`
+- Remaining open risks:
+  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
+
+### Phase 14
+
+- State: `done`
+- Objective: land the Tidecoin-native validation/runtime surface and close the remaining node PQ corpus gap
+- Completed in this phase:
+  - added the `tidecoin-node-validation` feature in `bitcoin/Cargo.toml`
+  - extended `bitcoin/build.rs` to compile a local node-backed validation bridge from Tidecoin node sources
+  - added `bitcoin/c_src/tidecoin_validation_bridge.cpp` and `bitcoin/c_src/randombytes_stub.c` to support the bridge build
+  - split validation behavior in:
+    - `bitcoin/src/consensus_validation.rs`
+    - `bitcoin/src/consensus_validation_node.rs`
+    - `bitcoin/src/consensus_validation_tidecoin.rs`
+  - routed Tidecoin-only script cases through the node-backed validator while keeping ordinary Bitcoin-compatible scripts on the local fallback path
+  - migrated and covered the node PQ execution corpora and tails with executable Rust tests for:
+    - `script_tests_pq.json`
+    - `tx_valid_pq.json`
+    - `tx_invalid_pq.json`
+    - `script_assets_test.json`
+    - `OP_SHA512`
+    - witness-v1-512 policy/runtime cases
+    - mixed witness-v0/v1-512 behavior
+    - PQ multisig mixed, negative, and limit cases
+    - committed-hash mixed and failure cases
+    - legacy base-signature verification
+  - corrected the feature-matrix gating for the legacy pure-`bitcoinconsensus` tests so both validation configurations remain green
+  - re-ran verification successfully:
+    - `cargo check -p tidecoin --all-features --tests --examples`
+    - `cargo test -p tidecoin --all-features --quiet`
+    - `cargo test --workspace`
+    - `cargo clippy -p tidecoin --all-features --all-targets -- -D warnings`
+    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+    - `git diff --check`
+- Remaining open risks:
+  - no confirmed library-scope validation/runtime gaps remain from the tracked Tidecoin protocol port
