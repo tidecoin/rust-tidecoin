@@ -142,9 +142,8 @@ pub use primitives::{
     merkle_tree::{TxMerkleNode, WitnessMerkleNode},
     script::{
         RedeemScript, RedeemScriptBuf, RedeemScriptTag, ScriptHashableTag, ScriptPubKey,
-        ScriptPubKeyBuf, ScriptPubKeyTag, ScriptSig, ScriptSigBuf, ScriptSigTag, SignetBlockScript,
-        SignetBlockScriptBuf, SignetBlockScriptTag, Tag, WitnessScript, WitnessScriptBuf,
-        WitnessScriptTag,
+        ScriptPubKeyBuf, ScriptPubKeyTag, ScriptSig, ScriptSigBuf, ScriptSigTag, Tag,
+        WitnessScript, WitnessScriptBuf, WitnessScriptTag,
     },
     transaction::{OutPoint, Transaction, TxIn, TxOut, Txid, Version as TransactionVersion, Wtxid},
     witness::Witness,

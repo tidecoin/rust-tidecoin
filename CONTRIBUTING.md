@@ -1,10 +1,8 @@
-# Contributing to rust-bitcoin
+# Contributing to rust-tidecoin
 
 :+1::tada: First off, thanks for taking the time to contribute! :tada::+1:
 
-The following is a set of guidelines for contributing to Rust Bitcoin
-implementation and other Rust Bitcoin-related projects, which are hosted in the
-[Rust Bitcoin Community](https://github.com/rust-bitcoin) on GitHub. These are
+The following is a set of guidelines for contributing to Rust Tidecoin. These are
 mostly guidelines, not rules. Use your best judgment, and feel free to propose
 changes to this document in a pull request.
 
@@ -41,7 +39,7 @@ changes to this document in a pull request.
 
 ## General
 
-The Rust Bitcoin project operates an open contributor model where anyone is
+The Rust Tidecoin project operates an open contributor model where anyone is
 welcome to contribute towards development in the form of peer review,
 documentation, testing and patches.
 
@@ -57,17 +55,8 @@ For a more in depth discussion of our coding policy see [policy.md](./docs/polic
 
 ## Communication channels
 
-Communication about Rust Bitcoin happens primarily in
-[#bitcoin-rust](https://web.libera.chat/?channel=#bitcoin-rust) IRC chat on
-[Libera](https://libera.chat/) with the logs available at
-<https://gnusha.org/bitcoin-rust/> (starting from Jun 2021 and now on) and
-<https://gnusha.org/rust-bitcoin/> (historical archive before Jun 2021).
-
 Discussion about code base improvements happens in GitHub issues and on pull
 requests.
-
-Major projects are tracked [here](https://github.com/orgs/rust-bitcoin/projects).
-Major milestones are tracked [here](https://github.com/rust-bitcoin/rust-bitcoin/milestones).
 
 
 ## Asking questions
@@ -75,8 +64,8 @@ Major milestones are tracked [here](https://github.com/rust-bitcoin/rust-bitcoin
 > **Note:** Please don't file an issue to ask a question. You'll get faster
 > results by using the resources below.
 
-We have a dedicated developer channel on IRC, #bitcoin-rust@libera.chat where
-you may get helpful advice if you have questions.
+You may get helpful advice by opening a discussion on the
+[GitHub repository](https://github.com/nicenemo/rust-tidecoin).
 
 
 ## Getting Started
@@ -86,7 +75,7 @@ you may get helpful advice if you have questions.
 Rust can be installed using your package manager of choice or [rustup.rs](https://rustup.rs). The
 former way is considered more secure since it typically doesn't involve trust in the CA system. But
 you should be aware that the version of Rust shipped by your distribution might be out of date.
-Generally this isn't a problem for `rust-bitcoin` since we support much older versions than the
+Generally this isn't a problem for `rust-tidecoin` since we support much older versions than the
 current stable one (see MSRV section in [README.md](./README.md)).
 
 ### Building
@@ -94,8 +83,8 @@ current stable one (see MSRV section in [README.md](./README.md)).
 The library can be built and tested using [`cargo`](https://github.com/rust-lang/cargo/):
 
 ```
-git clone git@github.com:rust-bitcoin/rust-bitcoin.git
-cd rust-bitcoin
+git clone git@github.com:nicenemo/rust-tidecoin.git
+cd rust-tidecoin
 cargo build
 ```
 
@@ -178,7 +167,7 @@ Prerequisites that a PR must satisfy for merging into the `master` branch:
 * contain all inline docs for newly introduced API and pass doc tests including
   running `just lint` without any errors or warnings;
 * be based on the recent `master` tip from the original repository at
-  <https://github.com/rust-bitcoin/rust-bitcoin>.
+  <https://github.com/nicenemo/rust-tidecoin>.
 
 NB: reviewers may run more complex test/CI scripts, thus, satisfying all the
 requirements above is just a preliminary, but not necessary sufficient step for
@@ -244,14 +233,7 @@ Pull request merge requirements:
 
 Current list of the project maintainers:
 
-- [Andrew Poelstra](https://github.com/apoelstra)
-- [Steven Roose](https://github.com/stevenroose)
-- [Matt Corallo](https://github.com/TheBlueMatt)
-- [Elichai Turkel](https://github.com/elichai)
-- [Sanket Kanjalkar](https://github.com/sanket1729)
-- [Martin Habovštiak](https://github.com/Kixunil)
-- [Riccardo Casatta](https://github.com/RCasatta)
-- [Tobin Harding](https://github.com/tcharding)
+- [Hans Swaanen (nicenemo)](https://github.com/nicenemo)
 
 #### Backporting
 
@@ -269,12 +251,12 @@ Any other changes to the release branches should follow the normal 2-ACK merge p
 
 ## Coding conventions
 
-Library reflects Bitcoin Core approach whenever possible.
+Library reflects Tidecoin Core approach whenever possible.
 
 ### Naming conventions
 
 Naming of data structures/enums and their fields/variants must follow names used
-in Bitcoin Core, with the following exceptions:
+in Tidecoin Core, with the following exceptions:
 - The case should follow Rust standards (i.e. PascalCase for types and snake_case for fields and variants).
 - Omit `C`-prefixes.
 - If function `foo` needs a private helper function, use `foo_internal`.
@@ -300,7 +282,7 @@ For broader project policy and guidelines, see [policy.md](./docs/policy.md).
 
 ### API changes
 
-All PRs that change the public API of `rust-bitcoin` will be checked on CI for
+All PRs that change the public API of `rust-tidecoin` will be checked on CI for
 semversioning compliance. This means that if the PR changes the public API in a
 way that is not backwards compatible, the PR will be flagged as a breaking change.
 Please check the [`semver-checks` workflow](.github/workflows/semver-checks.yml).
@@ -319,7 +301,7 @@ apoelstra@wpsoftware.net, encrypted with his public key from
 
 ## Testing
 
-Related to the security aspect, rust bitcoin developers take testing very
+Related to the security aspect, Rust Tidecoin developers take testing very
 seriously. Due to the modular nature of the project, writing new test cases is
 easy and good test coverage of the codebase is an important goal. Refactoring
 the project to enable fine-grained unit testing is also an ongoing effort.
@@ -373,7 +355,7 @@ for your time, please be respectful of ours.
 You may be interested in the guide by Jon Atack on
 [How to review Bitcoin Core PRs](https://github.com/jonatack/bitcoin-development/blob/master/how-to-review-bitcoin-core-prs.md)
 and [How to make Bitcoin Core PRs](https://github.com/jonatack/bitcoin-development/blob/master/how-to-make-bitcoin-core-prs.md).
-While there are differences between the projects in terms of context and
-maturity, many of the suggestions offered apply to this project.
+While these are Bitcoin-specific guides, many of the suggestions offered apply
+to this project as well.
 
 Overall, have fun :)

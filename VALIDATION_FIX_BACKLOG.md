@@ -4,7 +4,63 @@ This file is updated as issues are validated and moved through the state machine
 
 ## Open
 
-None.
+### Script validation vectors (planned)
+
+The Tidecoin C++ node ships `script_tests.json` containing approximately 1,000+ test vectors that exercise every opcode, witness version, and soft-fork flag combination. The Rust library currently has no equivalent — `blockdata/script/tests.rs` covers only the script builder API (integer encoding, key pushing, opcode assembly), not consensus-level execution semantics.
+
+What the missing vectors cover:
+
+- Every standard opcode behavior (OP_DUP, OP_HASH160, OP_EQUAL, OP_CHECKSIG, OP_CHECKMULTISIG, etc.)
+- Stack depth, element size, and numeric encoding boundary cases
+- Canonical vs non-canonical encoding validation
+- OP_CHECKSIG and OP_CHECKMULTISIG execution with real signature material
+- Soft-fork flag interactions (DERSIG, CHECKLOCKTIMEVERIFY, CHECKSEQUENCEVERIFY, CLEANSTACK, NULLDUMMY, WITNESS)
+- Tidecoin-specific opcodes: OP_SHA512 (0xb3) execution in isolation
+- P2WSH-512 witness program construction and spend paths
+- PQ multisig script execution across all five post-quantum schemes
+- Committed-hash PQ script patterns
+- Mixed witness-v0 / witness-v1-512 interaction edge cases
+- Script failure modes: invalid signatures, exceeded stack limits, disabled opcodes, malformed push data
+
+These vectors are the primary defense against consensus divergence between the Rust library and the Tidecoin node. When the `tidecoin-node-validation` feature is enabled, the node-backed bridge already handles execution, but a standalone Rust interpreter does not exist yet.
+
+Prerequisite: either a pure-Rust script interpreter or a reliable way to generate/import the node's `script_tests.json` with Tidecoin-specific additions.
+
+### AuxPoW validation vectors (planned)
+
+No tests currently exercise AuxPoW chain-ID validation, merge-mining branch verification, or coinbase commitment checking. The struct and serialization layer is solid but the consensus-rule enforcement is untested.
+
+Needed:
+- Known mainnet AuxPoW block headers with verified chain_id = 8
+- Invalid AuxPoW blocks: wrong chain ID, invalid merkle branch, missing coinbase commitment
+- Boundary: blocks at auxpow_start_height transition
+- Parent block header validation (pure 80-byte, no nested AuxPoW)
+
+### Subsidy/reward schedule (planned)
+
+The Tidecoin reward schedule uses doubling-interval quartering (40 TDC base, right-shift by 2 per era), distinct from Bitcoin's simple halving. No tests validate this schedule. SUBSIDY_HALVING_INTERVAL is defined but never exercised.
+
+Needed:
+- Block reward at height 0, at each era boundary, and after final halving
+- Comparison with the Tidecoin node's GetBlockSubsidy output
+
+### Difficulty retargeting edge cases (planned)
+
+Basic retargeting tests exist (4 cases in pow.rs), but the following are missing:
+- AuxPoW-era difficulty adjustment
+- Historical chain difficulty walk with known block headers
+- Overflow and minimum-difficulty boundary cases
+- Testnet min-difficulty rule activation and walk-back behavior with more than one historical block
+
+### Standalone PQ signature operation tests (planned)
+
+The `tidecoin-node-validation` feature covers PQ execution through the C++ bridge, but no standalone Rust tests exercise:
+- Falcon-512/1024 sign-then-verify roundtrip with random messages
+- ML-DSA-44/65/87 sign-then-verify roundtrip with random messages
+- Signature size bounds enforcement per scheme
+- Public key size validation per scheme
+- Invalid/corrupted signature rejection
+- Cross-scheme rejection (Falcon sig against ML-DSA key)
 
 ## Closed
 

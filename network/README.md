@@ -1,4 +1,4 @@
 # Network
 
-Provides the `Network` type for differentiating which Bitcoin network
-one is operating on e.g., signet, regtest.
+Provides the `Network` type for differentiating which Tidecoin network
+one is operating on e.g., testnet, regtest.

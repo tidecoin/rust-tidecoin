@@ -162,26 +162,10 @@ impl SignedAmount {
         Self::from_float_in(tdc, Denomination::Tidecoin)
     }
 
-    /// Converts from a value expressing a decimal number of tidecoin to a [`SignedAmount`].
-    ///
-    /// # Errors
-    ///
-    /// Propagates the same parsing and range errors as [`Self::from_tdc`].
-    #[cfg(feature = "alloc")]
-    #[deprecated(since = "0.33.0-beta", note = "use `from_tdc`")]
-    pub fn from_btc(btc: f64) -> Result<Self, ParseAmountError> { Self::from_tdc(btc) }
-
     /// Converts from a value expressing a whole number of tidecoin to a [`SignedAmount`].
     #[allow(clippy::missing_panics_doc)]
     pub fn from_int_tdc<T: Into<i16>>(whole_tidecoin: T) -> Self {
         Self::from_tdc_i16(whole_tidecoin.into())
-    }
-
-    /// Converts from a value expressing a whole number of tidecoin to a [`SignedAmount`].
-    #[allow(clippy::missing_panics_doc)]
-    #[deprecated(since = "0.33.0-beta", note = "use `from_int_tdc`")]
-    pub fn from_int_btc<T: Into<i16>>(whole_bitcoin: T) -> Self {
-        Self::from_tdc_i16(whole_bitcoin.into())
     }
 
     /// Converts from a value expressing a whole number of tidecoin to a [`SignedAmount`]
@@ -254,11 +238,6 @@ impl SignedAmount {
     /// Expresses this [`SignedAmount`] as a floating-point value in Tidecoin.
     #[cfg(feature = "alloc")]
     pub fn to_tdc(self) -> f64 { self.to_float_in(Denomination::Tidecoin) }
-
-    /// Expresses this [`SignedAmount`] as a floating-point value in Tidecoin.
-    #[cfg(feature = "alloc")]
-    #[deprecated(since = "0.33.0-beta", note = "use `to_tdc`")]
-    pub fn to_btc(self) -> f64 { self.to_tdc() }
 
     /// Constructs a new `SignedAmount` from a prefixed hex string.
     ///

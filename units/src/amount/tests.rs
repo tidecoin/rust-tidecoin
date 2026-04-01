@@ -122,20 +122,15 @@ fn from_str_zero_without_denomination() {
 }
 
 #[test]
-#[allow(deprecated)]
-fn from_int_btc() {
+fn from_int_tdc() {
     let amt = Amount::from_tdc_u16(2);
     assert_eq!(sat(200_000_000), amt);
     let amt = Amount::from_int_tdc(2_u16);
-    assert_eq!(sat(200_000_000), amt);
-    let amt = Amount::from_int_btc(2_u16);
     assert_eq!(sat(200_000_000), amt);
 
     let amt = SignedAmount::from_tdc_i16(-2);
     assert_eq!(ssat(-200_000_000), amt);
     let amt = SignedAmount::from_int_tdc(-2_i16);
-    assert_eq!(ssat(-200_000_000), amt);
-    let amt = SignedAmount::from_int_btc(-2_i16);
     assert_eq!(ssat(-200_000_000), amt);
 }
 

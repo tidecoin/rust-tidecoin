@@ -1,8 +1,8 @@
-# Bitcoin Units
+# Tidecoin Units
 
-This crate provides basic Bitcoin numeric units such as `Amount`.
+This crate provides basic Tidecoin numeric units such as `Amount`.
 
-## `bitcoin-units v0.3.0`
+## `tidecoin-units v0.3.0`
 
 This is the start of the `v1.0.0` release candidate cycle. We will
 endeavour to not release breaking changes unless totally necessary and

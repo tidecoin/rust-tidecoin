@@ -84,9 +84,8 @@ pub use primitives::script::ScriptBufDecoderError;
 pub use primitives::script::{
     RedeemScript, RedeemScriptBuf, RedeemScriptSizeError, RedeemScriptTag, Script, ScriptBuf,
     ScriptBufDecoder, ScriptEncoder, ScriptHash, ScriptHashableTag, ScriptPubKey, ScriptPubKeyBuf,
-    ScriptPubKeyTag, ScriptSig, ScriptSigBuf, ScriptSigTag, SignetBlockScript,
-    SignetBlockScriptBuf, SignetBlockScriptTag, Tag, WScriptHash, WitnessScript, WitnessScriptBuf,
-    WitnessScriptSizeError, WitnessScriptTag,
+    ScriptPubKeyTag, ScriptSig, ScriptSigBuf, ScriptSigTag, Tag, WScriptHash, WitnessScript,
+    WitnessScriptBuf, WitnessScriptSizeError, WitnessScriptTag,
 };
 pub(crate) use self::borrowed::ScriptExtPriv;
 pub(crate) use self::owned::ScriptBufExtPriv;

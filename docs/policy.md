@@ -1,6 +1,6 @@
-# Coding policy for the rust-bitcoin repository
+# Coding policy for the rust-tidecoin repository
 
-We have various `rust-bitcoin` specific coding styles and conventions that are
+We have various `rust-tidecoin` specific coding styles and conventions that are
 grouped here loosely under the term 'policy'. These are things we try to adhere
 to but that you should not need to worry too much about if you are a new
 contributor. Think of this as a place to collect group knowledge that exists in
@@ -236,7 +236,7 @@ there are two common styles for how to write `expect` messages:
 We opted to use the "expect as precondition" since it clearly states why the
 operation should succeed.
 This may be better for communicating with developers, since they are the target
-audience for the error message and `rust-bitcoin`.
+audience for the error message and `rust-tidecoin`.
 
 If you want to know more about the decision error messages and expect messages,
 please check:

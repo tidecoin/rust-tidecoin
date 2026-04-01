@@ -430,3 +430,26 @@ Bring the library to a state where:
     - `cargo test -p tidecoin --features tidecoin-node-validation --lib -- --nocapture`
 - Remaining open risks:
   - no confirmed library-scope protocol or residual tracked node-test coverage gaps remain after the post-push audit
+
+### Phase 18
+
+- State: `done`
+- Objective: documentation parity sweep, dead code removal, and planned test gap inventory
+- Completed in this phase:
+  - rewrote root `README.md` from Bitcoin to Tidecoin with AuxPoW/PQ/denomination sections and crate table
+  - updated 9 sub-crate READMEs (addresses, hashes, primitives, consensus_encoding, network, p2p, units, io, internals, crypto) to reference Tidecoin
+  - updated `CONTRIBUTING.md` with Tidecoin project name, repo URLs, maintainer list, and communication channels
+  - updated `docs/README.md`, `docs/crates.md`, `docs/policy.md` to reference Tidecoin
+  - removed dead Signet code: `SignetBlockScriptTag`, `SignetBlockScript`/`SignetBlockScriptBuf` types, `From<WitnessScriptBuf>` conversion, and test
+  - removed empty `bitcoin/src/taproot/merkle_branch/` directory
+  - removed deprecated `from_btc()`/`to_btc()`/`from_int_btc()` methods from `units/src/amount/unsigned.rs` and `units/src/amount/signed.rs`
+  - updated test `from_int_btc` to `from_int_tdc` in `units/src/amount/tests.rs`
+  - removed stub workspace crates `addresses/` and `crypto/` and dropped them from workspace members
+  - removed `api/` directory and `contrib/check-for-api-changes.sh` script
+  - removed API CI job from `.github/workflows/rust.yml`
+  - recorded planned test gaps in `VALIDATION_FIX_BACKLOG.md`: script validation vectors, AuxPoW validation, subsidy schedule, difficulty retargeting edges, standalone PQ signature operations
+  - re-ran verification successfully:
+    - `cargo check --workspace`
+    - `cargo test --workspace`
+- Remaining open risks:
+  - planned test gaps recorded in `VALIDATION_FIX_BACKLOG.md` are not yet implemented
