@@ -141,7 +141,7 @@ impl Work {
     /// Returns log2 of this work.
     ///
     /// The result inherently suffers from a loss of precision and is, therefore, meant to be
-    /// used mainly for informative and displaying purposes, similarly to Bitcoin Core's
+    /// used mainly for informative and displaying purposes, similarly to the reference node's
     /// `log2_work` output in its logs.
     #[cfg(feature = "std")]
     pub fn log2(self) -> f64 { self.0.to_f64().log2() }
@@ -175,7 +175,7 @@ impl Sub for Work {
 pub struct Target(U256);
 
 impl Target {
-    /// When parsing nBits, Bitcoin Core converts a negative target threshold into a target of zero.
+    /// When parsing nBits, the Tidecoin node converts a negative target threshold into a target of zero.
     pub const ZERO: Self = Self(U256::ZERO);
     /// The maximum possible target.
     ///
@@ -275,7 +275,7 @@ impl Target {
     /// # Note
     ///
     /// Difficulty is calculated using the following algorithm `max / current` where [max] is
-    /// defined for the Bitcoin network and `current` is the current target for this block (i.e. `self`).
+    /// defined for the Tidecoin network and `current` is the current target for this block (i.e. `self`).
     /// As such, a low target implies a high difficulty. Since [`Target`] is represented as a 256 bit
     /// integer but `difficulty_with_max()` returns only 128 bits this means for targets below
     /// approximately `0xffff_ffff_ffff_ffff_ffff_ffff` `difficulty_with_max()` will saturate at `u128::MAX`.
@@ -360,7 +360,7 @@ impl Target {
     ///
     /// # Returns
     ///
-    /// In line with Bitcoin Core this function may return a target value of zero.
+    /// In line with the Tidecoin node this function may return a target value of zero.
     pub fn min_transition_threshold(&self) -> Self { Self(self.0 >> 2) }
 
     /// Computes the maximum valid [`Target`] threshold allowed for a block in which a difficulty
@@ -395,7 +395,7 @@ impl_to_hex_from_lower_hex!(Target, |_| 64);
 
 /// Gets the target for the block after `current_header`.
 ///
-/// Implements the [`GetNextWorkRequired`] function from Bitcoin core.
+/// Implements the Tidecoin node's `GetNextWorkRequired` function.
 ///
 /// Note, `new_block_timestamp` is only used when `params.allow_min_difficulty_blocks = true` i.e.,
 /// on testnet and regtest.
@@ -530,7 +530,7 @@ internal_macros::define_extension_trait! {
         ///
         /// See [`CompactTarget::from_next_work_required`]
         ///
-        /// For example, to successfully compute the first difficulty adjustment on the Bitcoin network,
+        /// For example, to successfully compute the first difficulty adjustment on the Tidecoin network,
         /// one would pass the header for Block 2015 as `current` and the header for Block 0 as
         /// `last_epoch_boundary`.
         ///
@@ -2205,7 +2205,7 @@ mod tests {
     #[test]
     #[cfg(feature = "std")]
     fn work_log2() {
-        // Compare work log2 to historical Bitcoin Core values found in Core logs.
+        // Compare work log2 to historical Tidecoin node values found in node logs.
         let tests: &[(u128, f64)] = &[
             // (chainwork, core log2)                // height
             (0x200020002, 33.000022),                // 1

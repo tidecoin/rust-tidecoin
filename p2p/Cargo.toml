@@ -20,6 +20,7 @@ serde = ["dep:serde", "hashes/serde"]
 
 [dependencies]
 bitcoin = { path = "../bitcoin/", package = "tidecoin", default-features = false }
+chacha20-poly1305 = { path = "../chacha20_poly1305", version = "0.1.2", default-features = false, features = ["alloc"] }
 encoding = { package = "tidecoin-consensus-encoding", version = "0.1.0", path = "../consensus_encoding", default-features = false }
 hashes = { package = "tidecoin_hashes", version = "0.20.0", path = "../hashes", default-features = false }
 network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.0", default-features = false }

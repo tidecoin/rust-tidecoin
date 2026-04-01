@@ -29,13 +29,13 @@ internal_macros::define_extension_trait! {
 
         /// Counts the sigops for this Script using accurate counting.
         ///
-        /// In Bitcoin Core, there are two ways to count sigops, "accurate" and "legacy".
+        /// In the reference node, there are two ways to count sigops, "accurate" and "legacy".
         /// This method uses "accurate" counting. This means that OP_CHECKMULTISIG and its
         /// verify variant count for N sigops where N is the number of pubkeys used in the
         /// multisig. However, it will count for 20 sigops if CHECKMULTISIG is not preceded by an
         /// OP_PUSHNUM from 1 - 16 (this would be an invalid script)
         ///
-        /// Bitcoin Core uses accurate counting for sigops contained within redeemScripts (P2SH)
+        /// The reference node uses accurate counting for sigops contained within redeemScripts (P2SH)
         /// and witnessScripts (P2WSH) only. It uses legacy for sigops in scriptSigs and scriptPubkeys.
         ///
         /// Witness-v1 outputs are not part of Tidecoin's recognized script types.
@@ -44,11 +44,11 @@ internal_macros::define_extension_trait! {
 
         /// Counts the sigops for this Script using legacy counting.
         ///
-        /// In Bitcoin Core, there are two ways to count sigops, "accurate" and "legacy".
+        /// In the reference node, there are two ways to count sigops, "accurate" and "legacy".
         /// This method uses "legacy" counting. This means that OP_CHECKMULTISIG and its
         /// verify variant count for 20 sigops.
         ///
-        /// Bitcoin Core uses legacy counting for sigops contained within scriptSigs and
+        /// The reference node uses legacy counting for sigops contained within scriptSigs and
         /// scriptPubkeys. It uses accurate for redeemScripts (P2SH) and witnessScripts (P2WSH).
         ///
         /// Witness-v1 outputs are not part of Tidecoin's recognized script types.
@@ -66,7 +66,7 @@ internal_macros::define_extension_trait! {
                     Err(_) => return false,
                     Ok(Instruction::PushBytes(_)) => {}
                     Ok(Instruction::Op(op)) if op.to_u8() <= 0x60 => {}
-                    // From Bitcoin Core
+                    // From the reference node.
                     // if (opcode > OP_PUSHNUM_16 (0x60)) return false
                     Ok(Instruction::Op(_)) => return false,
                 }
@@ -367,16 +367,16 @@ internal_macros::define_extension_trait! {
 
         /// Check if this is a consensus-valid OP_RETURN output.
         ///
-        /// To validate if the OP_RETURN obeys Bitcoin Core's current standardness policy, use
+        /// To validate if the OP_RETURN obeys the Tidecoin node's current standardness policy, use
         /// [`is_standard_op_return()`](Self::is_standard_op_return) instead.
         #[inline]
         fn is_op_return(&self) -> bool {
             self.as_bytes().first().is_some_and(|&b| b == OP_RETURN.to_u8())
         }
 
-        /// Check if this is an OP_RETURN that obeys Bitcoin Core standardness policy.
+        /// Check if this is an OP_RETURN that obeys the Tidecoin node's standardness policy.
         ///
-        /// What this function considers to be standard may change without warning pending Bitcoin Core
+        /// What this function considers to be standard may change without warning pending Tidecoin node
         /// changes.
         #[inline]
         fn is_standard_op_return(&self) -> bool { self.is_op_return() && self.len() <= MAX_OP_RETURN_RELAY }
@@ -402,15 +402,15 @@ internal_macros::define_extension_trait! {
         }
 
         /// Returns the minimum value an output with this script should have in order to be
-        /// broadcastable on today’s Bitcoin network.
+        /// broadcastable on today’s Tidecoin network.
         #[deprecated(since = "0.32.0", note = "use `minimal_non_dust` etc. instead")]
         fn dust_value(&self) -> Amount { self.minimal_non_dust() }
 
         /// Returns the minimum value an output with this script should have in order to be
-        /// broadcastable on today's Bitcoin network.
+        /// broadcastable on today's Tidecoin network.
         ///
-        /// Dust depends on the -dustrelayfee value of the Bitcoin Core node you are broadcasting to.
-        /// This function uses the default value of 0.00003 BTC/kB (3 sat/vByte).
+        /// Dust depends on the `-dustrelayfee` value of the Tidecoin node you are broadcasting to.
+        /// This function uses the default value of 0.00003 TDC/kB (3 tidoshi/vByte).
         ///
         /// To use a custom value, use [`minimal_non_dust_custom`].
         ///
@@ -421,14 +421,14 @@ internal_macros::define_extension_trait! {
         }
 
         /// Returns the minimum value an output with this script should have in order to be
-        /// broadcastable on today's Bitcoin network.
+        /// broadcastable on today's Tidecoin network.
         ///
-        /// Dust depends on the -dustrelayfee value of the Bitcoin Core node you are broadcasting to.
+        /// Dust depends on the `-dustrelayfee` value of the Tidecoin node you are broadcasting to.
         /// This function lets you set the fee rate used in dust calculation.
         ///
-        /// The current default value in Bitcoin Core (as of v26) is 3 sat/vByte.
+        /// The current default value in Tidecoin node policy is 3 tidoshi/vByte.
         ///
-        /// To use the default Bitcoin Core value, use [`minimal_non_dust`].
+        /// To use the default Tidecoin node value, use [`minimal_non_dust`].
         ///
         /// [`minimal_non_dust`]: Self::minimal_non_dust
         fn minimal_non_dust_custom(&self, dust_relay: FeeRate) -> Option<Amount> {
@@ -462,7 +462,7 @@ internal_macros::define_extension_trait! {
                                         n += usize::from(pushnum);
                                     }
                                     _ => {
-                                        // MAX_PUBKEYS_PER_MULTISIG from Bitcoin Core
+                                        // MAX_PUBKEYS_PER_MULTISIG from the reference node.
                                         // https://github.com/bitcoin/bitcoin/blob/v25.0/src/script/script.h#L29-L30
                                         n += 20;
                                     }
@@ -476,7 +476,7 @@ internal_macros::define_extension_trait! {
                     Ok(Instruction::PushBytes(_)) => {
                         pushnum_cache = None;
                     }
-                    // In Bitcoin Core it does `if (!GetOp(pc, opcode)) break;`
+                    // In the reference node it does `if (!GetOp(pc, opcode)) break;`
                     Err(_) => break,
                 }
             }
@@ -504,7 +504,7 @@ internal_macros::define_extension_trait! {
                 // OP_1NEGATE and OP_1..OP_16 are opcodes (not pushdata) and thus excluded.
                 // OP_RESERVED is also excluded.
                 Some(Ok(Instruction::PushBytes(bytes))) => Some(bytes),
-                // OP_16 (0x60) and lower are considered "pushes" by Bitcoin Core (excl. OP_RESERVED).
+                // OP_16 (0x60) and lower are considered "pushes" by the reference node (excl. OP_RESERVED).
                 // However we are only interested in the pushdata so we can ignore them.
                 _ => None,
             }
@@ -530,7 +530,7 @@ internal_macros::define_extension_trait! {
         }
 
         fn minimal_non_dust_internal(&self, dust_relay_fee_rate_per_kvb: u64) -> Option<Amount> {
-            // This must never be lower than Bitcoin Core's GetDustThreshold() (as of v0.21) as it may
+            // This must never be lower than the reference node's GetDustThreshold() as it may
             // otherwise allow users to create transactions which likely can never be broadcast/confirmed.
             let sats = dust_relay_fee_rate_per_kvb
                 .checked_mul(if self.is_op_return() {

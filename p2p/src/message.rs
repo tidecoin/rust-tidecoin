@@ -1019,8 +1019,6 @@ pub enum NetworkMessage {
     BlockTxn(bip152::BlockTransactions),
     /// `alert`
     Alert(message_network::Alert),
-    /// `reject`
-    Reject(message_network::Reject),
     /// `feefilter`
     FeeFilter(FeeFilter),
     /// `wtxidrelay`
@@ -1080,7 +1078,6 @@ impl NetworkMessage {
             Self::GetBlockTxn(_) => "getblocktxn",
             Self::BlockTxn(_) => "blocktxn",
             Self::Alert(_) => "alert",
-            Self::Reject(_) => "reject",
             Self::FeeFilter(_) => "feefilter",
             Self::WtxidRelay => "wtxidrelay",
             Self::AddrV2(_) => "addrv2",
@@ -1189,7 +1186,6 @@ impl Encodable for NetworkMessage {
             Self::GetBlockTxn(ref dat) => dat.consensus_encode(writer),
             Self::BlockTxn(ref dat) => dat.consensus_encode(writer),
             Self::Alert(ref dat) => dat.consensus_encode(writer),
-            Self::Reject(ref dat) => dat.consensus_encode(writer),
             Self::FeeFilter(ref dat) => dat.consensus_encode(writer),
             Self::AddrV2(ref dat) => dat.consensus_encode(writer),
             Self::SendTxReconciliation(ref dat) => dat.consensus_encode(writer),
@@ -1530,14 +1526,6 @@ impl encoding::Decoder for NetworkMessageDecoder {
                     V1NetworkMessageDecoderError(V1NetworkMessageDecoderErrorInner::Payload)
                 })?,
             ),
-            "reject" => NetworkMessage::Reject(
-                bitcoin::consensus::encode::Decodable::consensus_decode_from_finite_reader(
-                    &mut mem_d,
-                )
-                .map_err(|_| {
-                    V1NetworkMessageDecoderError(V1NetworkMessageDecoderErrorInner::Payload)
-                })?,
-            ),
             "feefilter" => NetworkMessage::FeeFilter(
                 bitcoin::consensus::encode::Decodable::consensus_decode_from_finite_reader(
                     &mut mem_d,
@@ -1777,11 +1765,10 @@ impl Encodable for V2NetworkMessage {
             | NetworkMessage::Verack
             | NetworkMessage::SendHeaders
             | NetworkMessage::GetAddr
+            | NetworkMessage::Alert(_)
             | NetworkMessage::WtxidRelay
             | NetworkMessage::SendTxReconciliation(_)
             | NetworkMessage::SendAddrV2
-            | NetworkMessage::Alert(_)
-            | NetworkMessage::Reject(_)
             | NetworkMessage::Unknown { .. } => (0u8, Some(self.payload.command())),
         };
 
@@ -2050,8 +2037,6 @@ impl Decodable for V1NetworkMessage {
             "cfcheckpt" => NetworkMessage::CFCheckpt(
                 Decodable::consensus_decode_from_finite_reader(&mut mem_d)?,
             ),
-            "reject" =>
-                NetworkMessage::Reject(Decodable::consensus_decode_from_finite_reader(&mut mem_d)?),
             "alert" =>
                 NetworkMessage::Alert(Decodable::consensus_decode_from_finite_reader(&mut mem_d)?),
             "feefilter" => NetworkMessage::FeeFilter(
@@ -2101,14 +2086,12 @@ impl Decodable for V2NetworkMessage {
                     "verack" => NetworkMessage::Verack,
                     "sendheaders" => NetworkMessage::SendHeaders,
                     "getaddr" => NetworkMessage::GetAddr,
+                    "alert" =>
+                        NetworkMessage::Alert(Decodable::consensus_decode_from_finite_reader(r)?),
                     "wtxidrelay" => NetworkMessage::WtxidRelay,
                     "sendaddrv2" => NetworkMessage::SendAddrV2,
                     "sendtxrcncl" =>
                         NetworkMessage::SendTxReconciliation(Decodable::consensus_decode_from_finite_reader(r)?),
-                    "alert" =>
-                        NetworkMessage::Alert(Decodable::consensus_decode_from_finite_reader(r)?),
-                    "reject" =>
-                        NetworkMessage::Reject(Decodable::consensus_decode_from_finite_reader(r)?),
                     _ => NetworkMessage::Unknown {
                         command: cmd,
                         payload: Vec::consensus_decode_from_finite_reader(r)?,
@@ -2330,12 +2313,11 @@ impl<'a> Arbitrary<'a> for NetworkMessage {
             28 => Ok(Self::GetBlockTxn(u.arbitrary()?)),
             29 => Ok(Self::BlockTxn(u.arbitrary()?)),
             30 => Ok(Self::Alert(u.arbitrary()?)),
-            31 => Ok(Self::Reject(u.arbitrary()?)),
-            32 => Ok(Self::FeeFilter(u.arbitrary()?)),
-            33 => Ok(Self::WtxidRelay),
-            34 => Ok(Self::AddrV2(u.arbitrary()?)),
-            35 => Ok(Self::SendAddrV2),
-            36 => Ok(Self::SendTxReconciliation(u.arbitrary()?)),
+            31 => Ok(Self::FeeFilter(u.arbitrary()?)),
+            32 => Ok(Self::WtxidRelay),
+            33 => Ok(Self::AddrV2(u.arbitrary()?)),
+            34 => Ok(Self::SendAddrV2),
+            35 => Ok(Self::SendTxReconciliation(u.arbitrary()?)),
             _ => Ok(Self::Unknown { command: u.arbitrary()?, payload: Vec::<u8>::arbitrary(u)? }),
         }
     }
@@ -2483,12 +2465,6 @@ mod test {
                 ],
             }),
             NetworkMessage::Alert(Alert::final_alert()),
-            NetworkMessage::Reject(Reject {
-                message: "Test reject".into(),
-                ccode: RejectReason::Duplicate,
-                reason: "Cause".into(),
-                hash: hash([255u8; 32]),
-            }),
             NetworkMessage::FeeFilter(FeeFilter::from(FeeRate::BROADCAST_MIN)),
             NetworkMessage::WtxidRelay,
             NetworkMessage::AddrV2(AddrV2Payload(vec![AddrV2Message {
@@ -2520,6 +2496,42 @@ mod test {
             let v2_msg = V2NetworkMessage::new(msg.clone());
             assert_eq!(deserialize::<V2NetworkMessage>(&serialize(&v2_msg)).unwrap(), v2_msg);
         }
+    }
+
+    #[test]
+    fn legacy_alert_decodes_explicitly_and_reject_decodes_as_unknown() {
+        let alert_payload = serialize(&Alert::final_alert());
+        let reject_payload = serialize(&Reject {
+            message: "tx".into(),
+            ccode: RejectReason::Duplicate,
+            reason: "Cause".into(),
+            hash: hash([255u8; 32]),
+        });
+        let alert_command = CommandString::try_from_static("alert").unwrap();
+        let reject_command = CommandString::try_from_static("reject").unwrap();
+        let alert_v1 = V1NetworkMessage::new(
+            Magic::from_bytes([57, 0, 0, 0]),
+            NetworkMessage::Unknown {
+                command: alert_command,
+                payload: alert_payload,
+            },
+        );
+        let reject_v1 = V1NetworkMessage::new(
+            Magic::from_bytes([57, 0, 0, 0]),
+            NetworkMessage::Unknown {
+                command: reject_command,
+                payload: reject_payload,
+            },
+        );
+
+        assert_eq!(
+            deserialize::<V1NetworkMessage>(&serialize(&alert_v1)).unwrap(),
+            V1NetworkMessage::new(
+                Magic::from_bytes([57, 0, 0, 0]),
+                NetworkMessage::Alert(Alert::final_alert()),
+            ),
+        );
+        assert_eq!(deserialize::<V1NetworkMessage>(&serialize(&reject_v1)).unwrap(), reject_v1);
     }
 
     #[test]

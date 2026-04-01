@@ -91,12 +91,12 @@ pub struct Params {
     /// Not all target values are attainable because consensus code uses the compact format to
     /// represent targets (see [`CompactTarget`]).
     ///
-    /// Note that this value differs from Bitcoin Core's powLimit field in that this value is
-    /// attainable, but Bitcoin Core's is not. Specifically, because targets in Bitcoin are always
+    /// Note that this value differs from the upstream `powLimit` field in that this value is
+    /// attainable, but the upstream field is not. Specifically, because targets are always
     /// rounded to the nearest float expressible in "compact form", not all targets are attainable.
     /// Still, this should not affect consensus as the only place where the non-compact form of
-    /// this is used in Bitcoin Core's consensus algorithm is in comparison and there are no
-    /// compact-expressible values between Bitcoin Core's and the limit expressed here.
+    /// this is used in the upstream consensus algorithm is in comparison and there are no
+    /// compact-expressible values between the upstream value and the limit expressed here.
     pub max_attainable_target: Target,
     /// Expected amount of time to mine one block.
     pub pow_target_spacing: u32,

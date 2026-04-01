@@ -9,7 +9,7 @@ use core::str::FromStr;
 
 use hashes::{sha256, sha512, Hash as _, HashEngine as _, HmacEngine};
 
-use crate::crypto::pq::PqScheme;
+use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSecretKey};
 
 /// PQHD v1 purpose constant.
 pub const PURPOSE: u32 = 10_007;
@@ -24,6 +24,7 @@ const PQHD_STREAM_INFO: &[u8] = b"Tidecoin PQHD stream key v1";
 const PQHD_RNG_PREFIX: &[u8] = b"Tidecoin PQHD rng v1";
 const PQHD_SEEDID_TAG: &[u8] = b"Tidecoin PQHD seedid v1";
 const V1_PATH_LEN: usize = 6;
+const MAX_DETERMINISTIC_ATTEMPTS: u32 = 1024;
 
 /// Canonical SeedID32 bytes.
 ///
@@ -197,6 +198,28 @@ pub fn derive_keygen_stream_block(stream_key: &[u8; 64], ctr: u32) -> [u8; 64] {
     engine.finalize().to_byte_array()
 }
 
+/// Derives a deterministic PQ keypair from Tidecoin PQHD v1 leaf material.
+pub fn derive_keypair_v1(leaf_material: &LeafMaterialV1) -> Result<(PqPublicKey, PqSecretKey), PqError> {
+    derive_keypair_from_stream_key_v1(leaf_material.scheme, &leaf_material.stream_key)
+}
+
+/// Derives a deterministic PQ keypair from a Tidecoin PQHD v1 stream key.
+pub fn derive_keypair_from_stream_key_v1(
+    scheme: PqScheme,
+    stream_key: &[u8; 64],
+) -> Result<(PqPublicKey, PqSecretKey), PqError> {
+    let seed_len = scheme.deterministic_seed_len();
+
+    for ctr in 0..MAX_DETERMINISTIC_ATTEMPTS {
+        let block = derive_keygen_stream_block(stream_key, ctr);
+        if let Ok(pair) = scheme.generate_keypair_from_seed(&block[..seed_len]) {
+            return Ok(pair);
+        }
+    }
+
+    Err(PqError::BackendFailure)
+}
+
 /// Constructs a PQHD v1 leaf path.
 pub fn make_v1_leaf_path(scheme: PqScheme, account: u32, change: u32, index: u32) -> [u32; 6] {
     [
@@ -229,6 +252,8 @@ mod tests {
     }
 
     fn hex(bytes: &[u8]) -> String { bytes.as_hex().to_string() }
+
+    fn sha256_hex(bytes: &[u8]) -> String { sha256::Hash::hash(bytes).to_string() }
 
     #[test]
     fn vectors_master_seed_0() {
@@ -417,5 +442,117 @@ mod tests {
 
         let leaf = derive_path(&path, &master).unwrap();
         assert!(derive_keygen_stream_key(&leaf.node_secret, &path).is_none());
+    }
+
+    #[test]
+    fn deterministic_keygen_matches_node_paths_for_all_current_schemes() {
+        let master_seed =
+            decode_array::<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+        let master = make_master_node(&master_seed);
+        let vectors = [
+            (PqScheme::Falcon512, make_v1_leaf_path(PqScheme::Falcon512, 0, 0, 0)),
+            (PqScheme::Falcon1024, make_v1_leaf_path(PqScheme::Falcon1024, 0, 0, 0)),
+            (PqScheme::MlDsa44, make_v1_leaf_path(PqScheme::MlDsa44, 0, 0, 0)),
+            (PqScheme::MlDsa65, make_v1_leaf_path(PqScheme::MlDsa65, 2, 1, 5)),
+            (PqScheme::MlDsa87, make_v1_leaf_path(PqScheme::MlDsa87, 0, 0, 0)),
+        ];
+
+        for (scheme, path) in vectors {
+            let leaf = derive_path(&path, &master).unwrap();
+            let material = derive_leaf_material_v1(&leaf.node_secret, &path).unwrap();
+            assert_eq!(material.scheme, scheme);
+
+            let (pk_a, sk_a) = derive_keypair_v1(&material).unwrap();
+            let (pk_b, sk_b) = derive_keypair_v1(&material).unwrap();
+
+            assert_eq!(pk_a, pk_b);
+            assert_eq!(sk_a, sk_b);
+            assert_eq!(pk_a.scheme(), scheme);
+            assert_eq!(sk_a.scheme(), scheme);
+            assert_eq!(pk_a.as_bytes().len(), scheme.pubkey_len());
+            assert_eq!(sk_a.as_bytes().len(), scheme.seckey_len());
+            assert_eq!(pk_a.to_prefixed_bytes().len(), scheme.prefixed_pubkey_len());
+            assert_eq!(sk_a.to_prefixed_bytes().len(), scheme.prefixed_seckey_len());
+            assert_eq!(pk_a.to_prefixed_bytes()[0], scheme.prefix());
+            assert_eq!(sk_a.to_prefixed_bytes()[0], scheme.prefix());
+            assert_eq!(crate::PqPublicKey::from_secret_key(&sk_a).unwrap(), pk_a);
+            assert_eq!(crate::PqPublicKey::from_prefixed_slice(&pk_a.to_prefixed_bytes()).unwrap(), pk_a);
+            assert_eq!(crate::PqSecretKey::from_prefixed_slice(&sk_a.to_prefixed_bytes()).unwrap(), sk_a);
+        }
+    }
+
+    #[test]
+    fn deterministic_keygen_matches_node_hash_vectors() {
+        let master_seed =
+            decode_array::<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+        let master = make_master_node(&master_seed);
+
+        let vectors = [
+            (
+                PqScheme::Falcon512,
+                make_v1_leaf_path(PqScheme::Falcon512, 0, 0, 0),
+                "cb72ac890ce605a32850b885abcd4e83a3e30bcc68f08eaacc342bfdd30ebba5",
+                "935f9316ecc62adb2b2c5ce7b2b948d848d1884528a79c3162a2e25989e84f35",
+            ),
+            (
+                PqScheme::Falcon1024,
+                make_v1_leaf_path(PqScheme::Falcon1024, 0, 0, 0),
+                "ec638e05cfb547b3315bcd798002e512869782382cbc290561df9435fe2ba7f1",
+                "dcbc3734ce83292c3efede196ac38bbc9b6f92f153974507b86b379415a1d42c",
+            ),
+            (
+                PqScheme::MlDsa44,
+                make_v1_leaf_path(PqScheme::MlDsa44, 0, 0, 0),
+                "e507351f4903882e597367309d0f1a25053200b39c93ed5288cb8b9821ff749b",
+                "3364238c559c07268cde4e7b4bb8f54c46e944804a93abaada81a0645bca26e7",
+            ),
+            (
+                PqScheme::MlDsa65,
+                make_v1_leaf_path(PqScheme::MlDsa65, 2, 1, 5),
+                "3ef25f8229327412340beac8b81af09482e5f7b15f040e919c38cd913045fbbd",
+                "f7cac55ef3f5c164e4e17a801ebd7b2cc24aabf236443761427b28c8f2e4d10e",
+            ),
+            (
+                PqScheme::MlDsa87,
+                make_v1_leaf_path(PqScheme::MlDsa87, 0, 0, 0),
+                "1288715e0d9a64a30ab5066536b5a7a50af1a882e193ec67433a675da7b36237",
+                "7b5d56dd11ae1afd25e51b27f014492742b2ca2ebca324efdb0cdcee6a40cf98",
+            ),
+        ];
+
+        for (scheme, path, expected_pk_sha256, expected_sk_sha256) in vectors {
+            let leaf = derive_path(&path, &master).unwrap();
+            let material = derive_leaf_material_v1(&leaf.node_secret, &path).unwrap();
+            assert_eq!(material.scheme, scheme);
+
+            let (pk, sk) = derive_keypair_v1(&material).unwrap();
+            assert_eq!(sha256_hex(pk.as_bytes()), expected_pk_sha256);
+            assert_eq!(sha256_hex(sk.as_bytes()), expected_sk_sha256);
+        }
+    }
+
+    #[test]
+    fn deterministic_keygen_is_domain_separated_between_receive_and_change() {
+        let master_seed =
+            decode_array::<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+        let master = make_master_node(&master_seed);
+
+        let receive_path = make_v1_leaf_path(PqScheme::Falcon512, 0, 0, 7);
+        let change_path = make_v1_leaf_path(PqScheme::Falcon512, 0, 1, 7);
+
+        let derive_hashes = |path: [u32; 6]| {
+            let leaf = derive_path(&path, &master).unwrap();
+            let material = derive_leaf_material_v1(&leaf.node_secret, &path).unwrap();
+            let (pk, sk) = derive_keypair_v1(&material).unwrap();
+            (sha256_hex(pk.as_bytes()), sha256_hex(sk.as_bytes()))
+        };
+
+        let receive = derive_hashes(receive_path);
+        let change = derive_hashes(change_path);
+
+        assert_ne!(receive.0, change.0);
+        assert_ne!(receive.1, change.1);
+        assert_eq!(receive, derive_hashes(receive_path));
+        assert_eq!(change, derive_hashes(change_path));
     }
 }

@@ -219,10 +219,10 @@ internal_macros::define_extension_trait! {
         fn size(&self) -> usize { size_from_script_pubkey(&self.script_pubkey) }
 
         /// Constructs a new `TxOut` with given script and the smallest possible `value` that is **not** dust
-        /// per current Core policy.
+        /// per current node policy.
         ///
-        /// Dust depends on the -dustrelayfee value of the Bitcoin Core node you are broadcasting to.
-        /// This function uses the default value of 0.00003 BTC/kB (3 sat/vByte).
+        /// Dust depends on the `-dustrelayfee` value of the Tidecoin node you are broadcasting to.
+        /// This function uses the default value of 0.00003 TDC/kB (3 tidoshi/vByte).
         ///
         /// To use a custom value, use [`minimal_non_dust_custom`].
         ///
@@ -232,14 +232,14 @@ internal_macros::define_extension_trait! {
         }
 
         /// Constructs a new `TxOut` with given script and the smallest possible `amount` that is **not** dust
-        /// per current Core policy.
+        /// per current node policy.
         ///
-        /// Dust depends on the -dustrelayfee value of the Bitcoin Core node you are broadcasting to.
+        /// Dust depends on the `-dustrelayfee` value of the Tidecoin node you are broadcasting to.
         /// This function lets you set the fee rate used in dust calculation.
         ///
-        /// The current default value in Bitcoin Core (as of v26) is 3 sat/vByte.
+        /// The current default value in Tidecoin node policy is 3 tidoshi/vByte.
         ///
-        /// To use the default Bitcoin Core value, use [`minimal_non_dust`].
+        /// To use the default Tidecoin node value, use [`minimal_non_dust`].
         ///
         /// [`minimal_non_dust`]: TxOut::minimal_non_dust
         fn minimal_non_dust_custom(script_pubkey: ScriptPubKeyBuf, dust_relay_fee: FeeRate) -> Option<Self>
@@ -313,7 +313,7 @@ pub trait TransactionExt: sealed::Sealed {
     /// Returns the "virtual size" (vsize) of this transaction.
     ///
     /// Will be `ceil(weight / 4.0)`. Note this implements the virtual size as per [`BIP-0141`], which
-    /// is different to what is implemented in Bitcoin Core. The computation should be the same for
+    /// is different to what is implemented in the Tidecoin node. The computation should be the same for
     /// any remotely sane transaction, and a standardness-rule-correct version is available in the
     /// [`policy`] module.
     ///

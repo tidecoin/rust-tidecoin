@@ -14,10 +14,11 @@ exclude = ["tests", "contrib"]
 
 [features]
 default = ["std"]
-std = ["alloc"]
+std = ["alloc", "tidecoin/std"]
 alloc = []
 
 [dependencies]
+tidecoin = { path = "../bitcoin", version = "0.33.0-beta", default-features = false }
 
 [dev-dependencies]
 

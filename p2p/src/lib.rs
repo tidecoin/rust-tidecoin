@@ -13,6 +13,7 @@ mod network_ext;
 
 #[cfg(feature = "std")]
 pub mod address;
+pub mod bip324_pq;
 pub mod bip152;
 pub mod merkle_tree;
 #[cfg(feature = "std")]
@@ -76,7 +77,6 @@ pub use self::{address::Address, message::CheckedData};
 /// 70013 - Support `feefilter` message
 /// 70012 - Support `sendheaders` message and announce new blocks via headers rather than inv
 /// 70011 - Support `NODE_BLOOM` service flag and don't support bloom filter messages if it is not set
-/// 70002 - Support `reject` message
 /// 70001 - Support bloom filter messages `filterload`, `filterclear` `filteradd`, `merkleblock` and `FILTERED_BLOCK` inventory type
 /// 60002 - Support `mempool` message
 /// 60001 - Support `pong` message and nonce in `ping` message

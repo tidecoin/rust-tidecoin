@@ -276,7 +276,7 @@ impl EcdsaSighashType {
 }
 
 /// This type is consensus valid but an input including it would prevent the transaction from
-/// being relayed on today's Bitcoin network.
+/// being relayed on today's Tidecoin network.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonStandardSighashTypeError(pub u32);
 

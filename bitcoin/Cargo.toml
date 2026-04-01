@@ -16,7 +16,7 @@ exclude = ["tests", "contrib"]
 # If you change features or optional dependencies in any way please update the "# Cargo features" section in lib.rs as well.
 [features]
 default = [ "std", "secp-recovery" ]
-std = ["base58/std", "bech32/std", "encoding/std", "hashes/std", "hex-stable/std", "hex-unstable/std", "internals/std", "io/std", "network/std", "primitives/std", "secp256k1/std", "units/std", "base64?/std", "bitcoinconsensus?/std", "pqcrypto-falcon/std", "pqcrypto-mldsa/std", "pqcrypto-traits/std"]
+std = ["base58/std", "bech32/std", "encoding/std", "hashes/std", "hex-stable/std", "hex-unstable/std", "internals/std", "io/std", "network/std", "primitives/std", "secp256k1/std", "units/std", "base64?/std", "bitcoinconsensus?/std", "pqcrypto-falcon/std", "pqcrypto-mldsa/std", "pqcrypto-mlkem/std", "pqcrypto-traits/std"]
 rand = ["secp256k1/rand"]
 serde = ["base64", "dep:serde", "hashes/serde", "internals/serde", "network/serde", "primitives/serde", "secp256k1/serde", "units/serde"]
 secp-global-context = ["secp256k1/global-context"]
@@ -39,6 +39,7 @@ secp256k1 = { version = "0.32.0-beta.2", default-features = false, features = ["
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = ["alloc"] }
 pqcrypto-falcon = { version = "0.4.1", default-features = false }
 pqcrypto-mldsa = { version = "0.1.2", default-features = false }
+pqcrypto-mlkem = { version = "0.1.1", default-features = false }
 pqcrypto-traits = { version = "0.3.5", default-features = false }
 
 arbitrary = { version = "1.4.1", optional = true }

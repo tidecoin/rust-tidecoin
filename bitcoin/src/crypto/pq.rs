@@ -10,6 +10,9 @@ use core::fmt;
 use core::ffi::c_int;
 
 use hashes::hash160;
+use pqcrypto_traits::kem::{
+    Ciphertext as _, PublicKey as _, SecretKey as _, SharedSecret as _,
+};
 use pqcrypto_traits::sign::{
     DetachedSignature as _, PublicKey as _, SecretKey as _, VerificationError,
 };
@@ -47,11 +50,35 @@ unsafe extern "C" {
         pk: *mut u8,
         pklen: usize,
     ) -> c_int;
+    fn tidecoin_falcon512_keypair_from_seed(
+        pk: *mut u8,
+        pklen: usize,
+        sk: *mut u8,
+        sklen: usize,
+        seed: *const u8,
+        seedlen: usize,
+    ) -> c_int;
+    fn tidecoin_falcon1024_keypair_from_seed(
+        pk: *mut u8,
+        pklen: usize,
+        sk: *mut u8,
+        sklen: usize,
+        seed: *const u8,
+        seedlen: usize,
+    ) -> c_int;
     fn tidecoin_mldsa44_pubkey_from_sk(
         sk: *const u8,
         sklen: usize,
         pk: *mut u8,
         pklen: usize,
+    ) -> c_int;
+    fn tidecoin_mldsa44_keypair_from_seed(
+        pk: *mut u8,
+        pklen: usize,
+        sk: *mut u8,
+        sklen: usize,
+        seed: *const u8,
+        seedlen: usize,
     ) -> c_int;
     fn tidecoin_mldsa65_pubkey_from_sk(
         sk: *const u8,
@@ -59,11 +86,38 @@ unsafe extern "C" {
         pk: *mut u8,
         pklen: usize,
     ) -> c_int;
+    fn tidecoin_mldsa65_keypair_from_seed(
+        pk: *mut u8,
+        pklen: usize,
+        sk: *mut u8,
+        sklen: usize,
+        seed: *const u8,
+        seedlen: usize,
+    ) -> c_int;
     fn tidecoin_mldsa87_pubkey_from_sk(
         sk: *const u8,
         sklen: usize,
         pk: *mut u8,
         pklen: usize,
+    ) -> c_int;
+    fn tidecoin_mldsa87_keypair_from_seed(
+        pk: *mut u8,
+        pklen: usize,
+        sk: *mut u8,
+        sklen: usize,
+        seed: *const u8,
+        seedlen: usize,
+    ) -> c_int;
+    fn PQCLEAN_MLKEM512_CLEAN_crypto_kem_keypair_derand(
+        pk: *mut u8,
+        sk: *mut u8,
+        coins: *const u8,
+    ) -> c_int;
+    fn PQCLEAN_MLKEM512_CLEAN_crypto_kem_enc_derand(
+        ct: *mut u8,
+        ss: *mut u8,
+        pk: *const u8,
+        coins: *const u8,
     ) -> c_int;
 }
 
@@ -135,6 +189,17 @@ impl PqScheme {
     /// Public key length including the one-byte scheme prefix.
     pub fn prefixed_pubkey_len(self) -> usize { self.pubkey_len() + 1 }
 
+    /// Secret key length including the one-byte scheme prefix.
+    pub fn prefixed_seckey_len(self) -> usize { self.seckey_len() + 1 }
+
+    /// Deterministic keygen seed length used by Tidecoin PQHD v1.
+    pub fn deterministic_seed_len(self) -> usize {
+        match self {
+            Self::Falcon512 | Self::Falcon1024 => 48,
+            Self::MlDsa44 | Self::MlDsa65 | Self::MlDsa87 => 32,
+        }
+    }
+
     /// Returns whether this scheme is allowed at the given chain height.
     ///
     /// Tidecoin permits only Falcon-512 before auxpow activation. Once auxpow is active,
@@ -170,6 +235,67 @@ impl PqScheme {
                 (PqPublicKey::from_backend(self, pk.as_bytes()), PqSecretKey::from_backend(self, sk.as_bytes()))
             }
         }
+    }
+
+    /// Generates a deterministic PQ keypair from a scheme-specific seed.
+    pub fn generate_keypair_from_seed(self, seed: &[u8]) -> Result<(PqPublicKey, PqSecretKey), PqError> {
+        let expected = self.deterministic_seed_len();
+        if seed.len() != expected {
+            return Err(PqError::InvalidSeedLength { expected, got: seed.len() });
+        }
+
+        let mut pk = vec![0_u8; self.pubkey_len()];
+        let mut sk = vec![0_u8; self.seckey_len()];
+        let rc = unsafe {
+            match self {
+                Self::Falcon512 => tidecoin_falcon512_keypair_from_seed(
+                    pk.as_mut_ptr(),
+                    pk.len(),
+                    sk.as_mut_ptr(),
+                    sk.len(),
+                    seed.as_ptr(),
+                    seed.len(),
+                ),
+                Self::Falcon1024 => tidecoin_falcon1024_keypair_from_seed(
+                    pk.as_mut_ptr(),
+                    pk.len(),
+                    sk.as_mut_ptr(),
+                    sk.len(),
+                    seed.as_ptr(),
+                    seed.len(),
+                ),
+                Self::MlDsa44 => tidecoin_mldsa44_keypair_from_seed(
+                    pk.as_mut_ptr(),
+                    pk.len(),
+                    sk.as_mut_ptr(),
+                    sk.len(),
+                    seed.as_ptr(),
+                    seed.len(),
+                ),
+                Self::MlDsa65 => tidecoin_mldsa65_keypair_from_seed(
+                    pk.as_mut_ptr(),
+                    pk.len(),
+                    sk.as_mut_ptr(),
+                    sk.len(),
+                    seed.as_ptr(),
+                    seed.len(),
+                ),
+                Self::MlDsa87 => tidecoin_mldsa87_keypair_from_seed(
+                    pk.as_mut_ptr(),
+                    pk.len(),
+                    sk.as_mut_ptr(),
+                    sk.len(),
+                    seed.as_ptr(),
+                    seed.len(),
+                ),
+            }
+        };
+
+        if rc != 0 {
+            return Err(PqError::BackendFailure);
+        }
+
+        Ok((PqPublicKey { scheme: self, data: pk }, PqSecretKey { scheme: self, data: sk }))
     }
 }
 
@@ -241,7 +367,7 @@ impl PqPublicKey {
 }
 
 /// A post-quantum secret key.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PqSecretKey {
     scheme: PqScheme,
     data: Vec<u8>,
@@ -256,7 +382,60 @@ impl PqSecretKey {
         if data.len() != expected {
             return Err(PqError::InvalidKeyLength { expected, got: data.len() });
         }
+        if !scheme.is_valid_secret_key_encoding(data) {
+            return Err(PqError::InvalidSecretKeyEncoding(scheme));
+        }
         Ok(Self { scheme, data: data.to_vec() })
+    }
+
+    /// Parses a prefixed secret key: `[scheme_prefix_byte][raw_seckey_bytes]`.
+    pub fn from_prefixed_slice(data: &[u8]) -> Result<Self, PqError> {
+        let (&prefix, raw) = data.split_first().ok_or(PqError::EmptyData)?;
+        let scheme = PqScheme::from_prefix(prefix).ok_or(PqError::UnknownScheme(prefix))?;
+        let expected = scheme.seckey_len();
+        if raw.len() != expected {
+            return Err(PqError::InvalidKeyLength { expected, got: raw.len() });
+        }
+        Self::from_slice(scheme, raw)
+    }
+
+    /// Decodes a secret key from prefixed bytes or, when allowed, a legacy raw secret key.
+    pub fn decode_slice(data: &[u8], allow_legacy: bool) -> Result<Self, PqError> {
+        if data.is_empty() {
+            return Err(PqError::EmptyData);
+        }
+
+        if let Some(scheme) = PqScheme::from_prefix(data[0]) {
+            if data.len() == scheme.prefixed_seckey_len() {
+                return Self::from_prefixed_slice(data);
+            }
+        }
+
+        if !allow_legacy {
+            return Err(PqError::InvalidKeyLength { expected: 0, got: data.len() });
+        }
+
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            if data.len() == scheme.seckey_len() && scheme.is_valid_secret_key_encoding(data) {
+                return Ok(Self { scheme, data: data.to_vec() });
+            }
+        }
+
+        Err(PqError::InvalidSecretKeyEncodingForLength(data.len()))
+    }
+
+    /// Serializes as `[scheme_prefix_byte][raw_seckey_bytes]`.
+    pub fn to_prefixed_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(1 + self.data.len());
+        buf.push(self.scheme.prefix());
+        buf.extend_from_slice(&self.data);
+        buf
     }
 
     /// Returns the scheme this key belongs to.
@@ -475,6 +654,225 @@ impl PqSignature {
     }
 }
 
+/// ML-KEM-512 public-key size in bytes.
+pub const MLKEM512_PUBLICKEY_BYTES: usize = pqcrypto_mlkem::mlkem512::public_key_bytes();
+/// ML-KEM-512 secret-key size in bytes.
+pub const MLKEM512_SECRETKEY_BYTES: usize = pqcrypto_mlkem::mlkem512::secret_key_bytes();
+/// ML-KEM-512 ciphertext size in bytes.
+pub const MLKEM512_CIPHERTEXT_BYTES: usize = pqcrypto_mlkem::mlkem512::ciphertext_bytes();
+/// ML-KEM-512 shared-secret size in bytes.
+pub const MLKEM512_SHARED_SECRET_BYTES: usize = pqcrypto_mlkem::mlkem512::shared_secret_bytes();
+/// Tidecoin-node deterministic ML-KEM-512 keypair coin length.
+pub const MLKEM512_KEYPAIR_COINS_BYTES: usize = 2 * MLKEM512_SHARED_SECRET_BYTES;
+
+/// An ML-KEM-512 public key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MlKem512PublicKey {
+    data: Vec<u8>,
+}
+
+impl MlKem512PublicKey {
+    /// Parses a public key from raw bytes.
+    pub fn from_slice(data: &[u8]) -> Result<Self, PqError> {
+        if data.len() != MLKEM512_PUBLICKEY_BYTES {
+            return Err(PqError::InvalidKeyLength {
+                expected: MLKEM512_PUBLICKEY_BYTES,
+                got: data.len(),
+            });
+        }
+        Ok(Self { data: data.to_vec() })
+    }
+
+    /// Returns the raw public key bytes.
+    pub fn as_bytes(&self) -> &[u8] { &self.data }
+}
+
+/// An ML-KEM-512 secret key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MlKem512SecretKey {
+    data: Vec<u8>,
+}
+
+impl MlKem512SecretKey {
+    /// Parses a secret key from raw bytes.
+    pub fn from_slice(data: &[u8]) -> Result<Self, PqError> {
+        if data.len() != MLKEM512_SECRETKEY_BYTES {
+            return Err(PqError::InvalidKeyLength {
+                expected: MLKEM512_SECRETKEY_BYTES,
+                got: data.len(),
+            });
+        }
+        Ok(Self { data: data.to_vec() })
+    }
+
+    /// Returns the raw secret key bytes.
+    pub fn as_bytes(&self) -> &[u8] { &self.data }
+}
+
+/// An ML-KEM-512 ciphertext.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MlKem512Ciphertext {
+    data: Vec<u8>,
+}
+
+impl MlKem512Ciphertext {
+    /// Parses a ciphertext from raw bytes.
+    pub fn from_slice(data: &[u8]) -> Result<Self, PqError> {
+        if data.len() != MLKEM512_CIPHERTEXT_BYTES {
+            return Err(PqError::InvalidKeyLength {
+                expected: MLKEM512_CIPHERTEXT_BYTES,
+                got: data.len(),
+            });
+        }
+        Ok(Self { data: data.to_vec() })
+    }
+
+    /// Returns the raw ciphertext bytes.
+    pub fn as_bytes(&self) -> &[u8] { &self.data }
+}
+
+/// An ML-KEM-512 shared secret.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MlKem512SharedSecret {
+    data: [u8; MLKEM512_SHARED_SECRET_BYTES],
+}
+
+impl MlKem512SharedSecret {
+    /// Parses a shared secret from raw bytes.
+    pub fn from_slice(data: &[u8]) -> Result<Self, PqError> {
+        if data.len() != MLKEM512_SHARED_SECRET_BYTES {
+            return Err(PqError::InvalidKeyLength {
+                expected: MLKEM512_SHARED_SECRET_BYTES,
+                got: data.len(),
+            });
+        }
+        let mut buf = [0_u8; MLKEM512_SHARED_SECRET_BYTES];
+        buf.copy_from_slice(data);
+        Ok(Self { data: buf })
+    }
+
+    /// Returns the raw shared-secret bytes.
+    pub fn as_bytes(&self) -> &[u8; MLKEM512_SHARED_SECRET_BYTES] { &self.data }
+}
+
+/// An initialized ML-KEM-512 keypair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MlKem512Keypair {
+    public_key: MlKem512PublicKey,
+    secret_key: MlKem512SecretKey,
+}
+
+impl MlKem512Keypair {
+    /// Generates a fresh random ML-KEM-512 keypair.
+    pub fn generate() -> Self {
+        let (pk, sk) = pqcrypto_mlkem::mlkem512::keypair();
+        Self {
+            public_key: MlKem512PublicKey { data: pk.as_bytes().to_vec() },
+            secret_key: MlKem512SecretKey { data: sk.as_bytes().to_vec() },
+        }
+    }
+
+    /// Generates a deterministic ML-KEM-512 keypair from Tidecoin-node coins.
+    pub fn generate_deterministic(coins: &[u8]) -> Result<Self, PqError> {
+        if coins.len() != MLKEM512_KEYPAIR_COINS_BYTES {
+            return Err(PqError::InvalidSeedLength {
+                expected: MLKEM512_KEYPAIR_COINS_BYTES,
+                got: coins.len(),
+            });
+        }
+
+        let mut pk = vec![0_u8; MLKEM512_PUBLICKEY_BYTES];
+        let mut sk = vec![0_u8; MLKEM512_SECRETKEY_BYTES];
+        let rc = unsafe {
+            PQCLEAN_MLKEM512_CLEAN_crypto_kem_keypair_derand(
+                pk.as_mut_ptr(),
+                sk.as_mut_ptr(),
+                coins.as_ptr(),
+            )
+        };
+        if rc != 0 {
+            return Err(PqError::BackendFailure);
+        }
+
+        Ok(Self {
+            public_key: MlKem512PublicKey { data: pk },
+            secret_key: MlKem512SecretKey { data: sk },
+        })
+    }
+
+    /// Constructs a keypair from raw public and secret key bytes.
+    pub fn from_slices(public_key: &[u8], secret_key: &[u8]) -> Result<Self, PqError> {
+        Ok(Self {
+            public_key: MlKem512PublicKey::from_slice(public_key)?,
+            secret_key: MlKem512SecretKey::from_slice(secret_key)?,
+        })
+    }
+
+    /// Returns the public key.
+    pub fn public_key(&self) -> &MlKem512PublicKey { &self.public_key }
+
+    /// Returns the secret key.
+    pub fn secret_key(&self) -> &MlKem512SecretKey { &self.secret_key }
+
+    /// Consumes the keypair and returns both parts.
+    pub fn into_parts(self) -> (MlKem512PublicKey, MlKem512SecretKey) {
+        (self.public_key, self.secret_key)
+    }
+}
+
+impl MlKem512PublicKey {
+    /// Encapsulates to this public key.
+    pub fn encapsulate(&self) -> Result<(MlKem512Ciphertext, MlKem512SharedSecret), PqError> {
+        let pk = pqcrypto_mlkem::mlkem512::PublicKey::from_bytes(self.as_bytes())
+            .map_err(map_backend_key_error)?;
+        let (ss, ct) = pqcrypto_mlkem::mlkem512::encapsulate(&pk);
+        Ok((
+            MlKem512Ciphertext { data: ct.as_bytes().to_vec() },
+            MlKem512SharedSecret::from_slice(ss.as_bytes())?,
+        ))
+    }
+
+    /// Deterministically encapsulates using Tidecoin-node coins.
+    pub fn encapsulate_deterministic(
+        &self,
+        coins: &[u8],
+    ) -> Result<(MlKem512Ciphertext, MlKem512SharedSecret), PqError> {
+        if coins.len() != MLKEM512_SHARED_SECRET_BYTES {
+            return Err(PqError::InvalidSeedLength {
+                expected: MLKEM512_SHARED_SECRET_BYTES,
+                got: coins.len(),
+            });
+        }
+
+        let mut ct = vec![0_u8; MLKEM512_CIPHERTEXT_BYTES];
+        let mut ss = [0_u8; MLKEM512_SHARED_SECRET_BYTES];
+        let rc = unsafe {
+            PQCLEAN_MLKEM512_CLEAN_crypto_kem_enc_derand(
+                ct.as_mut_ptr(),
+                ss.as_mut_ptr(),
+                self.as_bytes().as_ptr(),
+                coins.as_ptr(),
+            )
+        };
+        if rc != 0 {
+            return Err(PqError::BackendFailure);
+        }
+
+        Ok((MlKem512Ciphertext { data: ct }, MlKem512SharedSecret { data: ss }))
+    }
+}
+
+impl MlKem512SecretKey {
+    /// Decapsulates an ML-KEM-512 ciphertext with this secret key.
+    pub fn decapsulate(&self, ciphertext: &MlKem512Ciphertext) -> Result<MlKem512SharedSecret, PqError> {
+        let ct = pqcrypto_mlkem::mlkem512::Ciphertext::from_bytes(ciphertext.as_bytes())
+            .map_err(map_backend_key_error)?;
+        let sk = pqcrypto_mlkem::mlkem512::SecretKey::from_bytes(self.as_bytes())
+            .map_err(map_backend_key_error)?;
+        MlKem512SharedSecret::from_slice(pqcrypto_mlkem::mlkem512::decapsulate(&ct, &sk).as_bytes())
+    }
+}
+
 /// Errors related to post-quantum key and signature handling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PqError {
@@ -487,6 +885,13 @@ pub enum PqError {
         /// Actual number of bytes received.
         got: usize,
     },
+    /// Deterministic key material has the wrong length.
+    InvalidSeedLength {
+        /// Expected number of bytes.
+        expected: usize,
+        /// Actual number of bytes received.
+        got: usize,
+    },
     /// Signature data exceeds the maximum allowed length.
     InvalidSignatureLength {
         /// Maximum allowed bytes for this scheme.
@@ -494,6 +899,10 @@ pub enum PqError {
         /// Actual number of bytes received.
         got: usize,
     },
+    /// Secret key bytes do not use the scheme's required encoding.
+    InvalidSecretKeyEncoding(PqScheme),
+    /// Secret key bytes do not match any known scheme encoding for their length.
+    InvalidSecretKeyEncodingForLength(usize),
     /// Signature verification failed.
     VerificationFailed,
     /// Backend key/signature operation failed.
@@ -508,11 +917,30 @@ impl fmt::Display for PqError {
             Self::UnknownScheme(b) => write!(f, "unknown PQ scheme prefix: 0x{:02x}", b),
             Self::InvalidKeyLength { expected, got } =>
                 write!(f, "invalid key length: expected {} bytes, got {}", expected, got),
+            Self::InvalidSeedLength { expected, got } =>
+                write!(f, "invalid deterministic seed length: expected {} bytes, got {}", expected, got),
             Self::InvalidSignatureLength { max, got } =>
                 write!(f, "invalid signature length: max {} bytes, got {}", max, got),
+            Self::InvalidSecretKeyEncoding(scheme) =>
+                write!(f, "invalid secret key encoding for {:?}", scheme),
+            Self::InvalidSecretKeyEncodingForLength(len) =>
+                write!(f, "invalid secret key encoding for {}-byte key", len),
             Self::VerificationFailed => write!(f, "signature verification failed"),
             Self::BackendFailure => write!(f, "backend PQ operation failed"),
             Self::EmptyData => write!(f, "empty data"),
+        }
+    }
+}
+
+impl PqScheme {
+    fn is_valid_secret_key_encoding(self, data: &[u8]) -> bool {
+        if data.len() != self.seckey_len() {
+            return false;
+        }
+        match self {
+            Self::Falcon512 => data.first().copied() == Some(0x59),
+            Self::Falcon1024 => data.first().copied() == Some(0x5A),
+            Self::MlDsa44 | Self::MlDsa65 | Self::MlDsa87 => true,
         }
     }
 }
@@ -627,7 +1055,12 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let raw = vec![scheme.prefix(); scheme.seckey_len()];
+            let fill = match scheme {
+                PqScheme::Falcon512 => 0x59,
+                PqScheme::Falcon1024 => 0x5A,
+                _ => scheme.prefix(),
+            };
+            let raw = vec![fill; scheme.seckey_len()];
             let sk = PqSecretKey::from_slice(scheme, &raw).unwrap();
             assert_eq!(sk.scheme(), scheme);
             assert_eq!(sk.as_bytes(), &raw[..]);
@@ -656,6 +1089,66 @@ mod tests {
             assert_eq!(scheme.seckey_len(), sec_len);
             assert_eq!(scheme.max_sig_len(), sig_len);
         }
+    }
+
+    #[test]
+    fn seckey_prefixed_roundtrip_all_schemes() {
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let (_, sk) = scheme.generate_keypair();
+            let prefixed = sk.to_prefixed_bytes();
+            let reparsed = PqSecretKey::from_prefixed_slice(&prefixed).unwrap();
+            assert_eq!(reparsed, sk);
+            assert_eq!(prefixed.len(), scheme.prefixed_seckey_len());
+        }
+    }
+
+    #[test]
+    fn seckey_legacy_decode_roundtrip_all_schemes() {
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let (_, sk) = scheme.generate_keypair();
+            let reparsed = PqSecretKey::decode_slice(sk.as_bytes(), true).unwrap();
+            assert_eq!(reparsed, sk);
+        }
+    }
+
+    #[test]
+    fn seckey_legacy_decode_disallowed_when_prefix_missing() {
+        let (_, sk) = PqScheme::Falcon512.generate_keypair();
+        assert_eq!(
+            PqSecretKey::decode_slice(sk.as_bytes(), false).unwrap_err(),
+            PqError::InvalidKeyLength { expected: 0, got: sk.as_bytes().len() }
+        );
+    }
+
+    #[test]
+    fn falcon_seckey_validates_scheme_header_byte() {
+        let (_, sk_512) = PqScheme::Falcon512.generate_keypair();
+        let mut bad_512 = sk_512.as_bytes().to_vec();
+        bad_512[0] = 0x58;
+        assert_eq!(
+            PqSecretKey::from_slice(PqScheme::Falcon512, &bad_512).unwrap_err(),
+            PqError::InvalidSecretKeyEncoding(PqScheme::Falcon512)
+        );
+
+        let (_, sk_1024) = PqScheme::Falcon1024.generate_keypair();
+        let mut bad_1024 = sk_1024.as_bytes().to_vec();
+        bad_1024[0] = 0x59;
+        assert_eq!(
+            PqSecretKey::from_slice(PqScheme::Falcon1024, &bad_1024).unwrap_err(),
+            PqError::InvalidSecretKeyEncoding(PqScheme::Falcon1024)
+        );
     }
 
     #[test]
@@ -713,6 +1206,32 @@ mod tests {
             let (pk, sk) = scheme.generate_keypair();
             let derived = PqPublicKey::from_secret_key(&sk).unwrap();
             assert_eq!(derived, pk);
+        }
+    }
+
+    #[test]
+    fn deterministic_keypair_generation_is_stable_all_schemes() {
+        let seed48 = [0x42_u8; 48];
+        let seed32 = [0x24_u8; 32];
+
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            let seed = match scheme.deterministic_seed_len() {
+                48 => &seed48[..],
+                32 => &seed32[..],
+                _ => unreachable!(),
+            };
+
+            let (pk_a, sk_a) = scheme.generate_keypair_from_seed(seed).unwrap();
+            let (pk_b, sk_b) = scheme.generate_keypair_from_seed(seed).unwrap();
+            assert_eq!(pk_a, pk_b);
+            assert_eq!(sk_a, sk_b);
+            assert_eq!(PqPublicKey::from_secret_key(&sk_a).unwrap(), pk_a);
         }
     }
 
@@ -798,5 +1317,37 @@ mod tests {
         let no_auxpow = Params::MAINNET;
         assert!(PqScheme::Falcon512.is_allowed_at_height(1_000_000, &no_auxpow));
         assert!(!PqScheme::MlDsa87.is_allowed_at_height(1_000_000, &no_auxpow));
+    }
+
+    #[test]
+    fn mlkem512_roundtrip() {
+        let keypair = MlKem512Keypair::generate();
+        let (ciphertext, shared_secret) = keypair.public_key().encapsulate().unwrap();
+        let recovered = keypair.secret_key().decapsulate(&ciphertext).unwrap();
+        assert_eq!(recovered, shared_secret);
+        assert_eq!(shared_secret.as_bytes().len(), MLKEM512_SHARED_SECRET_BYTES);
+    }
+
+    #[test]
+    fn mlkem512_deterministic_keygen_matches() {
+        let coins = [0x11_u8; MLKEM512_KEYPAIR_COINS_BYTES];
+        let a = MlKem512Keypair::generate_deterministic(&coins).unwrap();
+        let b = MlKem512Keypair::generate_deterministic(&coins).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn mlkem512_deterministic_encapsulation_matches() {
+        let coins = [0x22_u8; MLKEM512_KEYPAIR_COINS_BYTES];
+        let enc_coins = [0x33_u8; MLKEM512_SHARED_SECRET_BYTES];
+        let keypair = MlKem512Keypair::generate_deterministic(&coins).unwrap();
+
+        let (ct1, ss1) = keypair.public_key().encapsulate_deterministic(&enc_coins).unwrap();
+        let (ct2, ss2) = keypair.public_key().encapsulate_deterministic(&enc_coins).unwrap();
+        let recovered = keypair.secret_key().decapsulate(&ct1).unwrap();
+
+        assert_eq!(ct1, ct2);
+        assert_eq!(ss1, ss2);
+        assert_eq!(recovered, ss1);
     }
 }
