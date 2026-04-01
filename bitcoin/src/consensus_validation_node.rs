@@ -456,10 +456,13 @@ mod tests {
     use crate::{Address, Amount, Network, PqWifKey, Sequence, TxOut, Txid, Witness};
 
     fn node_repo_dir() -> PathBuf {
-        if let Some(path) = std::env::var_os("TIDECOIN_NODE_REPO") {
-            return PathBuf::from(path);
-        }
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tidecoin-node")
+        std::env::var_os("TIDECOIN_NODE_REPO")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing TIDECOIN_NODE_REPO; set it to the Tidecoin node checkout used for node-backed validation tests"
+                )
+            })
     }
 
     fn test_data_path(name: &str) -> PathBuf { node_repo_dir().join("src/test/data").join(name) }
