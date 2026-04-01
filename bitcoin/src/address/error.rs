@@ -160,6 +160,29 @@ impl std::error::Error for UnknownHrpError {
     }
 }
 
+/// Witness namespace does not match the parsed HRP.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct InvalidSegwitHrpError {
+    /// The offending bech32 human-readable part.
+    pub(crate) hrp: String,
+    /// The namespace this HRP is reserved for.
+    pub(crate) expected: &'static str,
+}
+
+impl fmt::Display for InvalidSegwitHrpError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "hrp {} is only valid for {}", self.hrp, self.expected)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for InvalidSegwitHrpError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
 /// Address's network differs from required one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkValidationError {
@@ -192,6 +215,8 @@ pub enum Bech32Error {
     WitnessProgram(witness_program::Error),
     /// Tried to parse an unknown HRP.
     UnknownHrp(UnknownHrpError),
+    /// The parsed witness program does not belong to this HRP namespace.
+    InvalidSegwitHrp(InvalidSegwitHrpError),
 }
 
 impl From<Infallible> for Bech32Error {
@@ -209,6 +234,7 @@ impl fmt::Display for Bech32Error {
             }
             Self::WitnessProgram(ref e) => write_err!(f, "witness program error"; e),
             Self::UnknownHrp(ref e) => write_err!(f, "unknown hrp error"; e),
+            Self::InvalidSegwitHrp(ref e) => write_err!(f, "invalid segwit hrp"; e),
         }
     }
 }
@@ -221,6 +247,7 @@ impl std::error::Error for Bech32Error {
             Self::WitnessVersion(ref e) => Some(e),
             Self::WitnessProgram(ref e) => Some(e),
             Self::UnknownHrp(ref e) => Some(e),
+            Self::InvalidSegwitHrp(ref e) => Some(e),
         }
     }
 }
@@ -240,6 +267,12 @@ impl From<witness_program::Error> for Bech32Error {
 impl From<UnknownHrpError> for Bech32Error {
     fn from(e: UnknownHrpError) -> Self {
         Self::UnknownHrp(e)
+    }
+}
+
+impl From<InvalidSegwitHrpError> for Bech32Error {
+    fn from(e: InvalidSegwitHrpError) -> Self {
+        Self::InvalidSegwitHrp(e)
     }
 }
 

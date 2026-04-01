@@ -32,6 +32,10 @@ Validation basis:
   - `tx_invalid_pq.json`
   - `script_assets_test.json`
   - mixed witness-v0/v1-512 cases
+  - exact legacy-WIF `key_io` BASE-sighash verification vectors
+  - PQ bech32 namespace/checksum rejection cases
+  - single-scheme PQ multisig and committed-hash matrices
+  - strict-mode PQ multisig cases
   - PQ multisig mixed/negative/limit cases
   - committed-hash mixed/failure cases
   - legacy base-signature verification cases

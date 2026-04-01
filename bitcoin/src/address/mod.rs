@@ -71,8 +71,9 @@ use crate::script::{
 #[doc(inline)]
 pub use self::error::{
         Base58Error, Bech32Error, FromScriptError, InvalidBase58PayloadLengthError,
-        InvalidLegacyPrefixError, LegacyAddressTooLongError, NetworkValidationError,
-        ParseError, UnknownAddressTypeError, UnknownHrpError, ParseBech32Error,
+        InvalidLegacyPrefixError, InvalidSegwitHrpError, LegacyAddressTooLongError,
+        NetworkValidationError, ParseError, ParseBech32Error, UnknownAddressTypeError,
+        UnknownHrpError,
 };
 
 /// The different types of addresses.
@@ -993,6 +994,7 @@ impl Address<NetworkUnchecked> {
             let program = WitnessProgram::new(version, &data)?;
 
             let hrp = KnownHrp::from_hrp(hrp)?;
+            validate_hrp_namespace(hrp, &program)?;
             let inner = AddressInner::Segwit { program, hrp };
             Ok(Self::from_inner(inner))
         }
@@ -1019,6 +1021,7 @@ impl Address<NetworkUnchecked> {
         let program = WitnessProgram::new(version, &data)?;
 
         let hrp = KnownHrp::from_hrp(checked.hrp())?;
+        validate_hrp_namespace(hrp, &program)?;
         let inner = AddressInner::Segwit { program, hrp };
         Ok(Self::from_inner(inner))
     }
@@ -1147,6 +1150,21 @@ impl<U: NetworkValidationUnchecked> FromStr for Address<U> {
     }
 }
 
+fn validate_hrp_namespace(hrp: KnownHrp, program: &WitnessProgram) -> Result<(), Bech32Error> {
+    let pq_hrp = matches!(hrp, KnownHrp::PqMainnet | KnownHrp::PqTestnets | KnownHrp::PqRegtest);
+    let pq_program = program.is_p2wsh512();
+    if pq_hrp == pq_program {
+        return Ok(());
+    }
+
+    let expected = if pq_hrp {
+        "p2wsh512 witness-v1 64-byte programs"
+    } else {
+        "legacy segwit witness-v0 programs"
+    };
+    Err(InvalidSegwitHrpError { hrp: hrp.to_hrp().to_lowercase(), expected }.into())
+}
+
 fn encode_pq_bech32m(
     f: &mut fmt::Formatter,
     hrp: Hrp,
@@ -1182,8 +1200,11 @@ fn segwit_redeem_hash(pubkey_hash: PubkeyHash) -> hash160::Hash {
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::ToString;
+    use alloc::string::{String, ToString};
 
+    use bech32::primitives::gf32::Fe32;
+    use bech32::{Bech32m, ByteIterExt as _, Fe32IterExt as _};
+    use hashes::sha512;
     use hex_unstable::hex;
 
     use super::*;
@@ -1706,6 +1727,19 @@ mod tests {
         base58::encode_check(&data)
     }
 
+    fn encode_pq_address(hrp: KnownHrp, version: u8, program: &[u8]) -> String {
+        let hrp = hrp.to_hrp();
+        let version = Fe32::try_from(version).unwrap();
+        program
+            .iter()
+            .copied()
+            .bytes_to_fes()
+            .with_checksum::<Bech32m>(&hrp)
+            .with_witness_version(version)
+            .chars()
+            .collect()
+    }
+
     fn assert_legacy_address(
         encoded: &str,
         network: Network,
@@ -1791,5 +1825,51 @@ mod tests {
             noncanonical_p2sh.assume_checked_ref().to_string(),
             "r9M4zPwPT2vox56WnmpC6KBDbwfg8X4QD8"
         );
+    }
+
+    #[test]
+    fn pq_bech32_namespace_matches_node_rules() {
+        let witness_script = WitnessScriptBuf::from_hex_no_length_prefix("51").unwrap();
+        let hash = sha512::Hash::hash(witness_script.as_bytes()).to_byte_array();
+        let addr = Address::p2wsh512(hash, Network::Tidecoin);
+        assert!(addr.to_string().starts_with("q1"));
+        let parsed = addr
+            .to_string()
+            .parse::<Address<_>>()
+            .unwrap()
+            .require_network(Network::Tidecoin)
+            .unwrap();
+        assert_eq!(parsed.address_type(), Some(AddressType::P2wsh512));
+
+        let pq_v0 = encode_pq_address(KnownHrp::PqMainnet, 0, &[0x42; 20]);
+        assert!(matches!(
+            Address::<NetworkUnchecked>::from_bech32_str(&pq_v0),
+            Err(Bech32Error::InvalidSegwitHrp(_))
+        ));
+
+        let legacy_v1 = encode_pq_address(KnownHrp::Mainnet, 1, &[0x11; 64]);
+        assert!(Address::<NetworkUnchecked>::from_bech32_str(&legacy_v1).is_err());
+    }
+
+    #[test]
+    fn bech32_checksum_errors_reject_legacy_and_pq_namespaces() {
+        let corrupt_last = |mut s: String| {
+            let replacement = if s.ends_with('q') { 'p' } else { 'q' };
+            s.pop();
+            s.push(replacement);
+            s
+        };
+
+        let legacy = "tbc1qqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgp";
+        assert!(matches!(
+            Address::<NetworkUnchecked>::from_bech32_str(&corrupt_last(legacy.to_owned())),
+            Err(Bech32Error::ParseBech32(_))
+        ));
+
+        let pq = encode_pq_address(KnownHrp::PqMainnet, 1, &[0x22; 64]);
+        assert!(matches!(
+            Address::<NetworkUnchecked>::from_bech32_str(&corrupt_last(pq)),
+            Err(Bech32Error::ParseBech32(_))
+        ));
     }
 }

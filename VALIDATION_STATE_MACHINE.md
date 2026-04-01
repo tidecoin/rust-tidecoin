@@ -406,3 +406,27 @@ Bring the library to a state where:
     - `git diff --check`
 - Remaining open risks:
   - no confirmed library-scope protocol or tracked executable-coverage gaps remain from this validation run
+
+### Phase 17
+
+- State: `done`
+- Objective: resolve the final residual node-test tails discovered by the post-push multi-agent audit
+- Completed in this phase:
+  - fixed PQ bech32 namespace validation in `bitcoin/src/address/mod.rs` so PQ HRPs reject legacy segwit-v0 programs during parsing
+  - added explicit PQ bech32 namespace/checksum regression coverage in `bitcoin/src/address/mod.rs`
+  - added the exact node legacy-WIF BASE-sighash verification vector and the library-equivalent toolpath regression in `bitcoin/src/consensus_validation_node.rs`
+  - expanded node-backed PQ multisig coverage in `bitcoin/src/consensus_validation_node.rs` for:
+    - single-scheme direct and wrapped matrices across all five PQ schemes
+    - single-scheme committed-hash direct and wrapped matrices across all five PQ schemes
+    - `SCRIPT_VERIFY_PQ_STRICT` happy-path regressions
+  - expanded policy parity coverage in `bitcoin/src/policy.rs` for:
+    - oversized witness-script rejection
+    - bare PQ multisig standardness rejection
+    - worst-case `20-of-20` ML-DSA-87 standard-weight behavior
+  - refreshed Tidecoin-facing key docs in `bitcoin/src/crypto/key.rs`
+  - re-ran verification successfully:
+    - `cargo test -p tidecoin address:: -- --nocapture`
+    - `cargo test -p tidecoin policy::tests -- --nocapture`
+    - `cargo test -p tidecoin --features tidecoin-node-validation --lib -- --nocapture`
+- Remaining open risks:
+  - no confirmed library-scope protocol or residual tracked node-test coverage gaps remain after the post-push audit

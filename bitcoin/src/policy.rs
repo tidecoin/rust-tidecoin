@@ -532,6 +532,8 @@ fn witness_standard_for_program<T: crate::script::ScriptHashableTag>(
 
 #[cfg(test)]
 mod tests {
+    use hashes::sha256;
+
     use super::*;
     use crate::blockdata::script::{Builder, PushBytesBuf, ScriptBufExt as _};
     use crate::crypto::pq::PqScheme;
@@ -903,6 +905,17 @@ mod tests {
     }
 
     #[test]
+    fn is_witness_standard_rejects_oversized_witness_script() {
+        let prev_script =
+            ScriptPubKeyBuf::builder().push_int_unchecked(0).push_slice([0x33; 32]).into_script();
+        let mut tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(ScriptPubKeyBuf::new(), 0)]);
+        tx.inputs[0].witness.push(&[1u8][..]);
+        tx.inputs[0].witness.push(vec![0x51; MAX_STANDARD_P2WSH_SCRIPT_SIZE + 1]);
+
+        assert!(!is_witness_standard(&tx, |_| Some(prevout(prev_script.clone(), 1))));
+    }
+
+    #[test]
     fn is_standard_tx_covers_additional_node_cases() {
         let output_script = ScriptPubKeyBuf::builder()
             .push_opcode(crate::opcodes::all::OP_DUP)
@@ -1001,5 +1014,65 @@ mod tests {
             assert_eq!(p2wpkh_input_vsize(sig_len, pubkey_len), (native_weight + 3) / 4);
             assert_eq!(p2sh_p2wpkh_input_vsize(sig_len, pubkey_len), (nested_weight + 3) / 4);
         }
+    }
+
+    #[test]
+    fn pq_bare_multisig_is_non_standard() {
+        let keys: Vec<_> = (0..2)
+            .map(|idx| PqScheme::Falcon512.generate_keypair_from_seed(&vec![idx as u8 + 1; PqScheme::Falcon512.deterministic_seed_len()]).unwrap().0)
+            .collect();
+        let mut builder = ScriptPubKeyBuf::builder().push_int(2).unwrap();
+        for key in &keys {
+            builder = builder.push_slice(PushBytesBuf::try_from(key.to_prefixed_bytes()).unwrap());
+        }
+        let script_pubkey = builder.push_int(2).unwrap().push_opcode(crate::opcodes::all::OP_CHECKMULTISIG).into_script();
+        let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(script_pubkey, 30_000)]);
+
+        assert_eq!(
+            is_standard_tx(&tx, Some(MAX_OP_RETURN_RELAY), DEFAULT_PERMIT_BAREMULTISIG, FeeRate::DUST),
+            Err(StandardTxError::BareMultisig)
+        );
+    }
+
+    #[test]
+    fn pq_mldsa87_20_of_20_weight_stays_standard() {
+        let scheme = PqScheme::MlDsa87;
+        let pubkeys: Vec<_> = (0..20)
+            .map(|idx| {
+                let seed = vec![0x55 ^ idx as u8; scheme.deterministic_seed_len()];
+                scheme.generate_keypair_from_seed(&seed).unwrap().0
+            })
+            .collect();
+        let mut witness_builder = Builder::new().push_int(20).unwrap();
+        for pubkey in &pubkeys {
+            witness_builder =
+                witness_builder.push_slice(PushBytesBuf::try_from(pubkey.to_prefixed_bytes()).unwrap());
+        }
+        let witness_script: WitnessScriptBuf = witness_builder
+            .push_int(20)
+            .unwrap()
+            .push_opcode(crate::opcodes::all::OP_CHECKMULTISIG)
+            .into_script();
+        let prev_script = ScriptPubKeyBuf::builder()
+            .push_int_unchecked(0)
+            .push_slice(sha256::Hash::hash(witness_script.as_bytes()).to_byte_array())
+            .into_script();
+        let output_script = ScriptPubKeyBuf::builder()
+            .push_int_unchecked(0)
+            .push_slice([0x44; 20])
+            .into_script();
+        let mut tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(output_script, 30_000)]);
+        tx.inputs[0].witness.push(Vec::<u8>::new());
+        for _ in 0..20 {
+            tx.inputs[0].witness.push(vec![0x30; scheme.max_sig_len() + 1]);
+        }
+        tx.inputs[0].witness.push(witness_script.as_bytes());
+
+        assert!(tx.weight().to_wu() <= MAX_STANDARD_TX_WEIGHT as u64);
+        assert_eq!(
+            is_standard_tx(&tx, Some(MAX_OP_RETURN_RELAY), DEFAULT_PERMIT_BAREMULTISIG, FeeRate::DUST),
+            Ok(())
+        );
+        assert!(is_witness_standard(&tx, |_| Some(prevout(prev_script.clone(), 1))));
     }
 }

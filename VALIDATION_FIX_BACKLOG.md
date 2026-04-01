@@ -8,6 +8,13 @@ None.
 
 ## Closed
 
+- `done` Close the final residual node-test tails from the post-push audit:
+  - exact legacy-WIF `key_io_txcreatesignv1_p2pkh_legacy_wif_verifies`
+  - library-equivalent coverage for the `key_io_txcreatesignv1_p2pkh_toolpath_verifies` BASE-sighash path
+  - PQ bech32 namespace/checksum rejection coverage from `key_io_tests.cpp`
+  - single-scheme PQ multisig and committed-hash matrix coverage
+  - strict-mode PQ multisig coverage
+  - witness-script size, bare-PQ-multisig, and worst-case `20-of-20` ML-DSA-87 policy tails
 - `done` Finish the remaining direct Tidecoin node executable-coverage tails after the parity sweep. The current tree now carries direct coverage for the previously listed witness-v1-512 script edges, transaction/policy tails (`spends_witness_prog`, `test_IsStandard`, `max_standard_legacy_sigops`), PQ input-vsize formulas, and the non-JSON PQ `key_io` WIF behavior.
 - `done` Re-run the final Tidecoin crate verification sweep and tie the tracker state to actual commands:
   - `cargo check --workspace`

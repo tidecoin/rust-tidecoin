@@ -453,7 +453,7 @@ mod tests {
     };
     use crate::script::ScriptPubKeyBufExt as _;
     use crate::transaction::{self, OutPoint, Transaction, TxIn};
-    use crate::{Amount, Sequence, TxOut, Txid, Witness};
+    use crate::{Address, Amount, Network, PqWifKey, Sequence, TxOut, Txid, Witness};
 
     fn node_repo_dir() -> PathBuf {
         if let Some(path) = std::env::var_os("TIDECOIN_NODE_REPO") {
@@ -680,6 +680,53 @@ mod tests {
         }
         items.push(witness_script.as_bytes().to_vec());
         Witness::from_slice(&items)
+    }
+
+    fn verify_multisig_case(
+        keys: &[(PqPublicKey, PqSecretKey)],
+        m: usize,
+        wrap: bool,
+        flags: u32,
+        legacy: bool,
+    ) {
+        let pubkeys: Vec<PqPublicKey> = keys.iter().map(|(pk, _)| pk.clone()).collect();
+        let signers: Vec<PqSecretKey> = keys.iter().take(m).map(|(_, sk)| sk.clone()).collect();
+        let witness_script = multisig_witness_script(&pubkeys, m as i32);
+        let amount = Amount::from_sat_u32(1);
+        let mut tx = tx_template(1);
+        let script_pubkey = if wrap {
+            let (spk, script_sig) = wrapped_p2wsh(&witness_script);
+            tx.inputs[0].script_sig = script_sig;
+            spk
+        } else {
+            direct_p2wsh_script_pubkey(&witness_script)
+        };
+        tx.inputs[0].witness =
+            signed_multisig_witness(&tx, 0, amount, &witness_script, &signers, legacy);
+        verify_script_input(&script_pubkey, 0, amount, &tx, flags).unwrap();
+    }
+
+    fn verify_committed_hash_case(
+        keys: &[(PqPublicKey, PqSecretKey)],
+        m: usize,
+        wrap: bool,
+        flags: u32,
+        legacy: bool,
+    ) {
+        let pubkeys: Vec<PqPublicKey> = keys.iter().map(|(pk, _)| pk.clone()).collect();
+        let witness_script = committed_hash_witness_script(&pubkeys, m as i32);
+        let amount = Amount::from_sat_u32(1);
+        let mut tx = tx_template(1);
+        let script_pubkey = if wrap {
+            let (spk, script_sig) = wrapped_p2wsh(&witness_script);
+            tx.inputs[0].script_sig = script_sig;
+            spk
+        } else {
+            direct_p2wsh_script_pubkey(&witness_script)
+        };
+        tx.inputs[0].witness =
+            signed_committed_hash_witness(&tx, 0, amount, &witness_script, keys, m, legacy);
+        verify_script_input(&script_pubkey, 0, amount, &tx, flags).unwrap();
     }
 
     fn parse_script_flags(flags: &str) -> u32 {
@@ -1184,6 +1231,28 @@ mod tests {
     }
 
     #[test]
+    fn pq_multisig_single_scheme_matrix_matches_node() {
+        let flags = VERIFY_WITNESS | VERIFY_P2SH;
+        let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
+
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            for (m, n) in cases {
+                let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
+                    .map(|idx| deterministic_keypair(scheme, (0x10 + n + idx) as u8))
+                    .collect();
+                verify_multisig_case(&keys, m, false, flags, true);
+                verify_multisig_case(&keys, m, true, flags, true);
+            }
+        }
+    }
+
+    #[test]
     fn pq_multisig_mixed_scheme_direct_and_wrapped_match_node() {
         let keys = [
             deterministic_keypair(PqScheme::Falcon512, 0x80),
@@ -1415,6 +1484,28 @@ mod tests {
     }
 
     #[test]
+    fn pq_committed_hash_single_scheme_matrix_matches_node() {
+        let flags = VERIFY_WITNESS | VERIFY_P2SH;
+        let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
+
+        for scheme in [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ] {
+            for (m, n) in cases {
+                let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
+                    .map(|idx| deterministic_keypair(scheme, (0xC0 + n + idx) as u8))
+                    .collect();
+                verify_committed_hash_case(&keys, m, false, flags, true);
+                verify_committed_hash_case(&keys, m, true, flags, true);
+            }
+        }
+    }
+
+    #[test]
     fn witness_v1_512_zero_sighash_byte_is_rejected() {
         let (pubkey, seckey) = deterministic_keypair(PqScheme::Falcon512, 0x51);
         let witness_script = WitnessScriptBuf::from_bytes(
@@ -1448,6 +1539,15 @@ mod tests {
     }
 
     #[test]
+    fn pq_multisig_strict_mode_matches_node() {
+        let flags = VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT;
+        let keys = vec![deterministic_keypair(PqScheme::Falcon512, 0x11)];
+
+        verify_multisig_case(&keys, 1, false, flags, false);
+        verify_committed_hash_case(&keys, 1, false, flags, false);
+    }
+
+    #[test]
     fn pq_legacy_base_p2pkh_signature_verifies() {
         let (pubkey, seckey) = deterministic_keypair(PqScheme::Falcon512, 0x11);
         let script_pubkey = ScriptPubKeyBuf::builder()
@@ -1465,5 +1565,65 @@ mod tests {
             .into_script();
 
         verify_script_input(&script_pubkey, 0, Amount::from_sat_u32(0), &tx, VERIFY_NONE).unwrap();
+    }
+
+    #[test]
+    fn key_io_txcreatesignv1_p2pkh_legacy_wif_verifies() {
+        let wif = "6ddD664vfvjyAquu3uNwVWehzSCoywRyjqo1EA9xdA2iQH8bBNYi7VNEPkqx7rm5b2pqUsDtu9YdwQ4rkHs2Xq5XzpLywUsYS7LeiZyBXmmmZ47q1zxB6b2N14PKvXfywgajjpxv7WFRAqtWDXi6uy5NVwsLn2KdJQybjQpMzX9772M1gCoc3EgBvwfin8c7aeeBdSWShh9gh5pbGTrcU2LeQPoWP4yTRhZ2sCxNuaJWaMPbjyhEf5QFBpXmLCtQQiGjSghttdLayrhBr3hw3ydGk4rwTTgv8MX68rZvnEEV3xibEG3ud8Rq7jGfumk4FaAEUdfiRdHZEZdBx4wDYaQurihxcm6EMCApZ9v1B68NNh4whtQLuHfsqod5ye8K9TPHWS19MtFT96dtdMuSB5CwvhL8Fa6TTjwPAGBYpU5xynym9bdMrZRMsUhTzAyoGmFD1sp94jUE46iwdfp7FFrboyPLV5zLiDfToKmM1J2343quyuzrTewmA6wdqUZbKAmhtL28pbDAoy6jMwk2TM1cggcFmSR3uSXcgDVnV7J9mTBmpvXDaN8xxG18JcSWSbewFVnHLCddvhPn2ZutGPpMRtDkMc3vWt5s9iD3gTUyWC9kjZsjc65Gd6t3JChSKDpUC5BGA5pdHBwo2P5j87DkZqcrUjpeMX25zgPMdt9ZWeRs6SUqJtTGMj4Hk1syNbovpm4Eqha66n8vTvVnwHrxvn85ds4ZcFpxv1FukG7TQ6iStJLBcmwcUSFtyvBFmbK9qu8ToXNGoPnqVCR8V6XveLPCfDELjHoCMCLnp4eQa3AwJpg9Pg9qVQjvcoHqD44JuZ86CAjLcyAmm9QnFcs3JX7JyLKCnBzj3DfjWr2SNgrhjiGnMBrykjEVX6vis6vDL9cJ56jTuxWDovhwzBr5VbkoBArh6MS6z1SPv6Xvv8Sj7ej3nRHZ31Gh5estzKzdUKSU2vQxmtd4Q6KqjjBSf6xLU1K1S9mAtqn3CzKMMDKeLFtTu1oFwHTGDqaCDmAKXWJX1o2xzmTdWCd3UHB9wobBjtjWUcNxvw4ig7BHW89JgsbfzRneyktwdk1cYWU52AHTdFUSnchYwQBPEqyJ5bD7zWo5AbVNMPrebEnt2Sb29CS2XYBwsD88hU6ka2BHmNmTGedEHJmhHzkrJkyWqFAkSZBsH5yq6x6ttYrDH8zXX7i98FzV2ZKnKuyy6NcgwpC8rYaMYPSie14DzoPfGUJc6BytBV69mZDsoJ2UUoVH94uiBkZUPTFfDcyCoDxBACCPxdCnJokerkAvDmFzujELyf2rK9nEoQeVdh9QJdYTTLAgJdzMyREHHYWyseWWti9n2gadocnRwiUMSqEt683KHiMW4Bn8AWBDSFQfXZYvVBcuEL4jvBSXMVJt4Z6cD11gqmCM9BgEGy2CoNLELVmRDRq3RMN22G2jX5U353eqikvgumub2sGRuErt3vbDuEELbmJAzLrVrXjfmbeU5ev5ZhMpBP7CiyRy7sk2DViDYDrZ9W5J8hPDRDVy7SV85bF1MHz1GjXjMjCMSSBYwvPTT9gd7Rmmc1MfVo26t6iS4YVdVeoCBGdvLdCUWd6Z8UZPmkpPASnVN3yj9m119DRyXsZUsqyeNF2vEDTVSNfjfofLGqfFmKtHDEkECW94huFapxokwmSvgi15sYiEKXBXknHnctaEiahSh7ha9qJ6UqhEnd7aJxzG1JbUerZbZMF4dxLEumd66ixzbgAWSBHoC1";
+        let key = PqWifKey::from_wif(wif).unwrap();
+        assert_eq!(key.network(), Network::Tidecoin);
+
+        let prev_script_pubkey = ScriptPubKeyBuf::from_hex_no_length_prefix(
+            "76a9145a2f1784c55a322ffe4cc3ca9fea8dfb44cdea1188ac",
+        )
+        .unwrap();
+        assert_eq!(
+            prev_script_pubkey,
+            ScriptPubKeyBuf::builder()
+                .push_opcode(OP_DUP)
+                .push_opcode(OP_HASH160)
+                .push_slice(push_bytes(key.public_key.key_id().as_ref()))
+                .push_opcode(OP_EQUALVERIFY)
+                .push_opcode(OP_CHECKSIG)
+                .into_script()
+        );
+
+        let destination = "ERNkirDf3jsER2ykJevf8USM2rj8Xi3GCF"
+            .parse::<Address<_>>()
+            .unwrap()
+            .require_network(Network::Tidecoin)
+            .unwrap();
+        let mut tx = Transaction {
+            version: transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint {
+                    txid: "4d49a71ec9da436f71ec4ee231d04f292a29cd316f598bb7068feccabdc59485"
+                        .parse()
+                        .unwrap(),
+                    vout: 0,
+                },
+                sequence: Sequence::MAX,
+                ..TxIn::EMPTY_COINBASE
+            }],
+            outputs: vec![TxOut {
+                amount: Amount::from_sat(100_000).unwrap(),
+                script_pubkey: destination.script_pubkey(),
+            }],
+        };
+        let sig = base_sig(&tx, 0, &prev_script_pubkey, &key.secret_key, true);
+        tx.inputs[0].script_sig = ScriptSigBuf::builder()
+            .push_slice(push_bytes(&sig))
+            .push_slice(push_bytes(&key.public_key.to_prefixed_bytes()))
+            .into_script();
+
+        verify_script_input(&prev_script_pubkey, 0, Amount::from_sat_u32(0), &tx, VERIFY_NONE).unwrap();
+    }
+
+    #[test]
+    fn key_io_txcreatesignv1_p2pkh_toolpath_verifies() {
+        // The library has no signing-provider abstraction, so the node toolpath vector reduces to
+        // the same BASE-sighash legacy-signature behavior exercised by the exact WIF test above.
+        key_io_txcreatesignv1_p2pkh_legacy_wif_verifies();
     }
 }

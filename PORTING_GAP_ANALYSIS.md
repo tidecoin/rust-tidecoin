@@ -37,6 +37,10 @@ Out of scope:
 - Tidecoin-specific validation/runtime surface in [bitcoin/src/consensus_validation.rs](bitcoin/src/consensus_validation.rs), [bitcoin/src/consensus_validation_node.rs](bitcoin/src/consensus_validation_node.rs), and [bitcoin/src/consensus_validation_tidecoin.rs](bitcoin/src/consensus_validation_tidecoin.rs)
 - node PQ execution corpus migration covering `script_tests_pq.json`, `tx_valid_pq.json`, `tx_invalid_pq.json`, `script_assets_test.json`, mixed witness-v0/v1-512 cases, PQ multisig cases, committed-hash cases, and legacy base-signature cases
 - node policy helper parity for dust thresholds, witness-program classification, standard-tx reasons, exact legacy sigop boundaries, and PQ input-vsize formulas
+- exact node `key_io` legacy-WIF BASE-sighash verification vector and the library-equivalent toolpath regression
+- PQ bech32 namespace/checksum rejection coverage from `key_io_tests.cpp`, plus parser namespace enforcement for PQ HRPs
+- single-scheme PQ multisig and committed-hash matrix coverage from `pq_multisig_tests.cpp`
+- strict-mode PQ multisig coverage and the remaining witness-script / bare-policy / worst-case-weight tails from `pq_multisig_tests.cpp`
 - stale unused `legacy_sighash.json` and mainnet/testnet `.raw` fixtures
 - Tidecoin-facing dust/sighash docs that still used `BTC/kB` or "today's Bitcoin network" wording
 - P2P message cleanup audit: `NetworkMessage` already demotes legacy `reject` payloads to `Unknown`, while `message_network::Alert` is intentionally retained because Tidecoin node still sends the final alert to peers at protocol version `<= 70012`

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Bitcoin keys.
+//! Tidecoin keys.
 //!
-//! This module provides keys used in Bitcoin that can be roundtrip
+//! This module provides keys used in Tidecoin that can be roundtrip
 //! (de)serialized.
 
 use core::convert::Infallible;
