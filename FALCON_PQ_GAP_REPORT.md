@@ -19,6 +19,7 @@ Validation basis:
 - PQHD v1 KDF/path validation in [bitcoin/src/pqhd.rs](bitcoin/src/pqhd.rs)
 - deterministic PQHD key generation from stream-key material in [bitcoin/src/pqhd.rs](bitcoin/src/pqhd.rs)
 - prefixed and legacy raw PQ secret-key codecs in [bitcoin/src/crypto/pq.rs](bitcoin/src/crypto/pq.rs)
+- node-compatible PQ base58 secret import/export in [bitcoin/src/crypto/key.rs](bitcoin/src/crypto/key.rs)
 - ML-KEM-512 keypair, deterministic keypair, encapsulate, deterministic encapsulate, and decapsulate helpers in [bitcoin/src/crypto/pq.rs](bitcoin/src/crypto/pq.rs)
 - `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in [key_expression/src/lib.rs](/home/kiel/work/rust-tidecoin/key_expression/src/lib.rs)
 - Tidecoin PSBT PQHD origin and PQ partial-signature helpers in [bitcoin/src/psbt/tidecoin.rs](bitcoin/src/psbt/tidecoin.rs)
@@ -38,6 +39,8 @@ Validation basis:
 ## Remaining Validated Gaps
 
 No confirmed Falcon/PQ library-scope runtime gaps remain in the previously tracked set.
+
+No confirmed executable-coverage debt remains inside the previously tracked Falcon/PQ set.
 
 Optional future expansion areas, if the library needs to expose more of the node surface:
 

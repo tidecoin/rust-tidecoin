@@ -3,7 +3,6 @@
 use core::fmt;
 
 use internals::array::ArrayExt; // For `split_first`.
-use internals::ToU64 as _;
 
 use super::witness_version::WitnessVersion;
 use super::{
@@ -11,12 +10,11 @@ use super::{
     RedeemScriptSizeError, Script, ScriptHash, ScriptHashableTag, ScriptPubKey, ScriptSig,
     WScriptHash, WitnessScript, WitnessScriptSizeError,
 };
-use crate::consensus::Encodable;
 use crate::key::{PublicKey, WPubkeyHash};
 use crate::opcodes::all::*;
 use crate::opcodes::Opcode;
 use crate::policy::{DUST_RELAY_TX_FEE, MAX_OP_RETURN_RELAY};
-use crate::prelude::{sink, String, ToString};
+use crate::prelude::{String, ToString};
 use crate::script::{self, ScriptPubKeyBufExt as _};
 use crate::witness_program::P2A_PROGRAM;
 use crate::{internal_macros, Amount, FeeRate, ScriptPubKeyBuf, WitnessScriptBuf};
@@ -530,25 +528,8 @@ internal_macros::define_extension_trait! {
         }
 
         fn minimal_non_dust_internal(&self, dust_relay_fee_rate_per_kvb: u64) -> Option<Amount> {
-            // This must never be lower than the reference node's GetDustThreshold() as it may
-            // otherwise allow users to create transactions which likely can never be broadcast/confirmed.
-            let sats = dust_relay_fee_rate_per_kvb
-                .checked_mul(if self.is_op_return() {
-                    0
-                } else if self.is_witness_program() {
-                    32 + 4 + 1 + (107 / 4) + 4 + // The spend cost copied from Core
-                    8 + // The serialized size of the TxOut's amount field
-                    self.consensus_encode(&mut sink()).expect("sinks don't error").to_u64() // The serialized size of this script_pubkey
-                } else {
-                    32 + 4 + 1 + 107 + 4 + // The spend cost copied from Core
-                    8 + // The serialized size of the TxOut's amount field
-                    self.consensus_encode(&mut sink()).expect("sinks don't error").to_u64() // The serialized size of this script_pubkey
-                })?
-                / 1000; // divide by 1000 like in Core to get value as it cancels out DEFAULT_MIN_RELAY_TX_FEE
-                        // Note: We ensure the division happens at the end, since Core performs the division at the end.
-                        //       This will make sure none of the implicit floor operations mess with the value.
-
-            Amount::from_sat(sats).ok()
+            let fee_rate = u32::try_from(dust_relay_fee_rate_per_kvb).ok().map(FeeRate::from_sat_per_kvb)?;
+            crate::policy::dust_threshold(self, fee_rate)
         }
     }
 }

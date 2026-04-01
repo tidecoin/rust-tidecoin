@@ -55,7 +55,7 @@ impl FeeRate {
 
     /// The minimum fee rate required to broadcast a transaction.
     ///
-    /// The value matches the default Bitcoin Core policy at the time of library release.
+    /// The value matches the default Tidecoin relay policy at the time of library release.
     pub const BROADCAST_MIN: Self = Self::from_sat_per_vb(1);
 
     /// The fee rate used to compute dust amount.

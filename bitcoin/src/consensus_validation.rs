@@ -4,7 +4,16 @@
 //!
 //! Tidecoin uses two validation paths:
 //! - `bitcoinconsensus` for ordinary Bitcoin-compatible scripts
-//! - a local Tidecoin-aware validator for PQ keys, `OP_SHA512`, and witness-v1-512
+//! - a Tidecoin-aware validator for PQ keys, `OP_SHA512`, and witness-v1-512
+//!
+//! With the `tidecoin-node-validation` feature enabled, the public verification APIs route
+//! Tidecoin-specific spends through the Tidecoin node bridge in `consensus_validation_node`.
+//! That node-backed path already covers the migrated PQ JSON corpora and the additional
+//! SHA512, witness-v1-512, and PQ multisig parity tests in that module.
+//!
+//! The remaining validation gap in this crate is at the policy surface above script execution:
+//! Tidecoin node entry points such as `IsWitnessStandard`, `IsStandardTx`, and virtual-size or
+//! weight helpers are not exposed here yet.
 
 use core::convert::Infallible;
 use core::fmt;
@@ -384,4 +393,112 @@ fn trim_tidecoin_flags(flags: u32) -> u32 {
     }
 
     translated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        verify_script_with_flags, verify_transaction_with_flags, TransactionExt, VERIFY_NONE,
+    };
+    use crate::absolute;
+    use crate::consensus::encode;
+    use crate::crypto::pq::{PqPublicKey, PqScheme, PqSecretKey, PqSignature};
+    use crate::crypto::sighash::SighashCache;
+    use crate::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
+    use crate::prelude::Vec;
+    use crate::script::{PushBytesBuf, ScriptBufExt as _, ScriptPubKeyBuf, ScriptSigBuf};
+    use crate::transaction::{OutPoint, Transaction, TxIn, TxOut, Txid, Version};
+    use crate::{Amount, EcdsaSighashType, Sequence, Witness};
+
+    fn tagged_seed(tag: u8, len: usize) -> Vec<u8> {
+        (0..len)
+            .map(|i| tag ^ (i as u8).wrapping_mul(131))
+            .collect()
+    }
+
+    fn deterministic_keypair(scheme: PqScheme, tag: u8) -> (PqPublicKey, PqSecretKey) {
+        let seed = tagged_seed(tag, scheme.deterministic_seed_len());
+        scheme.generate_keypair_from_seed(&seed).unwrap()
+    }
+
+    fn push_bytes(data: &[u8]) -> PushBytesBuf { PushBytesBuf::try_from(data.to_vec()).unwrap() }
+
+    fn pq_p2pkh_script_pubkey(pubkey: &PqPublicKey) -> ScriptPubKeyBuf {
+        ScriptPubKeyBuf::builder()
+            .push_opcode(OP_DUP)
+            .push_opcode(OP_HASH160)
+            .push_slice(push_bytes(pubkey.key_id().as_ref()))
+            .push_opcode(OP_EQUALVERIFY)
+            .push_opcode(OP_CHECKSIG)
+            .into_script()
+    }
+
+    fn pq_legacy_p2pkh_spend() -> (Transaction, TxOut) {
+        let (pubkey, seckey) = deterministic_keypair(PqScheme::Falcon512, 0x31);
+        let script_pubkey = pq_p2pkh_script_pubkey(&pubkey);
+        let prevout = OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 };
+        let mut tx = Transaction {
+            version: Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: prevout,
+                script_sig: ScriptSigBuf::new(),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            outputs: vec![TxOut { amount: Amount::from_sat_u32(1), script_pubkey: ScriptPubKeyBuf::new() }],
+        };
+
+        let cache = SighashCache::new(&tx);
+        let sighash = cache
+            .legacy_signature_hash(0, script_pubkey.as_script(), EcdsaSighashType::All.to_u32())
+            .unwrap();
+        let sig = PqSignature::sign_msg32_legacy(sighash.as_byte_array(), &seckey).unwrap();
+        let mut sig_bytes = sig.as_bytes().to_vec();
+        sig_bytes.push(EcdsaSighashType::All.to_u32() as u8);
+
+        tx.inputs[0].script_sig = ScriptSigBuf::builder()
+            .push_slice(push_bytes(&sig_bytes))
+            .push_slice(push_bytes(&pubkey.to_prefixed_bytes()))
+            .into_script();
+
+        (
+            tx,
+            TxOut { amount: Amount::from_sat_u32(0), script_pubkey },
+        )
+    }
+
+    #[test]
+    fn verify_script_with_flags_accepts_pq_legacy_base_spend() {
+        let (tx, spent_output) = pq_legacy_p2pkh_spend();
+        let serialized_tx = encode::serialize(&tx);
+
+        verify_script_with_flags(
+            &spent_output.script_pubkey,
+            0,
+            spent_output.amount,
+            &serialized_tx,
+            VERIFY_NONE,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn verify_transaction_public_api_accepts_pq_legacy_base_spend() {
+        let (tx, spent_output) = pq_legacy_p2pkh_spend();
+        let previous_output = tx.inputs[0].previous_output;
+
+        verify_transaction_with_flags(
+            &tx,
+            |outpoint| (outpoint == &previous_output).then_some(spent_output.clone()),
+            VERIFY_NONE,
+        )
+        .unwrap();
+
+        tx.verify_with_flags(
+            |outpoint| (outpoint == &previous_output).then_some(spent_output.clone()),
+            VERIFY_NONE,
+        )
+        .unwrap();
+    }
 }

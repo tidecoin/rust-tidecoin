@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Partially Signed Bitcoin Transactions.
+//! Partially Signed Tidecoin Transactions.
 //!
 //! Implementation of BIP-0174 Partially Signed Bitcoin Transaction Format as
 //! defined at <https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki>
@@ -1765,7 +1765,7 @@ mod tests {
         }
     }
 
-    // Test vector from Bitcoin Core.
+    // Upstream BIP-0174 test vector.
     // https://github.com/bitcoin/bitcoin/commit/9e13ccc50eec9d2efe0f472e6d50dc822df70d84
     #[test]
     fn non_witness_utxo_vout_out_of_bounds() {
@@ -1926,7 +1926,7 @@ mod tests {
     fn combine_psbts() {
         let mut psbt1 = hex_psbt(include_str!("../../tests/data/psbt1.hex")).unwrap();
         let psbt2 = hex_psbt(include_str!("../../tests/data/psbt2.hex")).unwrap();
-        let psbt_combined = hex_psbt(include_str!("../../tests/data/psbt2.hex")).unwrap();
+        let psbt_combined = hex_psbt(include_str!("../../tests/data/psbt_combined.hex")).unwrap();
 
         psbt1.combine(psbt2).expect("psbt combine to succeed");
         assert_eq!(psbt1, psbt_combined);

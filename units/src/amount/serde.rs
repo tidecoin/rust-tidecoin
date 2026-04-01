@@ -387,7 +387,7 @@ pub mod as_btc {
 
 #[cfg(feature = "alloc")]
 pub mod as_str {
-    //! Serialize and deserialize [`Amount`] and [`SignedAmount`] as a JSON string denominated in BTC.
+    //! Serialize and deserialize [`Amount`] and [`SignedAmount`] as a JSON string denominated in TDC.
     //!
     //! Use with `#[serde(with = "amount::serde::as_str")]`.
     //!
@@ -424,7 +424,7 @@ pub mod as_str {
 
     pub mod opt {
         //! Serialize and deserialize `Option<Amount>` and `Option<SignedAmount>` as a JSON string
-        //! denominated in BTC.
+        //! denominated in TDC.
         //!
         //! Use with `#[serde(default, with = "amount::serde::as_str::opt")]`.
 
@@ -487,7 +487,7 @@ pub mod as_str {
 
     pub mod vec {
         //! Serialize and deserialize `Vec<Amount>` and `Vec<SignedAmount>` as JSON strings
-        //! denominated in BTC.
+        //! denominated in TDC.
         //!
         //! Use with `#[serde(with = "amount::serde::as_str::vec")]`.
 

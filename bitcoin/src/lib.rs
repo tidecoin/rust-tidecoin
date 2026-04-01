@@ -172,7 +172,9 @@ pub use crate::{
     bip32::XKeyIdentifier,
     crypto::ecdsa,
     crypto::key::{
-        self, CompressedPublicKey, Keypair, PrivateKey, PublicKey, WifKey, XOnlyPublicKey,
+        self, CompressedPublicKey, FromPqWifError, Keypair, MismatchedPqPublicKeyError,
+        PqWifFormat, PqWifKey, PrivateKey, PublicKey, UnsupportedLegacyWifSchemeError, WifKey,
+        XOnlyPublicKey,
     },
     crypto::pq::{
         MlKem512Ciphertext, MlKem512Keypair, MlKem512PublicKey, MlKem512SecretKey,

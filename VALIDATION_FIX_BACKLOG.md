@@ -4,10 +4,17 @@ This file is updated as issues are validated and moved through the state machine
 
 ## Open
 
-- None in the currently tracked library-scope validation set.
+None.
 
 ## Closed
 
+- `done` Finish the remaining direct Tidecoin node executable-coverage tails after the parity sweep. The current tree now carries direct coverage for the previously listed witness-v1-512 script edges, transaction/policy tails (`spends_witness_prog`, `test_IsStandard`, `max_standard_legacy_sigops`), PQ input-vsize formulas, and the non-JSON PQ `key_io` WIF behavior.
+- `done` Re-run the final Tidecoin crate verification sweep and tie the tracker state to actual commands:
+  - `cargo check --workspace`
+  - `cargo test --workspace`
+  - `cargo check -p tidecoin --all-features --tests --examples`
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+  - `git diff --check`
 - `done` Implement the Tidecoin validation/runtime surface in `bitcoin/src/consensus_validation.rs`, `bitcoin/src/consensus_validation_node.rs`, and `bitcoin/src/consensus_validation_tidecoin.rs`, then migrate the node PQ script/transaction/asset/multisig corpora with additional mixed witness-v0/v1-512 and legacy base-signature regression coverage.
 - `done` Fence off the optional `bitcoinconsensus` validation surface in `bitcoin/src/consensus_validation.rs` so Tidecoin-only flags and `p2wsh512` outputs fail explicitly instead of being forwarded to Bitcoin Core semantics.
 - `done` Record the validated Falcon/PQ runtime gap report in `FALCON_PQ_GAP_REPORT.md` and align the tracker with the current node-vs-Rust compatibility status.

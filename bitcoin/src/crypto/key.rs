@@ -18,6 +18,7 @@ use internals::{impl_to_hex_from_lower_hex, write_err};
 use io::{Read, Write};
 
 use crate::crypto::ecdsa;
+use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSecretKey};
 use crate::hex::{self, DecodeFixedLengthBytesError};
 use crate::internal_macros::impl_asref_push_bytes;
 use crate::network::{Network, NetworkKind};
@@ -31,8 +32,7 @@ use crate::sign_message::MessageSignature;
 #[rustfmt::skip]                // Keep public re-exports separate.
 pub use secp256k1::{constants, Parity, Verification};
 pub use encapsulate::{
-    CompressedPublicKey, Keypair, PrivateKey, PublicKey, SerializedXOnlyPublicKey,
-    XOnlyPublicKey,
+    CompressedPublicKey, Keypair, PrivateKey, PublicKey, SerializedXOnlyPublicKey, XOnlyPublicKey,
 };
 #[cfg(all(feature = "rand", feature = "std"))]
 pub use secp256k1::rand;
@@ -59,23 +59,33 @@ mod encapsulate {
         /// Sets the parity of this [`XOnlyPublicKey`].
         ///
         /// This returns a new `XOnlyPublicKey` with the same inner value, but the given parity.
-        pub fn with_parity(self, parity: Parity) -> Self { Self { parity, ..self } }
+        pub fn with_parity(self, parity: Parity) -> Self {
+            Self { parity, ..self }
+        }
 
         /// Returns the parity of this x-only public key.
-        pub fn parity(&self) -> Parity { self.parity }
+        pub fn parity(&self) -> Parity {
+            self.parity
+        }
 
         /// Returns a reference to the inner secp256k1 x-only public key.
         #[inline]
-        pub fn as_inner(&self) -> &secp256k1::XOnlyPublicKey { &self.inner }
+        pub fn as_inner(&self) -> &secp256k1::XOnlyPublicKey {
+            &self.inner
+        }
 
         /// Returns the inner secp256k1 x-only public key.
         #[inline]
-        pub fn to_inner(self) -> secp256k1::XOnlyPublicKey { self.inner }
+        pub fn to_inner(self) -> secp256k1::XOnlyPublicKey {
+            self.inner
+        }
 
         /// Returns the inner secp256k1 x-only public key.
         #[inline]
         #[deprecated(since = "TBD", note = "use `to_inner()` instead")]
-        pub fn into_inner(self) -> secp256k1::XOnlyPublicKey { self.to_inner() }
+        pub fn into_inner(self) -> secp256k1::XOnlyPublicKey {
+            self.to_inner()
+        }
     }
 
     /// A Bitcoin secret and public key pair.
@@ -86,11 +96,15 @@ mod encapsulate {
     impl Keypair {
         /// Constructs a keypair from a provided secp256k1 keypair.
         #[inline]
-        pub fn from_secp(keypair: impl Into<secp256k1::Keypair>) -> Self { Self(keypair.into()) }
+        pub fn from_secp(keypair: impl Into<secp256k1::Keypair>) -> Self {
+            Self(keypair.into())
+        }
 
         /// Returns a reference to the inner [`secp256k1::Keypair`].
         #[inline]
-        pub fn as_inner(&self) -> &secp256k1::Keypair { &self.0 }
+        pub fn as_inner(&self) -> &secp256k1::Keypair {
+            &self.0
+        }
     }
 
     /// A Bitcoin ECDSA public key.
@@ -116,15 +130,21 @@ mod encapsulate {
 
         /// Returns the inner secp256k1 public key.
         #[inline]
-        pub fn to_inner(self) -> secp256k1::PublicKey { self.inner }
+        pub fn to_inner(self) -> secp256k1::PublicKey {
+            self.inner
+        }
 
         /// Returns whether this public key should be serialized as compressed.
         #[inline]
-        pub fn compressed(&self) -> bool { self.compressed }
+        pub fn compressed(&self) -> bool {
+            self.compressed
+        }
     }
 
     impl Drop for Keypair {
-        fn drop(&mut self) { self.0.non_secure_erase(); }
+        fn drop(&mut self) {
+            self.0.non_secure_erase();
+        }
     }
 
     /// An always-compressed Bitcoin ECDSA public key.
@@ -134,11 +154,15 @@ mod encapsulate {
     impl CompressedPublicKey {
         /// Constructs a new compressed public key from the provided secp public key.
         #[inline]
-        pub fn from_secp(inner: secp256k1::PublicKey) -> Self { Self(inner) }
+        pub fn from_secp(inner: secp256k1::PublicKey) -> Self {
+            Self(inner)
+        }
 
         /// Returns the inner [`secp256k1::PublicKey`].
         #[inline]
-        pub fn to_inner(self) -> secp256k1::PublicKey { self.0 }
+        pub fn to_inner(self) -> secp256k1::PublicKey {
+            self.0
+        }
     }
 
     /// A Bitcoin ECDSA private key.
@@ -164,15 +188,21 @@ mod encapsulate {
 
         /// Returns a reference to the inner secp256k1 secret key.
         #[inline]
-        pub fn as_inner(&self) -> &secp256k1::SecretKey { &self.inner }
+        pub fn as_inner(&self) -> &secp256k1::SecretKey {
+            &self.inner
+        }
 
         /// Returns whether this private key should be serialized as compressed.
         #[inline]
-        pub fn compressed(&self) -> bool { self.compressed }
+        pub fn compressed(&self) -> bool {
+            self.compressed
+        }
     }
 
     impl Drop for PrivateKey {
-        fn drop(&mut self) { self.inner.non_secure_erase(); }
+        fn drop(&mut self) {
+            self.inner.non_secure_erase();
+        }
     }
 
     internals::transparent_newtype! {
@@ -190,13 +220,19 @@ mod encapsulate {
 
     impl SerializedXOnlyPublicKey {
         /// Marks the supplied bytes as a serialized x-only public key.
-        pub const fn from_byte_array(bytes: [u8; 32]) -> Self { Self(bytes) }
+        pub const fn from_byte_array(bytes: [u8; 32]) -> Self {
+            Self(bytes)
+        }
 
         /// Returns the raw bytes.
-        pub const fn to_byte_array(self) -> [u8; 32] { self.0 }
+        pub const fn to_byte_array(self) -> [u8; 32] {
+            self.0
+        }
 
         /// Returns a reference to the raw bytes.
-        pub const fn as_byte_array(&self) -> &[u8; 32] { &self.0 }
+        pub const fn as_byte_array(&self) -> &[u8; 32] {
+            &self.0
+        }
     }
 }
 
@@ -234,7 +270,9 @@ impl XOnlyPublicKey {
     ///
     /// The [`PublicKey`] is constructed using the parity in this x-only public key.
     #[inline]
-    pub fn to_public_key(self) -> PublicKey { self.as_inner().public_key(self.parity()).into() }
+    pub fn to_public_key(self) -> PublicKey {
+        self.as_inner().public_key(self.parity()).into()
+    }
 
     /// Verifies that a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed correctly.
     ///
@@ -261,8 +299,9 @@ impl XOnlyPublicKey {
         match self.as_inner().add_tweak(tweak) {
             Ok((xonly, parity)) => Ok(Self::from_secp(xonly, parity)),
             Err(secp256k1::Error::InvalidTweak) => Err(TweakXOnlyPublicKeyError::BadTweak),
-            Err(secp256k1::Error::InvalidParityValue(_)) =>
-                Err(TweakXOnlyPublicKeyError::ParityError),
+            Err(secp256k1::Error::InvalidParityValue(_)) => {
+                Err(TweakXOnlyPublicKeyError::ParityError)
+            }
             Err(_) => Err(TweakXOnlyPublicKeyError::ResultKeyInvalid),
         }
     }
@@ -278,7 +317,9 @@ impl FromStr for XOnlyPublicKey {
 }
 
 impl From<secp256k1::XOnlyPublicKey> for XOnlyPublicKey {
-    fn from(pk: secp256k1::XOnlyPublicKey) -> Self { Self::from_secp(pk, Parity::Even) }
+    fn from(pk: secp256k1::XOnlyPublicKey) -> Self {
+        Self::from_secp(pk, Parity::Even)
+    }
 }
 
 impl From<secp256k1::PublicKey> for XOnlyPublicKey {
@@ -289,13 +330,17 @@ impl From<secp256k1::PublicKey> for XOnlyPublicKey {
 }
 
 impl fmt::LowerHex for XOnlyPublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(self.as_inner(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(self.as_inner(), f)
+    }
 }
 // Allocate for serialized size
 impl_to_hex_from_lower_hex!(XOnlyPublicKey, |_| constants::SCHNORR_PUBLIC_KEY_SIZE * 2);
 
 impl fmt::Display for XOnlyPublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(self.as_inner(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self.as_inner(), f)
+    }
 }
 
 // XOnlyPublicKey should serialize/deserialize identically to the inner type.
@@ -362,13 +407,17 @@ impl Keypair {
     ///
     /// This is equivalent to using [`PublicKey::from_keypair`].
     #[inline]
-    pub fn to_public_key(&self) -> PublicKey { PublicKey::from_keypair(self) }
+    pub fn to_public_key(&self) -> PublicKey {
+        PublicKey::from_keypair(self)
+    }
 
     /// Returns the [`XOnlyPublicKey`] for this [`Keypair`].
     ///
     /// This is equivalent to using [`XOnlyPublicKey::from_keypair`].
     #[inline]
-    pub fn to_x_only_public_key(&self) -> XOnlyPublicKey { XOnlyPublicKey::from_keypair(self) }
+    pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
+        XOnlyPublicKey::from_keypair(self)
+    }
 
     /// Schnorr sign a message slice with this keypair.
     ///
@@ -405,17 +454,23 @@ impl FromStr for Keypair {
 }
 
 impl From<secp256k1::Keypair> for Keypair {
-    fn from(pk: secp256k1::Keypair) -> Self { Self::from_secp(pk) }
+    fn from(pk: secp256k1::Keypair) -> Self {
+        Self::from_secp(pk)
+    }
 }
 
 impl From<Keypair> for secp256k1::PublicKey {
-    fn from(kp: Keypair) -> Self { kp.to_public_key().to_inner() }
+    fn from(kp: Keypair) -> Self {
+        kp.to_public_key().to_inner()
+    }
 }
 
 impl PublicKey {
     /// Constructs a new compressed ECDSA public key from the provided generic secp256k1 public key.
     #[deprecated(since = "TBD", note = "use `from_secp` instead")]
-    pub fn new(key: impl Into<secp256k1::PublicKey>) -> Self { Self::from_secp(key) }
+    pub fn new(key: impl Into<secp256k1::PublicKey>) -> Self {
+        Self::from_secp(key)
+    }
 
     /// Constructs a new uncompressed (legacy) ECDSA public key from the provided generic secp256k1
     /// public key.
@@ -465,7 +520,9 @@ impl PublicKey {
     /// use [`with_serialized`] instead.
     ///
     /// [`with_serialized`]: PublicKey::with_serialized
-    pub fn serialize_compressed(&self) -> [u8; 33] { self.to_inner().serialize() }
+    pub fn serialize_compressed(&self) -> [u8; 33] {
+        self.to_inner().serialize()
+    }
 
     /// Serializes the key as a byte-encoded pair of values, in uncompressed form.
     ///
@@ -473,7 +530,9 @@ impl PublicKey {
     /// use [`with_serialized`] instead.
     ///
     /// [`with_serialized`]: PublicKey::with_serialized
-    pub fn serialize_uncompressed(&self) -> [u8; 65] { self.to_inner().serialize_uncompressed() }
+    pub fn serialize_uncompressed(&self) -> [u8; 65] {
+        self.to_inner().serialize_uncompressed()
+    }
 
     /// Returns bitcoin 160-bit hash of the public key.
     pub fn pubkey_hash(&self) -> PubkeyHash {
@@ -557,7 +616,9 @@ impl PublicKey {
 
     /// Serializes the public key to bytes.
     #[deprecated(since = "TBD", note = "use to_vec instead")]
-    pub fn to_bytes(self) -> Vec<u8> { self.to_vec() }
+    pub fn to_bytes(self) -> Vec<u8> {
+        self.to_vec()
+    }
 
     /// Serializes the public key to bytes.
     #[allow(clippy::missing_panics_doc)]
@@ -652,10 +713,14 @@ impl PublicKey {
     }
 
     /// Computes the public key as supposed to be used with this secret.
-    pub fn from_private_key(sk: &PrivateKey) -> Self { sk.to_public_key() }
+    pub fn from_private_key(sk: &PrivateKey) -> Self {
+        sk.to_public_key()
+    }
 
     /// Extracts the public key from a Keypair
-    pub fn from_keypair(pair: &Keypair) -> Self { CompressedPublicKey::from_keypair(pair).into() }
+    pub fn from_keypair(pair: &Keypair) -> Self {
+        CompressedPublicKey::from_keypair(pair).into()
+    }
 
     /// Checks that `sig` is a valid ECDSA signature for `msg` using this public key.
     ///
@@ -675,7 +740,9 @@ impl PublicKey {
 }
 
 impl From<secp256k1::PublicKey> for PublicKey {
-    fn from(pk: secp256k1::PublicKey) -> Self { Self::from_secp(pk) }
+    fn from(pk: secp256k1::PublicKey) -> Self {
+        Self::from_secp(pk)
+    }
 }
 
 impl From<PublicKey> for XOnlyPublicKey {
@@ -701,19 +768,23 @@ impl FromStr for PublicKey {
         match s.len() {
             66 => {
                 let bytes = hex::decode_to_array::<33>(s).map_err(|e| match e {
-                    DecodeFixedLengthBytesError::InvalidChar(e) =>
-                        ParsePublicKeyError::InvalidChar(e),
-                    DecodeFixedLengthBytesError::InvalidLength(_) =>
-                        unreachable!("length checked already"),
+                    DecodeFixedLengthBytesError::InvalidChar(e) => {
+                        ParsePublicKeyError::InvalidChar(e)
+                    }
+                    DecodeFixedLengthBytesError::InvalidLength(_) => {
+                        unreachable!("length checked already")
+                    }
                 })?;
                 Ok(Self::from_slice(&bytes)?)
             }
             130 => {
                 let bytes = hex::decode_to_array::<65>(s).map_err(|e| match e {
-                    DecodeFixedLengthBytesError::InvalidChar(e) =>
-                        ParsePublicKeyError::InvalidChar(e),
-                    DecodeFixedLengthBytesError::InvalidLength(_) =>
-                        unreachable!("length checked already"),
+                    DecodeFixedLengthBytesError::InvalidChar(e) => {
+                        ParsePublicKeyError::InvalidChar(e)
+                    }
+                    DecodeFixedLengthBytesError::InvalidLength(_) => {
+                        unreachable!("length checked already")
+                    }
                 })?;
                 Ok(Self::from_slice(&bytes)?)
             }
@@ -736,16 +807,22 @@ hashes::impl_serde_for_newtype!(PubkeyHash, WPubkeyHash);
 impl_asref_push_bytes!(PubkeyHash, WPubkeyHash);
 
 impl From<PublicKey> for PubkeyHash {
-    fn from(key: PublicKey) -> Self { key.pubkey_hash() }
+    fn from(key: PublicKey) -> Self {
+        key.pubkey_hash()
+    }
 }
 
 impl From<&PublicKey> for PubkeyHash {
-    fn from(key: &PublicKey) -> Self { key.pubkey_hash() }
+    fn from(key: &PublicKey) -> Self {
+        key.pubkey_hash()
+    }
 }
 
 impl CompressedPublicKey {
     /// Returns bitcoin 160-bit hash of the public key.
-    pub fn pubkey_hash(&self) -> PubkeyHash { PubkeyHash(hash160::Hash::hash(&self.to_bytes())) }
+    pub fn pubkey_hash(&self) -> PubkeyHash {
+        PubkeyHash(hash160::Hash::hash(&self.to_bytes()))
+    }
 
     /// Returns bitcoin 160-bit hash of the public key for witness program.
     pub fn wpubkey_hash(&self) -> WPubkeyHash {
@@ -799,7 +876,9 @@ impl CompressedPublicKey {
     ///
     /// Note that this can be used as a sort key to get BIP-0067-compliant sorting.
     /// That's why this type doesn't have the `to_sort_key` method - it would duplicate this one.
-    pub fn to_bytes(self) -> [u8; 33] { self.to_inner().serialize() }
+    pub fn to_bytes(self) -> [u8; 33] {
+        self.to_inner().serialize()
+    }
 
     /// Deserializes a public key from a slice.
     ///
@@ -885,31 +964,45 @@ impl TryFrom<PublicKey> for CompressedPublicKey {
 }
 
 impl From<secp256k1::PublicKey> for CompressedPublicKey {
-    fn from(pk: secp256k1::PublicKey) -> Self { Self::from_secp(pk) }
+    fn from(pk: secp256k1::PublicKey) -> Self {
+        Self::from_secp(pk)
+    }
 }
 
 impl From<CompressedPublicKey> for PublicKey {
-    fn from(value: CompressedPublicKey) -> Self { Self::from_secp(value.to_inner()) }
+    fn from(value: CompressedPublicKey) -> Self {
+        Self::from_secp(value.to_inner())
+    }
 }
 
 impl From<CompressedPublicKey> for XOnlyPublicKey {
-    fn from(pk: CompressedPublicKey) -> Self { pk.to_inner().into() }
+    fn from(pk: CompressedPublicKey) -> Self {
+        pk.to_inner().into()
+    }
 }
 
 impl From<CompressedPublicKey> for PubkeyHash {
-    fn from(key: CompressedPublicKey) -> Self { key.pubkey_hash() }
+    fn from(key: CompressedPublicKey) -> Self {
+        key.pubkey_hash()
+    }
 }
 
 impl From<&CompressedPublicKey> for PubkeyHash {
-    fn from(key: &CompressedPublicKey) -> Self { key.pubkey_hash() }
+    fn from(key: &CompressedPublicKey) -> Self {
+        key.pubkey_hash()
+    }
 }
 
 impl From<CompressedPublicKey> for WPubkeyHash {
-    fn from(key: CompressedPublicKey) -> Self { key.wpubkey_hash() }
+    fn from(key: CompressedPublicKey) -> Self {
+        key.wpubkey_hash()
+    }
 }
 
 impl From<&CompressedPublicKey> for WPubkeyHash {
-    fn from(key: &CompressedPublicKey) -> Self { key.wpubkey_hash() }
+    fn from(key: &CompressedPublicKey) -> Self {
+        key.wpubkey_hash()
+    }
 }
 
 impl PrivateKey {
@@ -933,17 +1026,25 @@ impl PrivateKey {
 
     /// Constructs a new public key from this private key.
     #[deprecated(since = "TBD", note = "use `to_public_key` instead")]
-    pub fn public_key(&self) -> PublicKey { self.to_public_key() }
+    pub fn public_key(&self) -> PublicKey {
+        self.to_public_key()
+    }
 
     /// Serializes the private key to bytes.
     #[deprecated(since = "TBD", note = "use to_secret_vec instead")]
-    pub fn to_bytes(&self) -> Vec<u8> { self.to_secret_vec() }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_secret_vec()
+    }
 
     /// Serializes the private key to bytes.
-    pub fn to_secret_vec(&self) -> Vec<u8> { self.to_secret_bytes().to_vec() }
+    pub fn to_secret_vec(&self) -> Vec<u8> {
+        self.to_secret_bytes().to_vec()
+    }
 
     /// Serializes the private key to bytes.
-    pub fn to_secret_bytes(&self) -> [u8; 32] { self.as_inner().to_secret_bytes() }
+    pub fn to_secret_bytes(&self) -> [u8; 32] {
+        self.as_inner().to_secret_bytes()
+    }
 
     /// Deserializes a private key from a byte array.
     ///
@@ -1027,7 +1128,9 @@ pub trait IntoWifNetwork {
 }
 
 impl IntoWifNetwork for Network {
-    fn into_wif_network(self) -> Network { self }
+    fn into_wif_network(self) -> Network {
+        self
+    }
 }
 
 impl IntoWifNetwork for NetworkKind {
@@ -1036,6 +1139,24 @@ impl IntoWifNetwork for NetworkKind {
             Self::Main => Network::Tidecoin,
             Self::Test => Network::Testnet,
         }
+    }
+}
+
+#[inline]
+fn wif_network_prefix(network: Network) -> u8 {
+    match network {
+        Network::Tidecoin => 125,
+        Network::Testnet => 180,
+        Network::Regtest => 15,
+    }
+}
+
+fn parse_wif_network_prefix(prefix: u8) -> Result<Network, InvalidAddressVersionError> {
+    match prefix {
+        125 => Ok(Network::Tidecoin),
+        180 => Ok(Network::Testnet),
+        15 => Ok(Network::Regtest),
+        invalid => Err(InvalidAddressVersionError { invalid }),
     }
 }
 
@@ -1048,7 +1169,9 @@ impl WifKey {
     }
 
     /// Returns the exact network carried by this WIF key.
-    pub fn network(&self) -> Network { self.network }
+    pub fn network(&self) -> Network {
+        self.network
+    }
 
     /// Formats the private key to WIF format.
     ///
@@ -1058,11 +1181,7 @@ impl WifKey {
     #[rustfmt::skip]
     pub fn fmt_wif(&self, fmt: &mut dyn fmt::Write) -> fmt::Result {
         let mut ret = [0; 34];
-        ret[0] = match self.network {
-            Network::Tidecoin => 125,
-            Network::Testnet => 180,
-            Network::Regtest => 15,
-        };
+        ret[0] = wif_network_prefix(self.network);
 
         ret[1..33].copy_from_slice(&self.private_key.as_inner()[..]);
         let privkey = if self.private_key.compressed() {
@@ -1110,14 +1229,7 @@ impl WifKey {
         };
 
         let (network, key) = data.split_first();
-        let network = match *network {
-            125 => Network::Tidecoin,
-            180 => Network::Testnet,
-            15 => Network::Regtest,
-            invalid => {
-                return Err(InvalidAddressVersionError { invalid }.into());
-            }
-        };
+        let network = parse_wif_network_prefix(*network)?;
 
         let sec_key = secp256k1::SecretKey::from_secret_bytes(*key)?;
         let priv_key = match compressed {
@@ -1132,7 +1244,250 @@ impl WifKey {
 // Parsing from a WIF string should be convenient, printing secret data should not.
 impl FromStr for WifKey {
     type Err = FromWifError;
-    fn from_str(s: &str) -> Result<Self, FromWifError> { Self::from_wif(s) }
+    fn from_str(s: &str) -> Result<Self, FromWifError> {
+        Self::from_wif(s)
+    }
+}
+
+/// Encodes how a [`PqWifKey`] should be serialized to base58.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum PqWifFormat {
+    /// Tidecoin node's current PQ secret format: `[network_prefix][scheme_prefix][raw_secret]`.
+    Prefixed,
+    /// Tidecoin node's legacy Falcon-512 format:
+    /// `[network_prefix][raw_falcon512_secret][0x01][prefixed_pubkey]`.
+    LegacyFalcon512,
+}
+
+/// A Tidecoin PQ private key with node-compatible base58 import/export.
+///
+/// This mirrors Tidecoin node's `EncodeSecret` / `DecodeSecret` handling for PQ secret keys.
+/// The supported encodings are:
+/// - the current prefixed format for all five PQ schemes
+/// - the legacy Falcon-512-only format used by old Tidecoin WIF toolpaths
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PqWifKey {
+    /// The PQ secret key carried by this WIF payload.
+    pub secret_key: PqSecretKey,
+    /// The public key matching `secret_key`.
+    pub public_key: PqPublicKey,
+    /// The network kind on which this key should be used.
+    ///
+    /// Regtest keys intentionally report [`NetworkKind::Test`] here. Use [`PqWifKey::network`] when
+    /// the exact network matters for WIF round-tripping.
+    pub network_kind: NetworkKind,
+    network: Network,
+    format: PqWifFormat,
+}
+
+impl PqWifKey {
+    fn with_format(
+        secret_key: PqSecretKey,
+        public_key: PqPublicKey,
+        network: impl IntoWifNetwork,
+        format: PqWifFormat,
+    ) -> Self {
+        let network = network.into_wif_network();
+        Self { network_kind: NetworkKind::from(network), network, secret_key, public_key, format }
+    }
+
+    /// Constructs a new PQ WIF key using Tidecoin node's current prefixed secret format.
+    pub fn new(secret_key: PqSecretKey, network: impl IntoWifNetwork) -> Result<Self, PqError> {
+        let public_key = PqPublicKey::from_secret_key(&secret_key)?;
+        Ok(Self::with_format(secret_key, public_key, network, PqWifFormat::Prefixed))
+    }
+
+    /// Constructs a new PQ WIF key using Tidecoin node's legacy Falcon-512 format.
+    pub fn new_legacy_falcon512(
+        secret_key: PqSecretKey,
+        network: impl IntoWifNetwork,
+    ) -> Result<Self, FromPqWifError> {
+        if secret_key.scheme() != PqScheme::Falcon512 {
+            return Err(UnsupportedLegacyWifSchemeError { scheme: secret_key.scheme() }.into());
+        }
+        let public_key = PqPublicKey::from_secret_key(&secret_key)?;
+        Ok(Self::with_format(secret_key, public_key, network, PqWifFormat::LegacyFalcon512))
+    }
+
+    /// Returns the exact network carried by this WIF key.
+    pub fn network(&self) -> Network {
+        self.network
+    }
+
+    /// Returns the serialization format this key will use.
+    pub fn format(&self) -> PqWifFormat {
+        self.format
+    }
+
+    /// Formats the key to Tidecoin node's base58 secret format.
+    pub fn fmt_wif(&self, fmt: &mut dyn fmt::Write) -> fmt::Result {
+        let mut data = Vec::with_capacity(
+            1 + self.secret_key.to_prefixed_bytes().len()
+                + self.public_key.to_prefixed_bytes().len(),
+        );
+        data.push(wif_network_prefix(self.network));
+        match self.format {
+            PqWifFormat::Prefixed => {
+                data.extend_from_slice(&self.secret_key.to_prefixed_bytes());
+            }
+            PqWifFormat::LegacyFalcon512 => {
+                debug_assert_eq!(self.secret_key.scheme(), PqScheme::Falcon512);
+                data.extend_from_slice(self.secret_key.as_bytes());
+                data.push(1);
+                data.extend_from_slice(&self.public_key.to_prefixed_bytes());
+            }
+        }
+        fmt.write_str(&base58::encode_check(&data))
+    }
+
+    /// Gets the Tidecoin node-compatible base58 encoding of this PQ private key.
+    pub fn to_wif(&self) -> String {
+        let mut buf = String::new();
+        let _ = self.fmt_wif(&mut buf);
+        buf.shrink_to_fit();
+        buf
+    }
+
+    /// Parses the Tidecoin node-compatible base58 PQ secret format.
+    pub fn from_wif(wif: &str) -> Result<Self, FromPqWifError> {
+        let data = base58::decode_check(wif)?;
+        if data.len() < 2 {
+            return Err(InvalidBase58PayloadLengthError { length: data.len() }.into());
+        }
+
+        let (&network_prefix, payload) = data
+            .split_first()
+            .ok_or(InvalidBase58PayloadLengthError { length: data.len() })?;
+        let network = parse_wif_network_prefix(network_prefix)?;
+
+        let legacy_scheme = PqScheme::Falcon512;
+        let legacy_total_len = legacy_scheme.seckey_len() + 1 + legacy_scheme.prefixed_pubkey_len();
+        if payload.len() == legacy_total_len && payload[legacy_scheme.seckey_len()] == 1 {
+            let secret_key =
+                PqSecretKey::decode_slice(&payload[..legacy_scheme.seckey_len()], true)?;
+            if secret_key.scheme() != legacy_scheme {
+                return Err(UnsupportedLegacyWifSchemeError { scheme: secret_key.scheme() }.into());
+            }
+            let public_key =
+                PqPublicKey::from_prefixed_slice(&payload[legacy_scheme.seckey_len() + 1..])?;
+            let derived = PqPublicKey::from_secret_key(&secret_key)?;
+            if public_key != derived {
+                return Err(MismatchedPqPublicKeyError.into());
+            }
+            return Ok(Self::with_format(
+                secret_key,
+                public_key,
+                network,
+                PqWifFormat::LegacyFalcon512,
+            ));
+        }
+
+        let secret_key = PqSecretKey::from_prefixed_slice(payload)?;
+        let public_key = PqPublicKey::from_secret_key(&secret_key)?;
+        Ok(Self::with_format(secret_key, public_key, network, PqWifFormat::Prefixed))
+    }
+}
+
+impl FromStr for PqWifKey {
+    type Err = FromPqWifError;
+    fn from_str(s: &str) -> Result<Self, FromPqWifError> {
+        Self::from_wif(s)
+    }
+}
+
+/// Error generated from PQ WIF key format.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FromPqWifError {
+    /// A base58 decoding error.
+    Base58(base58::Error),
+    /// Base58 decoded data was an invalid length.
+    InvalidBase58PayloadLength(InvalidBase58PayloadLengthError),
+    /// Base58 decoded data contained an invalid address version byte.
+    InvalidAddressVersion(InvalidAddressVersionError),
+    /// PQ key decoding or validation failed.
+    Pq(PqError),
+    /// Legacy PQ WIF is only defined for Falcon-512.
+    UnsupportedLegacyWifScheme(UnsupportedLegacyWifSchemeError),
+    /// Legacy PQ WIF carried a public key that does not match the secret key.
+    MismatchedPublicKey(MismatchedPqPublicKeyError),
+}
+
+impl From<Infallible> for FromPqWifError {
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
+}
+
+impl fmt::Display for FromPqWifError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Base58(ref e) => write_err!(f, "invalid base58"; e),
+            Self::InvalidBase58PayloadLength(ref e) => {
+                write_err!(f, "decoded base58 data was an invalid length"; e)
+            }
+            Self::InvalidAddressVersion(ref e) => {
+                write_err!(f, "decoded base58 data contained an invalid address version byte"; e)
+            }
+            Self::Pq(ref e) => write_err!(f, "PQ private key validation failed"; e),
+            Self::UnsupportedLegacyWifScheme(ref e) => {
+                write_err!(f, "unsupported legacy PQ WIF scheme"; e)
+            }
+            Self::MismatchedPublicKey(ref e) => {
+                write_err!(f, "legacy PQ WIF public key does not match secret key"; e)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for FromPqWifError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Base58(ref e) => Some(e),
+            Self::InvalidBase58PayloadLength(ref e) => Some(e),
+            Self::InvalidAddressVersion(ref e) => Some(e),
+            Self::Pq(ref e) => Some(e),
+            Self::UnsupportedLegacyWifScheme(ref e) => Some(e),
+            Self::MismatchedPublicKey(ref e) => Some(e),
+        }
+    }
+}
+
+impl From<base58::Error> for FromPqWifError {
+    fn from(e: base58::Error) -> Self {
+        Self::Base58(e)
+    }
+}
+
+impl From<PqError> for FromPqWifError {
+    fn from(e: PqError) -> Self {
+        Self::Pq(e)
+    }
+}
+
+impl From<InvalidBase58PayloadLengthError> for FromPqWifError {
+    fn from(e: InvalidBase58PayloadLengthError) -> Self {
+        Self::InvalidBase58PayloadLength(e)
+    }
+}
+
+impl From<InvalidAddressVersionError> for FromPqWifError {
+    fn from(e: InvalidAddressVersionError) -> Self {
+        Self::InvalidAddressVersion(e)
+    }
+}
+
+impl From<UnsupportedLegacyWifSchemeError> for FromPqWifError {
+    fn from(e: UnsupportedLegacyWifSchemeError) -> Self {
+        Self::UnsupportedLegacyWifScheme(e)
+    }
+}
+
+impl From<MismatchedPqPublicKeyError> for FromPqWifError {
+    fn from(e: MismatchedPqPublicKeyError) -> Self {
+        Self::MismatchedPublicKey(e)
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -1323,7 +1678,9 @@ pub enum FromSliceError {
 }
 
 impl From<Infallible> for FromSliceError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for FromSliceError {
@@ -1331,8 +1688,9 @@ impl fmt::Display for FromSliceError {
         match self {
             Self::Secp256k1(e) => write_err!(f, "secp256k1"; e),
             Self::InvalidKeyPrefix(b) => write!(f, "key prefix invalid: {}", b),
-            Self::InvalidLength(got) =>
-                write!(f, "slice length should be 33 or 65 bytes, got: {}", got),
+            Self::InvalidLength(got) => {
+                write!(f, "slice length should be 33 or 65 bytes, got: {}", got)
+            }
         }
     }
 }
@@ -1348,7 +1706,9 @@ impl std::error::Error for FromSliceError {
 }
 
 impl From<secp256k1::Error> for FromSliceError {
-    fn from(e: secp256k1::Error) -> Self { Self::Secp256k1(e) }
+    fn from(e: secp256k1::Error) -> Self {
+        Self::Secp256k1(e)
+    }
 }
 
 /// Error generated from WIF key format.
@@ -1368,20 +1728,25 @@ pub enum FromWifError {
 }
 
 impl From<Infallible> for FromWifError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for FromWifError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Base58(ref e) => write_err!(f, "invalid base58"; e),
-            Self::InvalidBase58PayloadLength(ref e) =>
-                write_err!(f, "decoded base58 data was an invalid length"; e),
-            Self::InvalidAddressVersion(ref e) =>
-                write_err!(f, "decoded base58 data contained an invalid address version byte"; e),
+            Self::InvalidBase58PayloadLength(ref e) => {
+                write_err!(f, "decoded base58 data was an invalid length"; e)
+            }
+            Self::InvalidAddressVersion(ref e) => {
+                write_err!(f, "decoded base58 data contained an invalid address version byte"; e)
+            }
             Self::Secp256k1(ref e) => write_err!(f, "private key validation failed"; e),
-            Self::InvalidWifCompressionFlag(ref e) =>
-                write_err!(f, "invalid WIF compression flag"; e),
+            Self::InvalidWifCompressionFlag(ref e) => {
+                write_err!(f, "invalid WIF compression flag"; e)
+            }
         }
     }
 }
@@ -1400,23 +1765,33 @@ impl std::error::Error for FromWifError {
 }
 
 impl From<base58::Error> for FromWifError {
-    fn from(e: base58::Error) -> Self { Self::Base58(e) }
+    fn from(e: base58::Error) -> Self {
+        Self::Base58(e)
+    }
 }
 
 impl From<secp256k1::Error> for FromWifError {
-    fn from(e: secp256k1::Error) -> Self { Self::Secp256k1(e) }
+    fn from(e: secp256k1::Error) -> Self {
+        Self::Secp256k1(e)
+    }
 }
 
 impl From<InvalidBase58PayloadLengthError> for FromWifError {
-    fn from(e: InvalidBase58PayloadLengthError) -> Self { Self::InvalidBase58PayloadLength(e) }
+    fn from(e: InvalidBase58PayloadLengthError) -> Self {
+        Self::InvalidBase58PayloadLength(e)
+    }
 }
 
 impl From<InvalidAddressVersionError> for FromWifError {
-    fn from(e: InvalidAddressVersionError) -> Self { Self::InvalidAddressVersion(e) }
+    fn from(e: InvalidAddressVersionError) -> Self {
+        Self::InvalidAddressVersion(e)
+    }
 }
 
 impl From<InvalidWifCompressionFlagError> for FromWifError {
-    fn from(e: InvalidWifCompressionFlagError) -> Self { Self::InvalidWifCompressionFlag(e) }
+    fn from(e: InvalidWifCompressionFlagError) -> Self {
+        Self::InvalidWifCompressionFlag(e)
+    }
 }
 
 /// Error returned while constructing a [`Keypair`] from string.
@@ -1424,7 +1799,9 @@ impl From<InvalidWifCompressionFlagError> for FromWifError {
 pub struct ParseKeypairError(secp256k1::Error);
 
 impl From<Infallible> for ParseKeypairError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for ParseKeypairError {
@@ -1435,7 +1812,9 @@ impl fmt::Display for ParseKeypairError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for ParseKeypairError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 /// Error returned while constructing public key from string.
@@ -1450,7 +1829,9 @@ pub enum ParsePublicKeyError {
 }
 
 impl From<Infallible> for ParsePublicKeyError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for ParsePublicKeyError {
@@ -1458,8 +1839,9 @@ impl fmt::Display for ParsePublicKeyError {
         match self {
             Self::Encoding(ref e) => write_err!(f, "string error"; e),
             Self::InvalidChar(ref e) => write_err!(f, "hex decoding"; e),
-            Self::InvalidHexLength(got) =>
-                write!(f, "pubkey string should be 66 or 130 digits long, got: {}", got),
+            Self::InvalidHexLength(got) => {
+                write!(f, "pubkey string should be 66 or 130 digits long, got: {}", got)
+            }
         }
     }
 }
@@ -1476,7 +1858,9 @@ impl std::error::Error for ParsePublicKeyError {
 }
 
 impl From<FromSliceError> for ParsePublicKeyError {
-    fn from(e: FromSliceError) -> Self { Self::Encoding(e) }
+    fn from(e: FromSliceError) -> Self {
+        Self::Encoding(e)
+    }
 }
 
 /// Error returned when parsing a [`CompressedPublicKey`] from a string.
@@ -1489,7 +1873,9 @@ pub enum ParseCompressedPublicKeyError {
 }
 
 impl From<Infallible> for ParseCompressedPublicKeyError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for ParseCompressedPublicKeyError {
@@ -1512,11 +1898,15 @@ impl std::error::Error for ParseCompressedPublicKeyError {
 }
 
 impl From<secp256k1::Error> for ParseCompressedPublicKeyError {
-    fn from(e: secp256k1::Error) -> Self { Self::Secp256k1(e) }
+    fn from(e: secp256k1::Error) -> Self {
+        Self::Secp256k1(e)
+    }
 }
 
 impl From<hex::DecodeFixedLengthBytesError> for ParseCompressedPublicKeyError {
-    fn from(e: hex::DecodeFixedLengthBytesError) -> Self { Self::Hex(e) }
+    fn from(e: hex::DecodeFixedLengthBytesError) -> Self {
+        Self::Hex(e)
+    }
 }
 
 /// SegWit public keys must always be compressed.
@@ -1532,7 +1922,9 @@ impl fmt::Display for UncompressedPublicKeyError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for UncompressedPublicKeyError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 /// Decoded base58 data was an invalid length.
@@ -1544,7 +1936,9 @@ pub struct InvalidBase58PayloadLengthError {
 
 impl InvalidBase58PayloadLengthError {
     /// Returns the invalid payload length.
-    pub fn invalid_base58_payload_length(&self) -> usize { self.length }
+    pub fn invalid_base58_payload_length(&self) -> usize {
+        self.length
+    }
 }
 
 impl fmt::Display for InvalidBase58PayloadLengthError {
@@ -1565,7 +1959,9 @@ pub struct InvalidAddressVersionError {
 
 impl InvalidAddressVersionError {
     /// Returns the invalid version.
-    pub fn invalid_address_version(&self) -> u8 { self.invalid }
+    pub fn invalid_address_version(&self) -> u8 {
+        self.invalid
+    }
 }
 
 impl fmt::Display for InvalidAddressVersionError {
@@ -1586,7 +1982,9 @@ pub struct InvalidWifCompressionFlagError {
 
 impl InvalidWifCompressionFlagError {
     /// Returns the invalid compression flag.
-    pub fn invalid_compression_flag(&self) -> u8 { self.invalid }
+    pub fn invalid_compression_flag(&self) -> u8 {
+        self.invalid
+    }
 }
 
 impl fmt::Display for InvalidWifCompressionFlagError {
@@ -1597,6 +1995,41 @@ impl fmt::Display for InvalidWifCompressionFlagError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for InvalidWifCompressionFlagError {}
+
+/// Legacy PQ WIF is only defined for Falcon-512.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedLegacyWifSchemeError {
+    pub(crate) scheme: PqScheme,
+}
+
+impl UnsupportedLegacyWifSchemeError {
+    /// Returns the unsupported PQ scheme found in the legacy WIF path.
+    pub fn scheme(&self) -> PqScheme {
+        self.scheme
+    }
+}
+
+impl fmt::Display for UnsupportedLegacyWifSchemeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "legacy PQ WIF only supports Falcon-512, got {:?}", self.scheme)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for UnsupportedLegacyWifSchemeError {}
+
+/// Legacy PQ WIF carried a public key that does not match the secret key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MismatchedPqPublicKeyError;
+
+impl fmt::Display for MismatchedPqPublicKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("legacy PQ WIF public key does not match secret key")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for MismatchedPqPublicKeyError {}
 
 impl SerializedXOnlyPublicKey {
     /// Returns `XOnlyPublicKey` if the bytes are valid.
@@ -1611,11 +2044,15 @@ impl SerializedXOnlyPublicKey {
 }
 
 impl AsRef<[u8; 32]> for SerializedXOnlyPublicKey {
-    fn as_ref(&self) -> &[u8; 32] { self.as_byte_array() }
+    fn as_ref(&self) -> &[u8; 32] {
+        self.as_byte_array()
+    }
 }
 
 impl From<&Self> for SerializedXOnlyPublicKey {
-    fn from(borrowed: &Self) -> Self { *borrowed }
+    fn from(borrowed: &Self) -> Self {
+        *borrowed
+    }
 }
 
 impl fmt::Debug for SerializedXOnlyPublicKey {
@@ -1686,6 +2123,10 @@ mod tests {
 
     use super::*;
 
+    fn pq_seed_for(scheme: PqScheme, salt: u8) -> Vec<u8> {
+        (0..scheme.deterministic_seed_len()).map(|i| salt.wrapping_add(i as u8)).collect()
+    }
+
     #[test]
     fn wif_roundtrips_match_tidecoin_node_vectors() {
         let cases = [
@@ -1705,6 +2146,87 @@ mod tests {
             assert_eq!(key.to_wif(), wif);
             assert_eq!(wif.parse::<WifKey>().unwrap(), key);
         }
+    }
+
+    #[test]
+    fn pq_wif_roundtrips_prefixed_all_schemes() {
+        let cases = [
+            (PqScheme::Falcon512, Network::Tidecoin, 0x10),
+            (PqScheme::Falcon1024, Network::Testnet, 0x20),
+            (PqScheme::MlDsa44, Network::Regtest, 0x30),
+            (PqScheme::MlDsa65, Network::Tidecoin, 0x40),
+            (PqScheme::MlDsa87, Network::Testnet, 0x50),
+        ];
+
+        for (scheme, network, salt) in cases {
+            let (_pk, sk) = scheme.generate_keypair_from_seed(&pq_seed_for(scheme, salt)).unwrap();
+            let key = PqWifKey::new(sk.clone(), network).unwrap();
+            let encoded = key.to_wif();
+            let decoded = PqWifKey::from_wif(&encoded).unwrap();
+            assert_eq!(decoded.network(), network);
+            assert_eq!(decoded.network_kind, NetworkKind::from(network));
+            assert_eq!(decoded.secret_key, sk);
+            assert_eq!(decoded.public_key, PqPublicKey::from_secret_key(&sk).unwrap());
+            assert_eq!(decoded.format(), PqWifFormat::Prefixed);
+            assert_eq!(decoded.to_wif(), encoded);
+            assert_eq!(encoded.parse::<PqWifKey>().unwrap(), decoded);
+        }
+    }
+
+    #[test]
+    fn pq_wif_roundtrips_prefixed_node_vector_used_by_legacy_signing_path() {
+        let wif = "6ddD664vfvjyAquu3uNwVWehzSCoywRyjqo1EA9xdA2iQH8bBNYi7VNEPkqx7rm5b2pqUsDtu9YdwQ4rkHs2Xq5XzpLywUsYS7LeiZyBXmmmZ47q1zxB6b2N14PKvXfywgajjpxv7WFRAqtWDXi6uy5NVwsLn2KdJQybjQpMzX9772M1gCoc3EgBvwfin8c7aeeBdSWShh9gh5pbGTrcU2LeQPoWP4yTRhZ2sCxNuaJWaMPbjyhEf5QFBpXmLCtQQiGjSghttdLayrhBr3hw3ydGk4rwTTgv8MX68rZvnEEV3xibEG3ud8Rq7jGfumk4FaAEUdfiRdHZEZdBx4wDYaQurihxcm6EMCApZ9v1B68NNh4whtQLuHfsqod5ye8K9TPHWS19MtFT96dtdMuSB5CwvhL8Fa6TTjwPAGBYpU5xynym9bdMrZRMsUhTzAyoGmFD1sp94jUE46iwdfp7FFrboyPLV5zLiDfToKmM1J2343quyuzrTewmA6wdqUZbKAmhtL28pbDAoy6jMwk2TM1cggcFmSR3uSXcgDVnV7J9mTBmpvXDaN8xxG18JcSWSbewFVnHLCddvhPn2ZutGPpMRtDkMc3vWt5s9iD3gTUyWC9kjZsjc65Gd6t3JChSKDpUC5BGA5pdHBwo2P5j87DkZqcrUjpeMX25zgPMdt9ZWeRs6SUqJtTGMj4Hk1syNbovpm4Eqha66n8vTvVnwHrxvn85ds4ZcFpxv1FukG7TQ6iStJLBcmwcUSFtyvBFmbK9qu8ToXNGoPnqVCR8V6XveLPCfDELjHoCMCLnp4eQa3AwJpg9Pg9qVQjvcoHqD44JuZ86CAjLcyAmm9QnFcs3JX7JyLKCnBzj3DfjWr2SNgrhjiGnMBrykjEVX6vis6vDL9cJ56jTuxWDovhwzBr5VbkoBArh6MS6z1SPv6Xvv8Sj7ej3nRHZ31Gh5estzKzdUKSU2vQxmtd4Q6KqjjBSf6xLU1K1S9mAtqn3CzKMMDKeLFtTu1oFwHTGDqaCDmAKXWJX1o2xzmTdWCd3UHB9wobBjtjWUcNxvw4ig7BHW89JgsbfzRneyktwdk1cYWU52AHTdFUSnchYwQBPEqyJ5bD7zWo5AbVNMPrebEnt2Sb29CS2XYBwsD88hU6ka2BHmNmTGedEHJmhHzkrJkyWqFAkSZBsH5yq6x6ttYrDH8zXX7i98FzV2ZKnKuyy6NcgwpC8rYaMYPSie14DzoPfGUJc6BytBV69mZDsoJ2UUoVH94uiBkZUPTFfDcyCoDxBACCPxdCnJokerkAvDmFzujELyf2rK9nEoQeVdh9QJdYTTLAgJdzMyREHHYWyseWWti9n2gadocnRwiUMSqEt683KHiMW4Bn8AWBDSFQfXZYvVBcuEL4jvBSXMVJt4Z6cD11gqmCM9BgEGy2CoNLELVmRDRq3RMN22G2jX5U353eqikvgumub2sGRuErt3vbDuEELbmJAzLrVrXjfmbeU5ev5ZhMpBP7CiyRy7sk2DViDYDrZ9W5J8hPDRDVy7SV85bF1MHz1GjXjMjCMSSBYwvPTT9gd7Rmmc1MfVo26t6iS4YVdVeoCBGdvLdCUWd6Z8UZPmkpPASnVN3yj9m119DRyXsZUsqyeNF2vEDTVSNfjfofLGqfFmKtHDEkECW94huFapxokwmSvgi15sYiEKXBXknHnctaEiahSh7ha9qJ6UqhEnd7aJxzG1JbUerZbZMF4dxLEumd66ixzbgAWSBHoC1";
+        let decoded = PqWifKey::from_wif(wif).unwrap();
+
+        assert_eq!(decoded.network(), Network::Tidecoin);
+        assert_eq!(decoded.network_kind, NetworkKind::Main);
+        assert_eq!(decoded.format(), PqWifFormat::Prefixed);
+        assert_eq!(decoded.secret_key.scheme(), PqScheme::Falcon512);
+        assert_eq!(decoded.public_key, PqPublicKey::from_secret_key(&decoded.secret_key).unwrap());
+        assert_eq!(decoded.to_wif(), wif);
+        assert_eq!(wif.parse::<PqWifKey>().unwrap(), decoded);
+    }
+
+    #[test]
+    fn pq_wif_new_legacy_rejects_non_falcon_schemes() {
+        let scheme = PqScheme::MlDsa44;
+        let (_pk, sk) = scheme.generate_keypair_from_seed(&pq_seed_for(scheme, 0x42)).unwrap();
+        let err = PqWifKey::new_legacy_falcon512(sk, Network::Tidecoin).unwrap_err();
+
+        assert_eq!(
+            err,
+            FromPqWifError::UnsupportedLegacyWifScheme(UnsupportedLegacyWifSchemeError { scheme })
+        );
+    }
+
+    #[test]
+    fn pq_wif_roundtrips_generated_legacy_falcon512() {
+        let scheme = PqScheme::Falcon512;
+        let (_pk, sk) = scheme.generate_keypair_from_seed(&pq_seed_for(scheme, 0x55)).unwrap();
+        let key = PqWifKey::new_legacy_falcon512(sk.clone(), Network::Tidecoin).unwrap();
+        let encoded = key.to_wif();
+        let decoded = PqWifKey::from_wif(&encoded).unwrap();
+
+        assert_eq!(decoded.network(), Network::Tidecoin);
+        assert_eq!(decoded.network_kind, NetworkKind::Main);
+        assert_eq!(decoded.secret_key, sk);
+        assert_eq!(decoded.public_key, PqPublicKey::from_secret_key(&sk).unwrap());
+        assert_eq!(decoded.format(), PqWifFormat::LegacyFalcon512);
+        assert_eq!(decoded.to_wif(), encoded);
+    }
+
+    #[test]
+    fn pq_wif_legacy_detects_mismatched_public_key() {
+        let scheme = PqScheme::Falcon512;
+        let (_pk, sk) = scheme.generate_keypair_from_seed(&pq_seed_for(scheme, 0x60)).unwrap();
+        let key = PqWifKey::new_legacy_falcon512(sk, Network::Tidecoin).unwrap();
+        let mut data = base58::decode_check(&key.to_wif()).unwrap();
+        let pubkey_offset = 1 + key.secret_key.as_bytes().len() + 1;
+        data[pubkey_offset + 1] ^= 0x01;
+        let wif = base58::encode_check(&data);
+
+        let err = PqWifKey::from_wif(&wif).unwrap_err();
+        assert_eq!(err, FromPqWifError::MismatchedPublicKey(MismatchedPqPublicKeyError));
     }
 
     #[test]
