@@ -434,6 +434,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::PathBuf;
+    use std::thread;
 
     use hashes::sha256;
     use hashes::sha512;
@@ -521,7 +522,7 @@ mod tests {
         amount: Amount,
         witness_script: &WitnessScriptBuf,
         sk: &PqSecretKey,
-        _legacy: bool,
+        legacy: bool,
     ) -> Vec<u8> {
         let mut cache = SighashCache::new(tx);
         let sighash = cache
@@ -532,7 +533,11 @@ mod tests {
                 EcdsaSighashType::All,
             )
             .unwrap();
-        let sig = PqSignature::sign_msg32(sighash.as_byte_array(), sk).unwrap();
+        let sig = if legacy {
+            PqSignature::sign_msg32_legacy(sighash.as_byte_array(), sk).unwrap()
+        } else {
+            PqSignature::sign_msg32(sighash.as_byte_array(), sk).unwrap()
+        };
         let mut out = sig.as_bytes().to_vec();
         out.push(sighash_all_byte());
         out
@@ -920,6 +925,16 @@ mod tests {
         flags
     }
 
+    fn run_with_large_stack(name: &'static str, f: impl FnOnce() + Send + 'static) {
+        thread::Builder::new()
+            .name(name.into())
+            .stack_size(32 << 20)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     fn script_tests_pq_json_roundtrip() {
         let tests = read_json("script_tests_pq.json").as_array().unwrap().clone();
@@ -1235,24 +1250,26 @@ mod tests {
 
     #[test]
     fn pq_multisig_single_scheme_matrix_matches_node() {
-        let flags = VERIFY_WITNESS | VERIFY_P2SH;
-        let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
+        run_with_large_stack("pq-multisig-single-scheme", || {
+            let flags = VERIFY_WITNESS | VERIFY_P2SH;
+            let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
 
-        for scheme in [
-            PqScheme::Falcon512,
-            PqScheme::Falcon1024,
-            PqScheme::MlDsa44,
-            PqScheme::MlDsa65,
-            PqScheme::MlDsa87,
-        ] {
-            for (m, n) in cases {
-                let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
-                    .map(|idx| deterministic_keypair(scheme, (0x10 + n + idx) as u8))
-                    .collect();
-                verify_multisig_case(&keys, m, false, flags, true);
-                verify_multisig_case(&keys, m, true, flags, true);
+            for scheme in [
+                PqScheme::Falcon512,
+                PqScheme::Falcon1024,
+                PqScheme::MlDsa44,
+                PqScheme::MlDsa65,
+                PqScheme::MlDsa87,
+            ] {
+                for (m, n) in cases {
+                    let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
+                        .map(|idx| deterministic_keypair(scheme, (0x10 + n + idx) as u8))
+                        .collect();
+                    verify_multisig_case(&keys, m, false, flags, true);
+                    verify_multisig_case(&keys, m, true, flags, true);
+                }
             }
-        }
+        });
     }
 
     #[test]
@@ -1301,100 +1318,116 @@ mod tests {
 
     #[test]
     fn pq_multisig_negative_and_limit_cases_match_node() {
-        let keys = [
-            deterministic_keypair(PqScheme::Falcon512, 0x21),
-            deterministic_keypair(PqScheme::Falcon512, 0x22),
-            deterministic_keypair(PqScheme::Falcon512, 0x23),
-        ];
-        let pubkeys: Vec<PqPublicKey> = keys.iter().map(|(pk, _)| pk.clone()).collect();
-        let witness_script = multisig_witness_script(&pubkeys, 2);
-        let script_pubkey = direct_p2wsh_script_pubkey(&witness_script);
-        let amount = Amount::from_sat_u32(1);
+        run_with_large_stack("pq-multisig-negative-limit", || {
+            let keys = [
+                deterministic_keypair(PqScheme::Falcon512, 0x21),
+                deterministic_keypair(PqScheme::Falcon512, 0x22),
+                deterministic_keypair(PqScheme::Falcon512, 0x23),
+            ];
+            let pubkeys: Vec<PqPublicKey> = keys.iter().map(|(pk, _)| pk.clone()).collect();
+            let witness_script = multisig_witness_script(&pubkeys, 2);
+            let script_pubkey = direct_p2wsh_script_pubkey(&witness_script);
+            let amount = Amount::from_sat_u32(1);
 
-        let mut tx = tx_template(1);
-        let good_sig1 = witness_v0_sig(&tx, 0, amount, &witness_script, &keys[0].1, true);
-        let good_sig2 = witness_v0_sig(&tx, 0, amount, &witness_script, &keys[1].1, true);
-        let outsider = deterministic_keypair(PqScheme::Falcon512, 0x31);
-        let outsider_sig = witness_v0_sig(&tx, 0, amount, &witness_script, &outsider.1, true);
+            let mut tx = tx_template(1);
+            let good_sig1 = witness_v0_sig(&tx, 0, amount, &witness_script, &keys[0].1, true);
+            let good_sig2 = witness_v0_sig(&tx, 0, amount, &witness_script, &keys[1].1, true);
+            let outsider = deterministic_keypair(PqScheme::Falcon512, 0x31);
+            let outsider_sig = witness_v0_sig(&tx, 0, amount, &witness_script, &outsider.1, true);
 
-        tx.inputs[0].witness = Witness::from_slice(&[
-            Vec::<u8>::new(),
-            good_sig1.clone(),
-            Vec::<u8>::new(),
-            witness_script.as_bytes().to_vec(),
-        ]);
-        assert!(verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH).is_err());
+            tx.inputs[0].witness = Witness::from_slice(&[
+                Vec::<u8>::new(),
+                good_sig1.clone(),
+                Vec::<u8>::new(),
+                witness_script.as_bytes().to_vec(),
+            ]);
+            assert!(
+                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
+                    .is_err()
+            );
 
-        tx.inputs[0].witness = Witness::from_slice(&[
-            Vec::<u8>::new(),
-            good_sig2.clone(),
-            good_sig1.clone(),
-            witness_script.as_bytes().to_vec(),
-        ]);
-        assert!(verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH).is_err());
+            tx.inputs[0].witness = Witness::from_slice(&[
+                Vec::<u8>::new(),
+                good_sig2.clone(),
+                good_sig1.clone(),
+                witness_script.as_bytes().to_vec(),
+            ]);
+            assert!(
+                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
+                    .is_err()
+            );
 
-        tx.inputs[0].witness = Witness::from_slice(&[
-            Vec::<u8>::new(),
-            outsider_sig,
-            good_sig2.clone(),
-            witness_script.as_bytes().to_vec(),
-        ]);
-        assert!(verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH).is_err());
+            tx.inputs[0].witness = Witness::from_slice(&[
+                Vec::<u8>::new(),
+                outsider_sig,
+                good_sig2.clone(),
+                witness_script.as_bytes().to_vec(),
+            ]);
+            assert!(
+                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
+                    .is_err()
+            );
 
-        let mut wrong_sighash = good_sig1;
-        *wrong_sighash.last_mut().unwrap() = EcdsaSighashType::None.to_u32() as u8;
-        tx.inputs[0].witness = Witness::from_slice(&[
-            Vec::<u8>::new(),
-            wrong_sighash,
-            good_sig2,
-            witness_script.as_bytes().to_vec(),
-        ]);
-        assert!(verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH).is_err());
+            let mut wrong_sighash = good_sig1;
+            *wrong_sighash.last_mut().unwrap() = EcdsaSighashType::None.to_u32() as u8;
+            tx.inputs[0].witness = Witness::from_slice(&[
+                Vec::<u8>::new(),
+                wrong_sighash,
+                good_sig2,
+                witness_script.as_bytes().to_vec(),
+            ]);
+            assert!(
+                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
+                    .is_err()
+            );
 
-        let zero_script = multisig_witness_script(&[], 0);
-        let zero_spk = direct_p2wsh_script_pubkey(&zero_script);
-        let mut zero_tx = tx_template(1);
-        zero_tx.inputs[0].witness = Witness::from_slice(&[Vec::<u8>::new(), zero_script.as_bytes().to_vec()]);
-        verify_script_input(&zero_spk, 0, amount, &zero_tx, VERIFY_WITNESS | VERIFY_P2SH).unwrap();
+            let zero_script = multisig_witness_script(&[], 0);
+            let zero_spk = direct_p2wsh_script_pubkey(&zero_script);
+            let mut zero_tx = tx_template(1);
+            zero_tx.inputs[0].witness =
+                Witness::from_slice(&[Vec::<u8>::new(), zero_script.as_bytes().to_vec()]);
+            verify_script_input(&zero_spk, 0, amount, &zero_tx, VERIFY_WITNESS | VERIFY_P2SH)
+                .unwrap();
 
-        let too_many_pubkeys: Vec<PqPublicKey> = (0..21)
-            .map(|idx| deterministic_keypair(PqScheme::Falcon512, 0x60 + idx).0)
-            .collect();
-        let too_many_script = multisig_witness_script(&too_many_pubkeys, 21);
-        let too_many_spk = direct_p2wsh_script_pubkey(&too_many_script);
-        let mut too_many_tx = tx_template(1);
-        let mut too_many_witness = vec![Vec::new()];
-        too_many_witness.extend((0..21).map(|_| vec![0]));
-        too_many_witness.push(too_many_script.as_bytes().to_vec());
-        too_many_tx.inputs[0].witness = Witness::from_slice(&too_many_witness);
-        assert_eq!(
-            verify_script_input(&too_many_spk, 0, amount, &too_many_tx, VERIFY_WITNESS | VERIFY_P2SH),
-            Err(TidecoinValidationError::Script(ScriptError::PubkeyCount))
-        );
+            let too_many_pubkeys: Vec<PqPublicKey> = (0..21)
+                .map(|idx| deterministic_keypair(PqScheme::Falcon512, 0x60 + idx).0)
+                .collect();
+            let too_many_script = multisig_witness_script(&too_many_pubkeys, 21);
+            let too_many_spk = direct_p2wsh_script_pubkey(&too_many_script);
+            let mut too_many_tx = tx_template(1);
+            let mut too_many_witness = vec![Vec::new()];
+            too_many_witness.extend((0..21).map(|_| vec![0]));
+            too_many_witness.push(too_many_script.as_bytes().to_vec());
+            too_many_tx.inputs[0].witness = Witness::from_slice(&too_many_witness);
+            assert_eq!(
+                verify_script_input(&too_many_spk, 0, amount, &too_many_tx, VERIFY_WITNESS | VERIFY_P2SH),
+                Err(TidecoinValidationError::Script(ScriptError::PubkeyCount))
+            );
 
-        let limit_keys = [
-            deterministic_keypair(PqScheme::MlDsa87, 0x40),
-            deterministic_keypair(PqScheme::MlDsa87, 0x41),
-        ];
-        let limit_pubkeys: Vec<PqPublicKey> = limit_keys.iter().map(|(pk, _)| pk.clone()).collect();
-        let limit_script = multisig_witness_script(&limit_pubkeys, 1);
-        let limit_spk = direct_p2wsh_script_pubkey(&limit_script);
-        let mut limit_tx = tx_template(1);
-        let mut limit_witness = signed_multisig_witness(
-            &limit_tx,
-            0,
-            amount,
-            &limit_script,
-            &[limit_keys[0].1.clone()],
-            true,
-        )
-        .to_vec();
-        limit_witness[1] = vec![0x42; 8193];
-        limit_tx.inputs[0].witness = Witness::from_slice(&limit_witness);
-        assert_eq!(
-            verify_script_input(&limit_spk, 0, amount, &limit_tx, VERIFY_WITNESS | VERIFY_P2SH),
-            Err(TidecoinValidationError::Script(ScriptError::PushSize))
-        );
+            let limit_keys = [
+                deterministic_keypair(PqScheme::MlDsa87, 0x40),
+                deterministic_keypair(PqScheme::MlDsa87, 0x41),
+            ];
+            let limit_pubkeys: Vec<PqPublicKey> = limit_keys.iter().map(|(pk, _)| pk.clone()).collect();
+            let limit_script = multisig_witness_script(&limit_pubkeys, 1);
+            let limit_spk = direct_p2wsh_script_pubkey(&limit_script);
+            let mut limit_tx = tx_template(1);
+            let mut limit_witness = signed_multisig_witness(
+                &limit_tx,
+                0,
+                amount,
+                &limit_script,
+                &[limit_keys[0].1.clone()],
+                true,
+            )
+            .to_vec();
+            limit_witness[1] = vec![0x42; 8193];
+            limit_tx.inputs[0].witness = Witness::from_slice(&limit_witness);
+            assert_eq!(
+                verify_script_input(&limit_spk, 0, amount, &limit_tx, VERIFY_WITNESS | VERIFY_P2SH),
+                Err(TidecoinValidationError::Script(ScriptError::PushSize))
+            );
+        });
     }
 
     #[test]
@@ -1488,24 +1521,26 @@ mod tests {
 
     #[test]
     fn pq_committed_hash_single_scheme_matrix_matches_node() {
-        let flags = VERIFY_WITNESS | VERIFY_P2SH;
-        let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
+        run_with_large_stack("pq-committed-hash-single-scheme", || {
+            let flags = VERIFY_WITNESS | VERIFY_P2SH;
+            let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
 
-        for scheme in [
-            PqScheme::Falcon512,
-            PqScheme::Falcon1024,
-            PqScheme::MlDsa44,
-            PqScheme::MlDsa65,
-            PqScheme::MlDsa87,
-        ] {
-            for (m, n) in cases {
-                let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
-                    .map(|idx| deterministic_keypair(scheme, (0xC0 + n + idx) as u8))
-                    .collect();
-                verify_committed_hash_case(&keys, m, false, flags, true);
-                verify_committed_hash_case(&keys, m, true, flags, true);
+            for scheme in [
+                PqScheme::Falcon512,
+                PqScheme::Falcon1024,
+                PqScheme::MlDsa44,
+                PqScheme::MlDsa65,
+                PqScheme::MlDsa87,
+            ] {
+                for (m, n) in cases {
+                    let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
+                        .map(|idx| deterministic_keypair(scheme, (0xC0 + n + idx) as u8))
+                        .collect();
+                    verify_committed_hash_case(&keys, m, false, flags, true);
+                    verify_committed_hash_case(&keys, m, true, flags, true);
+                }
             }
-        }
+        });
     }
 
     #[test]

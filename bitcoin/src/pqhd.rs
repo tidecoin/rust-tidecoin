@@ -246,6 +246,7 @@ mod tests {
     use crate::prelude::DisplayHex;
     use crate::prelude::String;
     use crate::prelude::ToString;
+    use crate::prelude::Vec;
 
     fn decode_array<const N: usize>(hex: &str) -> [u8; N] {
         crate::hex::decode_to_array::<N>(hex).unwrap()
@@ -520,15 +521,30 @@ mod tests {
             ),
         ];
 
+        let mut mismatches = Vec::new();
+
         for (scheme, path, expected_pk_sha256, expected_sk_sha256) in vectors {
             let leaf = derive_path(&path, &master).unwrap();
             let material = derive_leaf_material_v1(&leaf.node_secret, &path).unwrap();
             assert_eq!(material.scheme, scheme);
 
             let (pk, sk) = derive_keypair_v1(&material).unwrap();
-            assert_eq!(sha256_hex(pk.as_bytes()), expected_pk_sha256);
-            assert_eq!(sha256_hex(sk.as_bytes()), expected_sk_sha256);
+            let actual_pk_sha256 = sha256_hex(pk.as_bytes());
+            let actual_sk_sha256 = sha256_hex(sk.as_bytes());
+
+            if actual_pk_sha256 != expected_pk_sha256 {
+                mismatches.push(format!(
+                    "{scheme:?} pk sha256 mismatch: expected {expected_pk_sha256}, got {actual_pk_sha256}"
+                ));
+            }
+            if actual_sk_sha256 != expected_sk_sha256 {
+                mismatches.push(format!(
+                    "{scheme:?} sk sha256 mismatch: expected {expected_sk_sha256}, got {actual_sk_sha256}"
+                ));
+            }
         }
+
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
     }
 
     #[test]

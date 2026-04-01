@@ -12,7 +12,8 @@ use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
 use fn_dsa::{
     sign_key_size, vrfy_key_size, signature_size,
     FN_DSA_LOGN_512, FN_DSA_LOGN_1024,
-    KeyPairGenerator, KeyPairGeneratorStandard,
+    KeyPairGenerator,
+    KeyPairGeneratorStandard,
     SigningKey, SigningKeyStandard,
     VerifyingKey, VerifyingKeyStandard,
     DOMAIN_NONE, HASH_ID_ORIGINAL_FALCON,
@@ -26,37 +27,6 @@ use ml_kem::kem::{Decapsulate, Encapsulate};
 
 use crate::network::Params;
 use crate::prelude::Vec;
-
-struct Shake256Rng(fn_dsa::SHAKE256);
-
-impl Shake256Rng {
-    fn from_seed(seed: &[u8]) -> Self {
-        let mut sh = fn_dsa::SHAKE256::new();
-        sh.inject(seed);
-        sh.flip();
-        Self(sh)
-    }
-}
-
-impl rand_core::RngCore for Shake256Rng {
-    fn next_u32(&mut self) -> u32 {
-        let mut buf = [0u8; 4];
-        self.0.extract(&mut buf);
-        u32::from_le_bytes(buf)
-    }
-    fn next_u64(&mut self) -> u64 {
-        let mut buf = [0u8; 8];
-        self.0.extract(&mut buf);
-        u64::from_le_bytes(buf)
-    }
-    fn fill_bytes(&mut self, dest: &mut [u8]) { self.0.extract(dest); }
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.fill_bytes(dest);
-        Ok(())
-    }
-}
-
-impl rand_core::CryptoRng for Shake256Rng {}
 
 /// Identifies which post-quantum signature scheme a key or signature belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -193,31 +163,27 @@ impl PqScheme {
                     Self::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let mut rng = Shake256Rng::from_seed(seed);
                 let mut kg = KeyPairGeneratorStandard::default();
                 let mut sk = vec![0u8; sign_key_size(logn)];
                 let mut vk = vec![0u8; vrfy_key_size(logn)];
-                kg.keygen(logn, &mut rng, &mut sk, &mut vk);
+                kg.keygen_from_seed(logn, seed, &mut sk, &mut vk);
                 Ok((PqPublicKey { scheme: self, data: vk }, PqSecretKey { scheme: self, data: sk }))
             }
             Self::MlDsa44 => {
-                let mut rng = Shake256Rng::from_seed(seed);
-                let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(&mut rng)
-                    .map_err(|_| PqError::BackendFailure)?;
+                let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
+                let (pk, sk) = fips204::ml_dsa_44::KG::keygen_from_seed(xi);
                 Ok((PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
                     PqSecretKey { scheme: self, data: sk.into_bytes().to_vec() }))
             }
             Self::MlDsa65 => {
-                let mut rng = Shake256Rng::from_seed(seed);
-                let (pk, sk) = fips204::ml_dsa_65::try_keygen_with_rng(&mut rng)
-                    .map_err(|_| PqError::BackendFailure)?;
+                let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
+                let (pk, sk) = fips204::ml_dsa_65::KG::keygen_from_seed(xi);
                 Ok((PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
                     PqSecretKey { scheme: self, data: sk.into_bytes().to_vec() }))
             }
             Self::MlDsa87 => {
-                let mut rng = Shake256Rng::from_seed(seed);
-                let (pk, sk) = fips204::ml_dsa_87::try_keygen_with_rng(&mut rng)
-                    .map_err(|_| PqError::BackendFailure)?;
+                let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
+                let (pk, sk) = fips204::ml_dsa_87::KG::keygen_from_seed(xi);
                 Ok((PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
                     PqSecretKey { scheme: self, data: sk.into_bytes().to_vec() }))
             }
@@ -699,8 +665,8 @@ impl MlKem512Keypair {
             });
         }
 
-        let d = B32::clone_from_slice(&coins[..32]);
-        let z = B32::clone_from_slice(&coins[32..64]);
+        let d = B32::try_from(&coins[..32]).map_err(|_| PqError::BackendFailure)?;
+        let z = B32::try_from(&coins[32..64]).map_err(|_| PqError::BackendFailure)?;
         let (dk, ek) = MlKem512::generate_deterministic(&d, &z);
         Ok(Self {
             public_key: MlKem512PublicKey { data: ek.as_bytes().as_slice().to_vec() },
@@ -731,7 +697,8 @@ impl MlKem512Keypair {
 impl MlKem512PublicKey {
     /// Encapsulates to this public key.
     pub fn encapsulate(&self) -> Result<(MlKem512Ciphertext, MlKem512SharedSecret), PqError> {
-        let ek_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::clone_from_slice(self.as_bytes());
+        let ek_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
+            .map_err(|_| PqError::BackendFailure)?;
         let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
         let (ct, ss) = ek.encapsulate(&mut rand_core::OsRng).map_err(|_| PqError::BackendFailure)?;
         Ok((
@@ -752,9 +719,10 @@ impl MlKem512PublicKey {
             });
         }
 
-        let ek_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::clone_from_slice(self.as_bytes());
+        let ek_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
+            .map_err(|_| PqError::BackendFailure)?;
         let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
-        let m = B32::clone_from_slice(coins);
+        let m = B32::try_from(coins).map_err(|_| PqError::BackendFailure)?;
         let (ct, ss) = ek.encapsulate_deterministic(&m).map_err(|_| PqError::BackendFailure)?;
         Ok((MlKem512Ciphertext { data: ct.as_slice().to_vec() }, MlKem512SharedSecret::from_slice(ss.as_slice())?))
     }
@@ -763,9 +731,11 @@ impl MlKem512PublicKey {
 impl MlKem512SecretKey {
     /// Decapsulates an ML-KEM-512 ciphertext with this secret key.
     pub fn decapsulate(&self, ciphertext: &MlKem512Ciphertext) -> Result<MlKem512SharedSecret, PqError> {
-        let dk_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::DecapsulationKey>>::clone_from_slice(self.as_bytes());
+        let dk_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::DecapsulationKey>>::try_from(self.as_bytes())
+            .map_err(|_| PqError::BackendFailure)?;
         let dk = <<MlKem512 as KemCore>::DecapsulationKey as EncodedSizeUser>::from_bytes(&dk_arr);
-        let ct_arr = <ml_kem::Ciphertext<MlKem512>>::clone_from_slice(ciphertext.as_bytes());
+        let ct_arr = <ml_kem::Ciphertext<MlKem512>>::try_from(ciphertext.as_bytes())
+            .map_err(|_| PqError::BackendFailure)?;
         let ss = dk.decapsulate(&ct_arr).map_err(|_| PqError::BackendFailure)?;
         MlKem512SharedSecret::from_slice(ss.as_slice())
     }

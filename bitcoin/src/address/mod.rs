@@ -58,6 +58,7 @@ use crate::constants::{
 };
 use crate::crypto::key::{CompressedPublicKey, PubkeyHash, PublicKey};
 use crate::network::{Network, NetworkKind, Params};
+use crate::opcodes::Opcode;
 use crate::prelude::{String, ToOwned};
 use crate::script::witness_program::WitnessProgram;
 use crate::script::witness_version::WitnessVersion;
@@ -889,7 +890,8 @@ impl Address {
                 &script.as_bytes()[2..22] == <ScriptHash as AsRef<[u8; 20]>>::as_ref(hash)
             }
             Segwit { ref program, hrp: _ } if script.is_witness_program() => {
-                &script.as_bytes()[2..] == program.program().as_bytes()
+                script.as_bytes()[0] == Opcode::from(program.version()).to_u8()
+                    && &script.as_bytes()[2..] == program.program().as_bytes()
             }
             P2pkh { .. } | P2sh { .. } | Segwit { .. } => false,
         }
@@ -1669,6 +1671,22 @@ mod tests {
     }
 
     #[test]
+    fn matches_script_pubkey_checks_witness_version() {
+        let program = [0x11; 32];
+        let v0 = Address::from_witness_program(
+            WitnessProgram::new(WitnessVersion::V0, &program).unwrap(),
+            KnownHrp::Mainnet,
+        );
+        let v1 = Address::from_witness_program(
+            WitnessProgram::new(WitnessVersion::V1, &program).unwrap(),
+            KnownHrp::Mainnet,
+        );
+
+        assert!(!v0.matches_script_pubkey(&v1.script_pubkey()));
+        assert!(!v1.matches_script_pubkey(&v0.script_pubkey()));
+    }
+
+    #[test]
     #[cfg(feature = "serde")]
     fn serde_address_usage_in_struct() {
         use serde::{self, Deserialize, Serialize};
@@ -1849,6 +1867,21 @@ mod tests {
 
         let legacy_v1 = encode_pq_address(KnownHrp::Mainnet, 1, &[0x11; 64]);
         assert!(Address::<NetworkUnchecked>::from_bech32_str(&legacy_v1).is_err());
+    }
+
+    #[test]
+    fn pq_bech32_roundtrips_all_supported_networks() {
+        let witness_script = WitnessScriptBuf::from_hex_no_length_prefix("51").unwrap();
+        let hash = sha512::Hash::hash(witness_script.as_bytes()).to_byte_array();
+
+        for (network, prefix) in
+            [(Network::Tidecoin, "q1"), (Network::Testnet, "tq1"), (Network::Regtest, "rq1")]
+        {
+            let address = Address::p2wsh512(hash, network);
+            assert!(address.to_string().starts_with(prefix));
+            roundtrips(&address, network);
+            assert_eq!(Address::from_script(&address.script_pubkey(), network).unwrap(), address);
+        }
     }
 
     #[test]
