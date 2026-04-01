@@ -38,9 +38,10 @@ Bring the library to a state where:
 | Taproot removal | `done` | orchestrator + workers | Hidden taproot modules and key/consensus hooks are removed; `is_p2tr()` and dead taproot serde artifacts are gone; `OP_CHECKSIGADD` is retained only as a disabled node-compatibility opcode byte |
 | Unused code and warnings | `done` | orchestrator | Strict clippy gate is clean |
 | Test coverage migration | `done` | orchestrator + workers | PQ coverage landed; node-style key/address, WIF, genesis, policy, and doctest coverage expanded; no live `#[ignore]` tests remain |
+| PQ/Falcon runtime parity | `ready_to_fix` | orchestrator + explorers | PQHD KDF/path validation and PSBT proprietary-origin support are now implemented; remaining validated gaps are the real PQ backend, descriptor/wallet integration, interpreter/runtime behavior, corpus migration, and transport; see `FALCON_PQ_GAP_REPORT.md` |
 | Final verification | `done` | orchestrator | Workspace compile/test/lint/doc gates are green after the latest ignore audit and taproot-surface cleanup |
 | Regtest legacy compatibility | `done` | orchestrator + worker | Dedicated regtest legacy address/WIF prefixes now round-trip and are covered by node-backed tests |
-| Repository remote and publish | `fixing` | orchestrator | `origin` now points at the Tidecoin repository; final validated state still needs to be pushed to branch `v2` |
+| Repository remote and publish | `done` | orchestrator | `origin` points at the Tidecoin repository and the validated tree is published at `origin/v2` (`d8bbe1e`) |
 
 ## Phase Log
 
@@ -146,3 +147,41 @@ Bring the library to a state where:
     - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Compatibility decisions recorded:
   - `OP_CHECKSIGADD` remains intentionally named and exported because the Tidecoin node still carries opcode `0xba` under that name while treating it as disabled; the Rust port keeps it only for raw script/opcode compatibility and classifies it as illegal
+
+### Phase 6
+
+- State: `done`
+- Objective: close the repository publish item and record the next validated Falcon/PQ compatibility backlog
+- Completed in this phase:
+  - re-verified publish state: local `HEAD`, `origin/v2`, and the remote branch tip all match `d8bbe1eddf4d27263bdfeb1e3d43f5541d4e6271`
+  - executed a second multi-agent node-vs-Rust comparison focused on PQ crypto, PQHD, interpreter/runtime behavior, corpus coverage, and transport
+  - recorded the validated missing-behavior inventory in `FALCON_PQ_GAP_REPORT.md`
+  - promoted the missing Falcon/PQ runtime areas into explicit `ready_to_fix` backlog items instead of leaving them implied
+- Remaining open risks:
+  - real PQ crypto backend parity with `src/pq/pq_api.h` and `src/pq/pq_scheme.h` is still missing
+  - wallet descriptor generation and key-expression support for `pqhd(...)` are still missing
+  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and `SignatureHash512` is still missing
+  - node PQ script/transaction/multisig/policy corpora are not yet migrated as executable Rust coverage
+  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
+
+### Phase 7
+
+- State: `done`
+- Objective: land the first executable Falcon/PQ parity slice inside the Rust library boundary
+- Completed in this phase:
+  - added `bitcoin/src/pqhd.rs` with node-mirrored PQHD v1 constants, `SeedId`, master/child/path derivation, path validation, leaf material derivation, and deterministic stream-block vectors
+  - added `bitcoin/src/psbt/tidecoin.rs` with Tidecoin proprietary PSBT helpers for PQHD origin records on inputs and outputs
+  - mirrored the node PQHD origin validation behavior in Rust tests, including identifier/subtype rejection, malformed-path rejection, roundtrip, and combine semantics
+  - fixed a real PSBT parser compatibility bug by raising the proprietary keydata read cap in `bitcoin/src/psbt/raw.rs` so large PQ prefixed public keys are accepted
+  - re-ran verification successfully:
+    - `cargo test -p tidecoin --lib`
+    - `cargo check -p tidecoin --all-features --tests --examples`
+    - `cargo check --workspace`
+    - `cargo test --workspace`
+    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- Remaining open risks:
+  - real PQ crypto backend parity with deterministic keygen/sign/verify and ML-KEM is still missing
+  - `pqhd(...)` descriptor/key-expression and wallet-facing behavior are still missing
+  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and `SignatureHash512` is still missing
+  - node PQ script/transaction/multisig/policy corpora are not yet migrated as executable Rust coverage
+  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing

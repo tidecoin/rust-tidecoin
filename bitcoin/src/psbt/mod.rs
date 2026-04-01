@@ -12,6 +12,7 @@ mod error;
 mod map;
 pub mod raw;
 pub mod serialize;
+pub mod tidecoin;
 
 use core::convert::Infallible;
 use core::{cmp, fmt};

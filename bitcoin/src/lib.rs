@@ -122,6 +122,7 @@ pub mod network;
 pub mod policy;
 pub mod pow;
 pub mod psbt;
+pub mod pqhd;
 pub mod sign_message;
 
 // Re-export the type from where it is defined but the module from the highest place up the stack
@@ -177,6 +178,7 @@ pub use crate::{
     network::{Network, NetworkKind},
     pow::{Target, Work},
     psbt::Psbt,
+    pqhd::{LeafMaterialV1 as PqhdLeafMaterialV1, Node as PqhdNode, SeedId as PqhdSeedId},
     sighash::EcdsaSighashType,
 };
 // Re-export all modules from `blockdata`, users should never need to use `blockdata` directly.
