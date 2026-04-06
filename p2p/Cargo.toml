@@ -30,6 +30,7 @@ hex-unstable = { package = "hex-conservative", version = "0.3.2", default-featur
 internals = { package = "tidecoin-internals", path = "../internals", default-features = false }
 io = { package = "tidecoin-io", version = "0.5.0", path = "../io", default-features = false }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false }
+zeroize = { version = "1.8", default-features = false }
 
 arbitrary = { version = "1.4.1", optional = true }
 serde = { version = "1.0.195", default-features = false, features = ["derive", "alloc"], optional = true }

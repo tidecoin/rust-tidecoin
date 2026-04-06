@@ -41,8 +41,9 @@ units = { package = "tidecoin-units", path = "../units", version = "0.3.0", defa
 fn-dsa = { path = "../fn-dsa/fn-dsa" }
 falcon = { package = "falcon-rs", version = "0.2.2", default-features = false }
 rand_core = { version = "0.6", features = ["getrandom"] }
-ml-kem = { version = "0.2.3", default-features = false, features = ["deterministic"] }
+ml-kem = { version = "0.2.3", default-features = false, features = ["deterministic", "zeroize"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
+zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
 
 arbitrary = { version = "1.4.1", optional = true }
 base64 = { version = "0.22.0", optional = true, default-features = false, features = ["alloc"] }

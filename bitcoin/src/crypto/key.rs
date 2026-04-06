@@ -16,6 +16,7 @@ use internals::array::ArrayExt;
 use internals::array_vec::ArrayVec;
 use internals::{impl_to_hex_from_lower_hex, write_err};
 use io::{Read, Write};
+use zeroize::Zeroizing;
 
 use crate::crypto::ecdsa;
 use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSecretKey};
@@ -1194,6 +1195,11 @@ impl WifKey {
     }
 
     /// Gets the WIF encoding of this private key.
+    ///
+    /// This is a deliberate secret-export boundary: the returned [`String`] contains secret key
+    /// material in encoded form. Internal temporary buffers are minimized and wiped where
+    /// practical, but once this function returns the caller owns the secret string and is
+    /// responsible for handling its lifetime appropriately.
     pub fn to_wif(&self) -> String {
         let mut buf = String::new();
         let _ = self.fmt_wif(&mut buf);
@@ -1321,26 +1327,32 @@ impl PqWifKey {
 
     /// Formats the key to Tidecoin node's base58 secret format.
     pub fn fmt_wif(&self, fmt: &mut dyn fmt::Write) -> fmt::Result {
-        let mut data = Vec::with_capacity(
-            1 + self.secret_key.to_prefixed_bytes().len()
-                + self.public_key.to_prefixed_bytes().len(),
-        );
+        let prefixed_secret = self.secret_key.to_prefixed_bytes();
+        let prefixed_public = self.public_key.to_prefixed_bytes();
+        let mut data = Zeroizing::new(Vec::with_capacity(
+            1 + prefixed_secret.len() + prefixed_public.len(),
+        ));
         data.push(wif_network_prefix(self.network));
         match self.format {
             PqWifFormat::Prefixed => {
-                data.extend_from_slice(&self.secret_key.to_prefixed_bytes());
+                data.extend_from_slice(&prefixed_secret);
             }
             PqWifFormat::LegacyFalcon512 => {
                 debug_assert_eq!(self.secret_key.scheme(), PqScheme::Falcon512);
                 data.extend_from_slice(self.secret_key.as_bytes());
                 data.push(1);
-                data.extend_from_slice(&self.public_key.to_prefixed_bytes());
+                data.extend_from_slice(&prefixed_public);
             }
         }
         fmt.write_str(&base58::encode_check(&data))
     }
 
     /// Gets the Tidecoin node-compatible base58 encoding of this PQ private key.
+    ///
+    /// This is a deliberate secret-export boundary: the returned [`String`] contains secret key
+    /// material in encoded form. Internal temporary buffers are minimized and wiped where
+    /// practical, but once this function returns the caller owns the secret string and is
+    /// responsible for handling its lifetime appropriately.
     pub fn to_wif(&self) -> String {
         let mut buf = String::new();
         let _ = self.fmt_wif(&mut buf);
@@ -1350,14 +1362,13 @@ impl PqWifKey {
 
     /// Parses the Tidecoin node-compatible base58 PQ secret format.
     pub fn from_wif(wif: &str) -> Result<Self, FromPqWifError> {
-        let data = base58::decode_check(wif)?;
+        let data = Zeroizing::new(base58::decode_check(wif)?);
         if data.len() < 2 {
             return Err(InvalidBase58PayloadLengthError { length: data.len() }.into());
         }
 
-        let (&network_prefix, payload) = data
-            .split_first()
-            .ok_or(InvalidBase58PayloadLengthError { length: data.len() })?;
+        let (&network_prefix, payload) =
+            data.split_first().ok_or(InvalidBase58PayloadLengthError { length: data.len() })?;
         let network = parse_wif_network_prefix(network_prefix)?;
 
         let legacy_scheme = PqScheme::Falcon512;
@@ -2227,6 +2238,11 @@ mod tests {
 
         let err = PqWifKey::from_wif(&wif).unwrap_err();
         assert_eq!(err, FromPqWifError::MismatchedPublicKey(MismatchedPqPublicKeyError));
+    }
+
+    #[test]
+    fn pq_wif_key_requires_drop_for_nested_secret_zeroization() {
+        assert!(core::mem::needs_drop::<PqWifKey>());
     }
 
     #[test]

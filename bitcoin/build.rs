@@ -39,14 +39,10 @@ fn build_tidecoin_node_validation() {
     }
 
     println!("cargo:rerun-if-env-changed=TIDECOIN_NODE_REPO");
-    println!(
-        "cargo:rerun-if-changed={}",
-        node_src.join("script/interpreter.cpp").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        node_src.join("pubkey.cpp").display()
-    );
+    println!("cargo:rerun-if-changed={}", node_src.join("script/interpreter.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("pubkey.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_kdf.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_keygen.cpp").display());
     println!(
         "cargo:rerun-if-changed={}",
         local_c_src.join("tidecoin_validation_bridge.cpp").display()
@@ -72,12 +68,16 @@ fn build_tidecoin_node_validation() {
         .file(node_src.join("uint256.cpp"))
         .file(node_src.join("consensus/tx_check.cpp"))
         .file(node_src.join("crypto/hex_base.cpp"))
+        .file(node_src.join("crypto/hmac_sha512.cpp"))
         .file(node_src.join("crypto/ripemd160.cpp"))
         .file(node_src.join("crypto/sha1.cpp"))
         .file(node_src.join("crypto/sha256.cpp"))
         .file(node_src.join("crypto/sha512.cpp"))
+        .file(node_src.join("pq/pqhd_kdf.cpp"))
+        .file(node_src.join("pq/pqhd_keygen.cpp"))
         .file(node_src.join("util/strencodings.cpp"))
         .file(node_src.join("support/cleanse.cpp"))
+        .file(node_src.join("support/lockedpool.cpp"))
         .compile("tidecoin_node_validation_cpp");
 
     let mut c = base_builder();

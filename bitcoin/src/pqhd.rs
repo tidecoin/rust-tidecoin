@@ -8,6 +8,7 @@ use core::fmt;
 use core::str::FromStr;
 
 use hashes::{sha256, sha512, Hash as _, HashEngine as _, HmacEngine};
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSecretKey};
 
@@ -45,7 +46,9 @@ impl SeedId {
     }
 
     /// Constructs a seed id from canonical bytes.
-    pub fn from_canonical_bytes(bytes: [u8; 32]) -> Self { Self(sha256::Hash::from_byte_array(bytes)) }
+    pub fn from_canonical_bytes(bytes: [u8; 32]) -> Self {
+        Self(sha256::Hash::from_byte_array(bytes))
+    }
 
     /// Constructs a seed id from the node's internal `uint256` storage bytes.
     pub fn from_storage_bytes(mut bytes: [u8; 32]) -> Self {
@@ -54,7 +57,9 @@ impl SeedId {
     }
 
     /// Returns canonical bytes.
-    pub fn to_canonical_bytes(self) -> [u8; 32] { self.0.to_byte_array() }
+    pub fn to_canonical_bytes(self) -> [u8; 32] {
+        self.0.to_byte_array()
+    }
 
     /// Returns the node's internal `uint256` storage bytes.
     pub fn to_storage_bytes(self) -> [u8; 32] {
@@ -65,7 +70,9 @@ impl SeedId {
 }
 
 impl fmt::Display for SeedId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 impl FromStr for SeedId {
@@ -77,7 +84,7 @@ impl FromStr for SeedId {
 }
 
 /// A PQHD node secret and chain code pair.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Node {
     /// The PQHD node secret.
     pub node_secret: [u8; 32],
@@ -85,13 +92,71 @@ pub struct Node {
     pub chain_code: [u8; 32],
 }
 
+impl Drop for Node {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for Node {
+    fn zeroize(&mut self) {
+        self.node_secret.zeroize();
+        self.chain_code.zeroize();
+    }
+}
+
+/// Secret 64-byte PQHD stream material.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SecretBytes64([u8; 64]);
+
+impl SecretBytes64 {
+    /// Constructs secret 64-byte material from raw bytes.
+    pub fn new(bytes: [u8; 64]) -> Self {
+        Self(bytes)
+    }
+
+    /// Borrows the raw bytes.
+    pub fn as_bytes(&self) -> &[u8; 64] {
+        &self.0
+    }
+
+    /// Borrows the raw bytes as a slice.
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Drop for SecretBytes64 {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for SecretBytes64 {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
 /// Leaf material for a validated PQHD v1 leaf.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct LeafMaterialV1 {
     /// The PQ scheme encoded in the leaf path.
     pub scheme: PqScheme,
     /// The derived 64-byte stream key.
-    pub stream_key: [u8; 64],
+    pub stream_key: SecretBytes64,
+}
+
+impl Drop for LeafMaterialV1 {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for LeafMaterialV1 {
+    fn zeroize(&mut self) {
+        self.stream_key.zeroize();
+    }
 }
 
 /// Computes the PQHD master node from a master seed.
@@ -110,11 +175,11 @@ pub fn derive_child(parent: &Node, index_hardened: u32) -> Option<Node> {
         return None;
     }
 
-    let mut data = [0_u8; 1 + 32 + 4];
+    let mut data = Zeroizing::new([0_u8; 1 + 32 + 4]);
     data[1..33].copy_from_slice(&parent.node_secret);
     data[33..].copy_from_slice(&ser32be(index_hardened));
 
-    let hmac = hmac_sha512(&parent.chain_code, &data);
+    let hmac = hmac_sha512(&parent.chain_code, &data[..]);
     let mut node_secret = [0_u8; 32];
     let mut chain_code = [0_u8; 32];
     node_secret.copy_from_slice(&hmac[..32]);
@@ -124,7 +189,7 @@ pub fn derive_child(parent: &Node, index_hardened: u32) -> Option<Node> {
 
 /// Derives a hardened PQHD path.
 pub fn derive_path(path_hardened: &[u32], master: &Node) -> Option<Node> {
-    let mut node = *master;
+    let mut node = master.clone();
     for &index in path_hardened {
         node = derive_child(&node, index)?;
     }
@@ -171,7 +236,7 @@ pub fn derive_leaf_material_v1(
         .expect("validated path contains a supported 1-byte scheme");
     let prk = hmac_sha512(PQHD_HKDF_SALT, node_secret_leaf);
 
-    let mut engine = HmacEngine::<sha512::HashEngine>::new(&prk);
+    let mut engine = HmacEngine::<sha512::HashEngine>::new(prk.as_ref());
     engine.input(PQHD_STREAM_INFO);
     engine.input(&ser32be(u32::from(scheme.prefix())));
     for &elem in path_hardened {
@@ -179,40 +244,46 @@ pub fn derive_leaf_material_v1(
     }
     engine.input(&[0x01]);
 
-    Some(LeafMaterialV1 { scheme, stream_key: engine.finalize().to_byte_array() })
+    Some(LeafMaterialV1 {
+        scheme,
+        stream_key: SecretBytes64::new(engine.finalize().to_byte_array()),
+    })
 }
 
 /// Derives the PQHD v1 keygen stream key.
 pub fn derive_keygen_stream_key(
     node_secret_leaf: &[u8; 32],
     path_hardened: &[u32],
-) -> Option<[u8; 64]> {
-    derive_leaf_material_v1(node_secret_leaf, path_hardened).map(|material| material.stream_key)
+) -> Option<SecretBytes64> {
+    derive_leaf_material_v1(node_secret_leaf, path_hardened)
+        .map(|material| material.stream_key.clone())
 }
 
 /// Derives a single 64-byte stream block from a keygen stream key and counter.
-pub fn derive_keygen_stream_block(stream_key: &[u8; 64], ctr: u32) -> [u8; 64] {
-    let mut engine = HmacEngine::<sha512::HashEngine>::new(stream_key);
+pub fn derive_keygen_stream_block(stream_key: &SecretBytes64, ctr: u32) -> SecretBytes64 {
+    let mut engine = HmacEngine::<sha512::HashEngine>::new(stream_key.as_bytes());
     engine.input(PQHD_RNG_PREFIX);
     engine.input(&ser32be(ctr));
-    engine.finalize().to_byte_array()
+    SecretBytes64::new(engine.finalize().to_byte_array())
 }
 
 /// Derives a deterministic PQ keypair from Tidecoin PQHD v1 leaf material.
-pub fn derive_keypair_v1(leaf_material: &LeafMaterialV1) -> Result<(PqPublicKey, PqSecretKey), PqError> {
+pub fn derive_keypair_v1(
+    leaf_material: &LeafMaterialV1,
+) -> Result<(PqPublicKey, PqSecretKey), PqError> {
     derive_keypair_from_stream_key_v1(leaf_material.scheme, &leaf_material.stream_key)
 }
 
 /// Derives a deterministic PQ keypair from a Tidecoin PQHD v1 stream key.
 pub fn derive_keypair_from_stream_key_v1(
     scheme: PqScheme,
-    stream_key: &[u8; 64],
+    stream_key: &SecretBytes64,
 ) -> Result<(PqPublicKey, PqSecretKey), PqError> {
     let seed_len = scheme.deterministic_seed_len();
 
     for ctr in 0..MAX_DETERMINISTIC_ATTEMPTS {
-        let block = derive_keygen_stream_block(stream_key, ctr);
-        if let Ok(pair) = scheme.generate_keypair_from_seed(&block[..seed_len]) {
+        let block = Zeroizing::new(derive_keygen_stream_block(stream_key, ctr));
+        if let Ok(pair) = scheme.generate_keypair_from_seed(&block.as_bytes()[..seed_len]) {
             return Ok(pair);
         }
     }
@@ -232,13 +303,15 @@ pub fn make_v1_leaf_path(scheme: PqScheme, account: u32, change: u32, index: u32
     ]
 }
 
-fn hmac_sha512(key: &[u8], msg: &[u8]) -> [u8; 64] {
+fn hmac_sha512(key: &[u8], msg: &[u8]) -> Zeroizing<[u8; 64]> {
     let mut engine = HmacEngine::<sha512::HashEngine>::new(key);
     engine.input(msg);
-    engine.finalize().to_byte_array()
+    Zeroizing::new(engine.finalize().to_byte_array())
 }
 
-fn ser32be(value: u32) -> [u8; 4] { value.to_be_bytes() }
+fn ser32be(value: u32) -> [u8; 4] {
+    value.to_be_bytes()
+}
 
 #[cfg(test)]
 mod tests {
@@ -252,9 +325,13 @@ mod tests {
         crate::hex::decode_to_array::<N>(hex).unwrap()
     }
 
-    fn hex(bytes: &[u8]) -> String { bytes.as_hex().to_string() }
+    fn hex(bytes: &[u8]) -> String {
+        bytes.as_hex().to_string()
+    }
 
-    fn sha256_hex(bytes: &[u8]) -> String { sha256::Hash::hash(bytes).to_string() }
+    fn sha256_hex(bytes: &[u8]) -> String {
+        sha256::Hash::hash(bytes).to_string()
+    }
 
     #[test]
     fn vectors_master_seed_0() {
@@ -262,7 +339,10 @@ mod tests {
             decode_array::<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
 
         let seedid = SeedId::compute(&master_seed);
-        assert_eq!(seedid.to_string(), "13f45473287a2920f659a303dfc449ab5bf97cba2e23024c61439348ae0eb602");
+        assert_eq!(
+            seedid.to_string(),
+            "13f45473287a2920f659a303dfc449ab5bf97cba2e23024c61439348ae0eb602"
+        );
 
         let master = make_master_node(&master_seed);
         assert_eq!(
@@ -303,7 +383,7 @@ mod tests {
 
         let stream_key = derive_keygen_stream_key(&leaf.node_secret, &path).unwrap();
         assert_eq!(
-            hex(&stream_key),
+            hex(stream_key.as_slice()),
             concat!(
                 "1d28d7fc52b10ad564be42667eea7830ffddcd9beb7666966c9e7fd1f0c6769d",
                 "90da93994e186053b4fe6655e9b79aa19306b0994af09d6b77ae141f88cac2e8"
@@ -312,7 +392,7 @@ mod tests {
 
         let block0 = derive_keygen_stream_block(&stream_key, 0);
         assert_eq!(
-            hex(&block0),
+            hex(block0.as_slice()),
             concat!(
                 "a826fbc6d97bb72b34628430561b572aca14b6281caeb4fd9fa6b9295f1d711f",
                 "4bbcd9f1d3697afda50b9889216634edc8a4ea7b18126cdc0d754b853474ebd2"
@@ -321,7 +401,7 @@ mod tests {
 
         let block1 = derive_keygen_stream_block(&stream_key, 1);
         assert_eq!(
-            hex(&block1),
+            hex(block1.as_slice()),
             concat!(
                 "979d62443c10984b5b05af367181c33bb39541b9a1841896858c4df39c5c2347",
                 "e7a452264c58eb756c9bc869106cdf76b8e4615b950cd1608b5052049a220719"
@@ -348,7 +428,7 @@ mod tests {
 
         let stream_key = derive_keygen_stream_key(&leaf.node_secret, &path).unwrap();
         assert_eq!(
-            hex(&stream_key),
+            hex(stream_key.as_slice()),
             concat!(
                 "d84fe3ee51ac4f613ba55b2357c5ab18bf2397709844fdba2a3ee1a3b8041130",
                 "4bb08b20e73508a958e7fc08c1005f75770542d951979a365b869742a953774b"
@@ -357,7 +437,7 @@ mod tests {
 
         let block0 = derive_keygen_stream_block(&stream_key, 0);
         assert_eq!(
-            hex(&block0),
+            hex(block0.as_slice()),
             concat!(
                 "980181e20ecf0e7cba979df337b300b35299d52ad75fae9b4154c43b72315263",
                 "0daeab708aac355f660677f142052cd68b35a9f9d6fdba772fe62e63279cd0eb"
@@ -477,8 +557,14 @@ mod tests {
             assert_eq!(pk_a.to_prefixed_bytes()[0], scheme.prefix());
             assert_eq!(sk_a.to_prefixed_bytes()[0], scheme.prefix());
             assert_eq!(crate::PqPublicKey::from_secret_key(&sk_a).unwrap(), pk_a);
-            assert_eq!(crate::PqPublicKey::from_prefixed_slice(&pk_a.to_prefixed_bytes()).unwrap(), pk_a);
-            assert_eq!(crate::PqSecretKey::from_prefixed_slice(&sk_a.to_prefixed_bytes()).unwrap(), sk_a);
+            assert_eq!(
+                crate::PqPublicKey::from_prefixed_slice(&pk_a.to_prefixed_bytes()).unwrap(),
+                pk_a
+            );
+            assert_eq!(
+                crate::PqSecretKey::from_prefixed_slice(&sk_a.to_prefixed_bytes()).unwrap(),
+                sk_a
+            );
         }
     }
 
@@ -570,5 +656,12 @@ mod tests {
         assert_ne!(receive.1, change.1);
         assert_eq!(receive, derive_hashes(receive_path));
         assert_eq!(change, derive_hashes(change_path));
+    }
+
+    #[test]
+    fn secret_material_types_require_drop_for_zeroization() {
+        assert!(core::mem::needs_drop::<Node>());
+        assert!(core::mem::needs_drop::<SecretBytes64>());
+        assert!(core::mem::needs_drop::<LeafMaterialV1>());
     }
 }

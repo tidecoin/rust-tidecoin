@@ -16,9 +16,9 @@ use crate::opcodes::all::OP_SHA512;
 use crate::opcodes::Opcode;
 #[cfg(test)]
 use crate::prelude::Vec;
+use crate::script::{Instruction, Script, ScriptExt as _, ScriptPubKey, WitnessScript};
 #[cfg(test)]
 use crate::script::{ScriptPubKeyBuf, ScriptSigBuf};
-use crate::script::{Instruction, Script, ScriptExt as _, ScriptPubKey, WitnessScript};
 use crate::transaction::{OutPoint, Transaction};
 use crate::witness::Witness;
 
@@ -199,11 +199,17 @@ impl fmt::Display for TidecoinValidationError {
         match self {
             Self::Script(err) => write!(f, "script validation failed: {}", err),
             Self::InvalidInputIndex { index, inputs } => {
-                write!(f, "input index {} out of bounds for transaction with {} inputs", index, inputs)
+                write!(
+                    f,
+                    "input index {} out of bounds for transaction with {} inputs",
+                    index, inputs
+                )
             }
             Self::UnsupportedScript => f.write_str("script requires unsupported validation path"),
             Self::MissingSpentOutput(outpoint) => write!(f, "missing spent output {}", outpoint),
-            Self::BridgeFailure(name) => write!(f, "tidecoin node validation bridge call failed: {}", name),
+            Self::BridgeFailure(name) => {
+                write!(f, "tidecoin node validation bridge call failed: {}", name)
+            }
         }
     }
 }
@@ -226,6 +232,51 @@ unsafe extern "C" {
 #[cfg(test)]
 unsafe extern "C" {
     fn tidecoin_node_check_transaction(tx_hex: *const c_char) -> c_int;
+    fn tidecoin_node_pq_keygen_from_seed(
+        scheme_prefix: u8,
+        seed: *const u8,
+        seed_len: usize,
+        pk_out: *mut u8,
+        pk_len: usize,
+        sk_out: *mut u8,
+        sk_len: usize,
+    ) -> c_int;
+    fn tidecoin_node_pqhd_keygen_from_stream_key(
+        scheme_prefix: u8,
+        stream_key: *const u8,
+        stream_key_len: usize,
+        pk_out: *mut u8,
+        pk_len: usize,
+        sk_out: *mut u8,
+        sk_len: usize,
+    ) -> c_int;
+    fn tidecoin_node_pq_compute_public_key(
+        scheme_prefix: u8,
+        sk: *const u8,
+        sk_len: usize,
+        pk_out: *mut u8,
+        pk_len: usize,
+    ) -> c_int;
+    fn tidecoin_node_pq_sign_message(
+        scheme_prefix: u8,
+        msg: *const u8,
+        msg_len: usize,
+        sk: *const u8,
+        sk_len: usize,
+        legacy_mode: c_int,
+        sig_out: *mut u8,
+        sig_len: *mut usize,
+    ) -> c_int;
+    fn tidecoin_node_pq_verify_message(
+        scheme_prefix: u8,
+        msg: *const u8,
+        msg_len: usize,
+        sig: *const u8,
+        sig_len: usize,
+        pk: *const u8,
+        pk_len: usize,
+        legacy_mode: c_int,
+    ) -> c_int;
     fn tidecoin_node_parse_script_asm(
         script_asm: *const c_char,
         out: *mut u8,
@@ -276,10 +327,7 @@ pub(crate) fn verify_script_input(
     flags: u32,
 ) -> Result<(), TidecoinValidationError> {
     if index >= tx.inputs.len() {
-        return Err(TidecoinValidationError::InvalidInputIndex {
-            index,
-            inputs: tx.inputs.len(),
-        });
+        return Err(TidecoinValidationError::InvalidInputIndex { index, inputs: tx.inputs.len() });
     }
 
     let tx_hex = CString::new(serialize_hex(tx))
@@ -307,9 +355,7 @@ pub(crate) fn verify_script_input(
                 err
             }))
         }
-        _ => Err(TidecoinValidationError::BridgeFailure(
-            "tidecoin_node_verify_tx_input",
-        )),
+        _ => Err(TidecoinValidationError::BridgeFailure("tidecoin_node_verify_tx_input")),
     }
 }
 
@@ -321,9 +367,7 @@ fn check_transaction_sanity(tx: &Transaction) -> Result<(), TidecoinValidationEr
     match rc {
         1 => Ok(()),
         0 => Err(TidecoinValidationError::BridgeFailure("invalid transaction")),
-        _ => Err(TidecoinValidationError::BridgeFailure(
-            "tidecoin_node_check_transaction",
-        )),
+        _ => Err(TidecoinValidationError::BridgeFailure("tidecoin_node_check_transaction")),
     }
 }
 
@@ -335,19 +379,16 @@ fn normalize_flags(mut flags: u32) -> u32 {
 }
 
 #[allow(dead_code)]
-fn script_contains_opcode<T>(
-    script: &Script<T>,
-    opcode: Opcode,
-) -> bool {
-    script
-        .instructions()
-        .any(|ins| matches!(ins, Ok(Instruction::Op(op)) if op == opcode))
+fn script_contains_opcode<T>(script: &Script<T>, opcode: Opcode) -> bool {
+    script.instructions().any(|ins| matches!(ins, Ok(Instruction::Op(op)) if op == opcode))
 }
 
 #[allow(dead_code)]
 fn script_contains_pq_material<T>(script: &Script<T>) -> bool {
     script.instructions().any(|ins| match ins {
-        Ok(Instruction::PushBytes(bytes)) => PqPublicKey::from_prefixed_slice(bytes.as_bytes()).is_ok(),
+        Ok(Instruction::PushBytes(bytes)) => {
+            PqPublicKey::from_prefixed_slice(bytes.as_bytes()).is_ok()
+        }
         _ => false,
     })
 }
@@ -370,18 +411,18 @@ fn parse_script_asm(script_asm: &str) -> Result<Vec<u8>, TidecoinValidationError
     let script_asm = CString::new(script_asm)
         .map_err(|_| TidecoinValidationError::BridgeFailure("CString::new"))?;
     let mut out_len = 0usize;
-    let probe = unsafe { tidecoin_node_parse_script_asm(script_asm.as_ptr(), core::ptr::null_mut(), &mut out_len) };
+    let probe = unsafe {
+        tidecoin_node_parse_script_asm(script_asm.as_ptr(), core::ptr::null_mut(), &mut out_len)
+    };
     if probe != 0 {
-        return Err(TidecoinValidationError::BridgeFailure(
-            "tidecoin_node_parse_script_asm",
-        ));
+        return Err(TidecoinValidationError::BridgeFailure("tidecoin_node_parse_script_asm"));
     }
     let mut out = vec![0u8; out_len];
-    let rc = unsafe { tidecoin_node_parse_script_asm(script_asm.as_ptr(), out.as_mut_ptr(), &mut out_len) };
+    let rc = unsafe {
+        tidecoin_node_parse_script_asm(script_asm.as_ptr(), out.as_mut_ptr(), &mut out_len)
+    };
     if rc != 1 {
-        return Err(TidecoinValidationError::BridgeFailure(
-            "tidecoin_node_parse_script_asm",
-        ));
+        return Err(TidecoinValidationError::BridgeFailure("tidecoin_node_parse_script_asm"));
     }
     out.truncate(out_len);
     Ok(out)
@@ -423,9 +464,7 @@ fn verify_script_case(
                 err
             }))
         }
-        _ => Err(TidecoinValidationError::BridgeFailure(
-            "tidecoin_node_verify_script_case",
-        )),
+        _ => Err(TidecoinValidationError::BridgeFailure("tidecoin_node_verify_script_case")),
     }
 }
 
@@ -445,14 +484,13 @@ mod tests {
     use crate::crypto::pq::{PqPublicKey, PqScheme, PqSecretKey, PqSignature};
     use crate::crypto::sighash::{EcdsaSighashType, SighashCache};
     use crate::opcodes::all::{
-        OP_ADD, OP_CHECKMULTISIG, OP_CHECKSIG, OP_DUP, OP_EQUAL, OP_EQUALVERIFY,
-        OP_FROMALTSTACK, OP_HASH160, OP_NUMEQUAL, OP_SHA256, OP_SHA512, OP_TOALTSTACK, OP_TRUE,
+        OP_ADD, OP_CHECKMULTISIG, OP_CHECKSIG, OP_DUP, OP_EQUAL, OP_EQUALVERIFY, OP_FROMALTSTACK,
+        OP_HASH160, OP_NUMEQUAL, OP_SHA256, OP_SHA512, OP_TOALTSTACK, OP_TRUE,
     };
+    use crate::pqhd;
     use crate::script::PushBytesBuf;
-    use crate::script::{
-        ScriptBufExt as _, ScriptPubKeyBuf, ScriptSigBuf, WitnessScriptBuf,
-    };
     use crate::script::ScriptPubKeyBufExt as _;
+    use crate::script::{ScriptBufExt as _, ScriptPubKeyBuf, ScriptSigBuf, WitnessScriptBuf};
     use crate::transaction::{self, OutPoint, Transaction, TxIn};
     use crate::{Address, Amount, Network, PqWifKey, Sequence, TxOut, Txid, Witness};
 
@@ -466,7 +504,9 @@ mod tests {
             })
     }
 
-    fn test_data_path(name: &str) -> PathBuf { node_repo_dir().join("src/test/data").join(name) }
+    fn test_data_path(name: &str) -> PathBuf {
+        node_repo_dir().join("src/test/data").join(name)
+    }
 
     fn read_json(name: &str) -> Value {
         let path = test_data_path(name);
@@ -477,14 +517,133 @@ mod tests {
     }
 
     fn tagged_seed(tag: u8, len: usize) -> Vec<u8> {
-        (0..len)
-            .map(|i| tag ^ (i as u8).wrapping_mul(131))
-            .collect()
+        (0..len).map(|i| tag ^ (i as u8).wrapping_mul(131)).collect()
     }
 
     fn deterministic_keypair(scheme: PqScheme, tag: u8) -> (PqPublicKey, PqSecretKey) {
         let seed = tagged_seed(tag, scheme.deterministic_seed_len());
         scheme.generate_keypair_from_seed(&seed).unwrap()
+    }
+
+    fn node_keypair_from_seed(scheme: PqScheme, seed: &[u8]) -> (PqPublicKey, PqSecretKey) {
+        let mut pk = vec![0u8; scheme.pubkey_len()];
+        let mut sk = vec![0u8; scheme.seckey_len()];
+        let rc = unsafe {
+            tidecoin_node_pq_keygen_from_seed(
+                scheme.prefix(),
+                seed.as_ptr(),
+                seed.len(),
+                pk.as_mut_ptr(),
+                pk.len(),
+                sk.as_mut_ptr(),
+                sk.len(),
+            )
+        };
+        assert_eq!(rc, 1, "tidecoin_node_pq_keygen_from_seed failed for {:?}", scheme);
+        (
+            PqPublicKey::from_prefixed_slice(&[&[scheme.prefix()][..], &pk].concat()).unwrap(),
+            PqSecretKey::from_prefixed_slice(&[&[scheme.prefix()][..], &sk].concat()).unwrap(),
+        )
+    }
+
+    fn node_keypair_from_stream_key(
+        scheme: PqScheme,
+        stream_key: &[u8],
+    ) -> (PqPublicKey, PqSecretKey) {
+        let mut pk = vec![0u8; scheme.pubkey_len()];
+        let mut sk = vec![0u8; scheme.seckey_len()];
+        let rc = unsafe {
+            tidecoin_node_pqhd_keygen_from_stream_key(
+                scheme.prefix(),
+                stream_key.as_ptr(),
+                stream_key.len(),
+                pk.as_mut_ptr(),
+                pk.len(),
+                sk.as_mut_ptr(),
+                sk.len(),
+            )
+        };
+        assert_eq!(rc, 1, "tidecoin_node_pqhd_keygen_from_stream_key failed for {:?}", scheme);
+        (
+            PqPublicKey::from_prefixed_slice(&[&[scheme.prefix()][..], &pk].concat()).unwrap(),
+            PqSecretKey::from_prefixed_slice(&[&[scheme.prefix()][..], &sk].concat()).unwrap(),
+        )
+    }
+
+    fn node_public_key_from_secret(scheme: PqScheme, sk: &PqSecretKey) -> PqPublicKey {
+        let mut pk = vec![0u8; scheme.pubkey_len()];
+        let rc = unsafe {
+            tidecoin_node_pq_compute_public_key(
+                scheme.prefix(),
+                sk.as_bytes().as_ptr(),
+                sk.as_bytes().len(),
+                pk.as_mut_ptr(),
+                pk.len(),
+            )
+        };
+        assert_eq!(rc, 1, "tidecoin_node_pq_compute_public_key failed for {:?}", scheme);
+        PqPublicKey::from_prefixed_slice(&[&[scheme.prefix()][..], &pk].concat()).unwrap()
+    }
+
+    fn node_sign_message(
+        scheme: PqScheme,
+        msg: &[u8],
+        sk: &PqSecretKey,
+        legacy: bool,
+    ) -> PqSignature {
+        let mut sig_len = scheme.max_sig_len();
+        let probe = unsafe {
+            tidecoin_node_pq_sign_message(
+                scheme.prefix(),
+                msg.as_ptr(),
+                msg.len(),
+                sk.as_bytes().as_ptr(),
+                sk.as_bytes().len(),
+                if legacy { 1 } else { 0 },
+                core::ptr::null_mut(),
+                &mut sig_len,
+            )
+        };
+        assert_eq!(probe, 0, "signature size probe failed for {:?}", scheme);
+        let mut sig = vec![0u8; sig_len];
+        let rc = unsafe {
+            tidecoin_node_pq_sign_message(
+                scheme.prefix(),
+                msg.as_ptr(),
+                msg.len(),
+                sk.as_bytes().as_ptr(),
+                sk.as_bytes().len(),
+                if legacy { 1 } else { 0 },
+                sig.as_mut_ptr(),
+                &mut sig_len,
+            )
+        };
+        assert_eq!(rc, 1, "tidecoin_node_pq_sign_message failed for {:?}", scheme);
+        sig.truncate(sig_len);
+        PqSignature::from_slice(&sig)
+    }
+
+    fn node_verify_message(
+        scheme: PqScheme,
+        msg: &[u8],
+        sig: &PqSignature,
+        pk: &PqPublicKey,
+        legacy: bool,
+    ) -> bool {
+        let rc = unsafe {
+            tidecoin_node_pq_verify_message(
+                scheme.prefix(),
+                msg.as_ptr(),
+                msg.len(),
+                sig.as_bytes().as_ptr(),
+                sig.as_bytes().len(),
+                pk.as_bytes().as_ptr(),
+                pk.as_bytes().len(),
+                if legacy { 1 } else { 0 },
+            )
+        };
+        assert_ne!(rc, -1, "tidecoin_node_pq_verify_message errored for {:?}", scheme);
+        rc == 1
     }
 
     fn tx_template(input_count: usize) -> Transaction {
@@ -635,19 +794,15 @@ mod tests {
 
     fn direct_p2wsh_script_pubkey(witness_script: &WitnessScriptBuf) -> ScriptPubKeyBuf {
         let program = sha256::Hash::hash(witness_script.as_bytes()).to_byte_array();
-        ScriptPubKeyBuf::builder()
-            .push_int(0)
-            .unwrap()
-            .push_slice(program)
-            .into_script()
+        ScriptPubKeyBuf::builder().push_int(0).unwrap().push_slice(program).into_script()
     }
 
     fn wrapped_p2wsh(script: &WitnessScriptBuf) -> (ScriptPubKeyBuf, ScriptSigBuf) {
         let redeem_script = direct_p2wsh_script_pubkey(script);
-        let script_pubkey = ScriptPubKeyBuf::new_p2sh(redeem_script.as_script().script_hash().unwrap());
-        let script_sig = ScriptSigBuf::builder()
-            .push_slice(push_bytes(redeem_script.as_bytes()))
-            .into_script();
+        let script_pubkey =
+            ScriptPubKeyBuf::new_p2sh(redeem_script.as_script().script_hash().unwrap());
+        let script_sig =
+            ScriptSigBuf::builder().push_slice(push_bytes(redeem_script.as_bytes())).into_script();
         (script_pubkey, script_sig)
     }
 
@@ -801,7 +956,9 @@ mod tests {
             "MINIMALIF" => ScriptError::MinimalIf,
             "NULLFAIL" => ScriptError::NullFail,
             "DISCOURAGE_UPGRADABLE_NOPS" => ScriptError::DiscourageUpgradableNops,
-            "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM" => ScriptError::DiscourageUpgradableWitnessProgram,
+            "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM" => {
+                ScriptError::DiscourageUpgradableWitnessProgram
+            }
             "WITNESS_PROGRAM_WRONG_LENGTH" => ScriptError::WitnessProgramWrongLength,
             "WITNESS_PROGRAM_WITNESS_EMPTY" => ScriptError::WitnessProgramWitnessEmpty,
             "WITNESS_PROGRAM_MISMATCH" => ScriptError::WitnessProgramMismatch,
@@ -960,7 +1117,9 @@ mod tests {
                 (Err(TidecoinValidationError::Script(actual)), expected) => {
                     assert_eq!(actual, expected, "script_tests_pq[{}]", idx);
                 }
-                (other, expected) => panic!("unexpected result {:?} for expected {:?} at {}", other, expected, idx),
+                (other, expected) => {
+                    panic!("unexpected result {:?} for expected {:?} at {}", other, expected, idx)
+                }
             }
         }
     }
@@ -976,11 +1135,14 @@ mod tests {
             let tx: Transaction = deserialize_hex(row[1].as_str().unwrap()).unwrap();
             let flags = fill_flags(parse_script_flags(row[2].as_str().unwrap()));
 
-            check_transaction_sanity(&tx).unwrap_or_else(|e| panic!("valid tx sanity failed at {}: {}", idx, e));
+            check_transaction_sanity(&tx)
+                .unwrap_or_else(|e| panic!("valid tx sanity failed at {}: {}", idx, e));
             for (input_idx, input) in tx.inputs.iter().enumerate() {
                 let spent = prevouts.get(&input.previous_output).unwrap();
                 verify_script_input(&spent.script_pubkey, input_idx, spent.amount, &tx, flags)
-                    .unwrap_or_else(|e| panic!("tx_valid_pq[{}] input {} failed: {}", idx, input_idx, e));
+                    .unwrap_or_else(|e| {
+                        panic!("tx_valid_pq[{}] input {} failed: {}", idx, input_idx, e)
+                    });
             }
         }
     }
@@ -997,7 +1159,11 @@ mod tests {
             let flags = row[2].as_str().unwrap();
 
             if flags == "BADTX" {
-                assert!(check_transaction_sanity(&tx).is_err(), "tx_invalid_pq[{}] should be structurally invalid", idx);
+                assert!(
+                    check_transaction_sanity(&tx).is_err(),
+                    "tx_invalid_pq[{}] should be structurally invalid",
+                    idx
+                );
                 continue;
             }
 
@@ -1005,7 +1171,9 @@ mod tests {
             let mut any_failed = false;
             for (input_idx, input) in tx.inputs.iter().enumerate() {
                 let spent = prevouts.get(&input.previous_output).unwrap();
-                if verify_script_input(&spent.script_pubkey, input_idx, spent.amount, &tx, flags).is_err() {
+                if verify_script_input(&spent.script_pubkey, input_idx, spent.amount, &tx, flags)
+                    .is_err()
+                {
                     any_failed = true;
                     break;
                 }
@@ -1029,14 +1197,20 @@ mod tests {
                 .iter()
                 .map(|entry| deserialize_hex(entry.as_str().unwrap()).unwrap())
                 .collect();
-            assert_eq!(prevouts.len(), tx.inputs.len(), "script_assets_test[{}] prevouts/input mismatch", idx);
+            assert_eq!(
+                prevouts.len(),
+                tx.inputs.len(),
+                "script_assets_test[{}] prevouts/input mismatch",
+                idx
+            );
             let index = obj["index"].as_u64().unwrap() as usize;
             let test_flags = parse_script_flags(obj["flags"].as_str().unwrap());
             let is_final = obj.get("final").and_then(Value::as_bool).unwrap_or(false);
 
             if let Some(success) = obj.get("success") {
-                tx.inputs[index].script_sig =
-                    ScriptSigBuf::from_bytes(parse_hex_bytes(success["scriptSig"].as_str().unwrap()));
+                tx.inputs[index].script_sig = ScriptSigBuf::from_bytes(parse_hex_bytes(
+                    success["scriptSig"].as_str().unwrap(),
+                ));
                 let witness_items: Vec<Vec<u8>> = success["witness"]
                     .as_array()
                     .unwrap()
@@ -1048,15 +1222,27 @@ mod tests {
                 for flags in &all_flags {
                     if is_final || (*flags & test_flags) == *flags {
                         let prevout = &prevouts[index];
-                        verify_script_input(&prevout.script_pubkey, index, prevout.amount, &tx, *flags)
-                            .unwrap_or_else(|e| panic!("script_assets_test[{}] success failed under {:x}: {}", idx, flags, e));
+                        verify_script_input(
+                            &prevout.script_pubkey,
+                            index,
+                            prevout.amount,
+                            &tx,
+                            *flags,
+                        )
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "script_assets_test[{}] success failed under {:x}: {}",
+                                idx, flags, e
+                            )
+                        });
                     }
                 }
             }
 
             if let Some(failure) = obj.get("failure") {
-                tx.inputs[index].script_sig =
-                    ScriptSigBuf::from_bytes(parse_hex_bytes(failure["scriptSig"].as_str().unwrap()));
+                tx.inputs[index].script_sig = ScriptSigBuf::from_bytes(parse_hex_bytes(
+                    failure["scriptSig"].as_str().unwrap(),
+                ));
                 let witness_items: Vec<Vec<u8>> = failure["witness"]
                     .as_array()
                     .unwrap()
@@ -1069,7 +1255,14 @@ mod tests {
                     if (*flags & test_flags) == test_flags {
                         let prevout = &prevouts[index];
                         assert!(
-                            verify_script_input(&prevout.script_pubkey, index, prevout.amount, &tx, *flags).is_err(),
+                            verify_script_input(
+                                &prevout.script_pubkey,
+                                index,
+                                prevout.amount,
+                                &tx,
+                                *flags
+                            )
+                            .is_err(),
                             "script_assets_test[{}] failure unexpectedly passed under {:x}",
                             idx,
                             flags
@@ -1098,7 +1291,9 @@ mod tests {
     #[test]
     fn script_op_sha512_matches_node_cases() {
         let input = PushBytesBuf::try_from(vec![0x01, 0x02, 0x03]).unwrap();
-        let expected = PushBytesBuf::try_from(sha512::Hash::hash(input.as_bytes()).to_byte_array().to_vec()).unwrap();
+        let expected =
+            PushBytesBuf::try_from(sha512::Hash::hash(input.as_bytes()).to_byte_array().to_vec())
+                .unwrap();
         let equal_hash_script = ScriptPubKeyBuf::builder()
             .push_slice(&input)
             .push_opcode(OP_SHA512)
@@ -1136,9 +1331,7 @@ mod tests {
                 Amount::from_sat(0).unwrap(),
                 VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
             ),
-            Err(TidecoinValidationError::Script(
-                ScriptError::DiscourageUpgradableNops,
-            ))
+            Err(TidecoinValidationError::Script(ScriptError::DiscourageUpgradableNops,))
         );
 
         assert_eq!(
@@ -1149,15 +1342,14 @@ mod tests {
                 Amount::from_sat(0).unwrap(),
                 VERIFY_SHA512,
             ),
-            Err(TidecoinValidationError::Script(
-                ScriptError::InvalidStackOperation,
-            ))
+            Err(TidecoinValidationError::Script(ScriptError::InvalidStackOperation,))
         );
 
         let max_input = PushBytesBuf::try_from(vec![0x42; 8192]).unwrap();
-        let max_expected =
-            PushBytesBuf::try_from(sha512::Hash::hash(max_input.as_bytes()).to_byte_array().to_vec())
-                .unwrap();
+        let max_expected = PushBytesBuf::try_from(
+            sha512::Hash::hash(max_input.as_bytes()).to_byte_array().to_vec(),
+        )
+        .unwrap();
         let max_script = ScriptPubKeyBuf::builder()
             .push_slice(&max_input)
             .push_opcode(OP_SHA512)
@@ -1192,11 +1384,8 @@ mod tests {
     fn witness_v1_512_policy_matches_node_case() {
         let witness_script = ScriptPubKeyBuf::builder().push_opcode(OP_TRUE).into_script();
         let program = sha512::Hash::hash(witness_script.as_bytes()).to_byte_array();
-        let script_pubkey = ScriptPubKeyBuf::builder()
-            .push_int(1)
-            .unwrap()
-            .push_slice(program)
-            .into_script();
+        let script_pubkey =
+            ScriptPubKeyBuf::builder().push_int(1).unwrap().push_slice(program).into_script();
         let witness = Witness::from_slice(&[witness_script.as_bytes()]);
 
         verify_script_case(
@@ -1216,9 +1405,7 @@ mod tests {
                 Amount::from_sat(0).unwrap(),
                 VERIFY_WITNESS | VERIFY_P2SH | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
             ),
-            Err(TidecoinValidationError::Script(
-                ScriptError::DiscourageUpgradableWitnessProgram,
-            ))
+            Err(TidecoinValidationError::Script(ScriptError::DiscourageUpgradableWitnessProgram,))
         );
     }
 
@@ -1232,11 +1419,8 @@ mod tests {
         );
         let script_pubkey_v0 = direct_p2wsh_script_pubkey(&witness_script_v0);
         let program_v1 = sha512::Hash::hash(witness_script_v1.as_bytes()).to_byte_array();
-        let script_pubkey_v1 = ScriptPubKeyBuf::builder()
-            .push_int(1)
-            .unwrap()
-            .push_slice(program_v1)
-            .into_script();
+        let script_pubkey_v1 =
+            ScriptPubKeyBuf::builder().push_int(1).unwrap().push_slice(program_v1).into_script();
 
         let mut tx = tx_template(2);
         tx.inputs[0].witness = Witness::from_slice(&[witness_script_v0.as_bytes()]);
@@ -1341,10 +1525,14 @@ mod tests {
                 Vec::<u8>::new(),
                 witness_script.as_bytes().to_vec(),
             ]);
-            assert!(
-                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
-                    .is_err()
-            );
+            assert!(verify_script_input(
+                &script_pubkey,
+                0,
+                amount,
+                &tx,
+                VERIFY_WITNESS | VERIFY_P2SH
+            )
+            .is_err());
 
             tx.inputs[0].witness = Witness::from_slice(&[
                 Vec::<u8>::new(),
@@ -1352,10 +1540,14 @@ mod tests {
                 good_sig1.clone(),
                 witness_script.as_bytes().to_vec(),
             ]);
-            assert!(
-                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
-                    .is_err()
-            );
+            assert!(verify_script_input(
+                &script_pubkey,
+                0,
+                amount,
+                &tx,
+                VERIFY_WITNESS | VERIFY_P2SH
+            )
+            .is_err());
 
             tx.inputs[0].witness = Witness::from_slice(&[
                 Vec::<u8>::new(),
@@ -1363,10 +1555,14 @@ mod tests {
                 good_sig2.clone(),
                 witness_script.as_bytes().to_vec(),
             ]);
-            assert!(
-                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
-                    .is_err()
-            );
+            assert!(verify_script_input(
+                &script_pubkey,
+                0,
+                amount,
+                &tx,
+                VERIFY_WITNESS | VERIFY_P2SH
+            )
+            .is_err());
 
             let mut wrong_sighash = good_sig1;
             *wrong_sighash.last_mut().unwrap() = EcdsaSighashType::None.to_u32() as u8;
@@ -1376,10 +1572,14 @@ mod tests {
                 good_sig2,
                 witness_script.as_bytes().to_vec(),
             ]);
-            assert!(
-                verify_script_input(&script_pubkey, 0, amount, &tx, VERIFY_WITNESS | VERIFY_P2SH)
-                    .is_err()
-            );
+            assert!(verify_script_input(
+                &script_pubkey,
+                0,
+                amount,
+                &tx,
+                VERIFY_WITNESS | VERIFY_P2SH
+            )
+            .is_err());
 
             let zero_script = multisig_witness_script(&[], 0);
             let zero_spk = direct_p2wsh_script_pubkey(&zero_script);
@@ -1400,7 +1600,13 @@ mod tests {
             too_many_witness.push(too_many_script.as_bytes().to_vec());
             too_many_tx.inputs[0].witness = Witness::from_slice(&too_many_witness);
             assert_eq!(
-                verify_script_input(&too_many_spk, 0, amount, &too_many_tx, VERIFY_WITNESS | VERIFY_P2SH),
+                verify_script_input(
+                    &too_many_spk,
+                    0,
+                    amount,
+                    &too_many_tx,
+                    VERIFY_WITNESS | VERIFY_P2SH
+                ),
                 Err(TidecoinValidationError::Script(ScriptError::PubkeyCount))
             );
 
@@ -1408,7 +1614,8 @@ mod tests {
                 deterministic_keypair(PqScheme::MlDsa87, 0x40),
                 deterministic_keypair(PqScheme::MlDsa87, 0x41),
             ];
-            let limit_pubkeys: Vec<PqPublicKey> = limit_keys.iter().map(|(pk, _)| pk.clone()).collect();
+            let limit_pubkeys: Vec<PqPublicKey> =
+                limit_keys.iter().map(|(pk, _)| pk.clone()).collect();
             let limit_script = multisig_witness_script(&limit_pubkeys, 1);
             let limit_spk = direct_p2wsh_script_pubkey(&limit_script);
             let mut limit_tx = tx_template(1);
@@ -1492,8 +1699,15 @@ mod tests {
         .is_err());
 
         let mut threshold_tx = tx_template(1);
-        threshold_tx.inputs[0].witness =
-            signed_committed_hash_witness(&threshold_tx, 0, amount, &witness_script, &keys, 1, true);
+        threshold_tx.inputs[0].witness = signed_committed_hash_witness(
+            &threshold_tx,
+            0,
+            amount,
+            &witness_script,
+            &keys,
+            1,
+            true,
+        );
         assert!(verify_script_input(
             &direct_p2wsh_script_pubkey(&witness_script),
             0,
@@ -1554,17 +1768,13 @@ mod tests {
                 .into_bytes(),
         );
         let program = sha512::Hash::hash(witness_script.as_bytes()).to_byte_array();
-        let script_pubkey = ScriptPubKeyBuf::builder()
-            .push_int(1)
-            .unwrap()
-            .push_slice(program)
-            .into_script();
+        let script_pubkey =
+            ScriptPubKeyBuf::builder().push_int(1).unwrap().push_slice(program).into_script();
         let amount = Amount::from_sat_u32(1);
         let mut tx = tx_template(1);
         let mut sig = witness_v1_512_sig(&tx, 0, amount, &witness_script, &seckey, true);
         *sig.last_mut().unwrap() = 0;
-        tx.inputs[0].witness =
-            Witness::from_slice(&[sig, witness_script.as_bytes().to_vec()]);
+        tx.inputs[0].witness = Witness::from_slice(&[sig, witness_script.as_bytes().to_vec()]);
 
         assert!(verify_script_input(
             &script_pubkey,
@@ -1655,7 +1865,8 @@ mod tests {
             .push_slice(push_bytes(&key.public_key.to_prefixed_bytes()))
             .into_script();
 
-        verify_script_input(&prev_script_pubkey, 0, Amount::from_sat_u32(0), &tx, VERIFY_NONE).unwrap();
+        verify_script_input(&prev_script_pubkey, 0, Amount::from_sat_u32(0), &tx, VERIFY_NONE)
+            .unwrap();
     }
 
     #[test]
@@ -1663,5 +1874,91 @@ mod tests {
         // The library has no signing-provider abstraction, so the node toolpath vector reduces to
         // the same BASE-sighash legacy-signature behavior exercised by the exact WIF test above.
         key_io_txcreatesignv1_p2pkh_legacy_wif_verifies();
+    }
+
+    #[test]
+    fn pq_seed_keygen_matches_node_for_all_schemes() {
+        for (scheme, tag) in [
+            (PqScheme::Falcon512, 0x11),
+            (PqScheme::Falcon1024, 0x22),
+            (PqScheme::MlDsa44, 0x33),
+            (PqScheme::MlDsa65, 0x44),
+            (PqScheme::MlDsa87, 0x55),
+        ] {
+            let seed = tagged_seed(tag, scheme.deterministic_seed_len());
+            let rust_pair = scheme.generate_keypair_from_seed(&seed).unwrap();
+            let node_pair = node_keypair_from_seed(scheme, &seed);
+
+            assert_eq!(rust_pair.0, node_pair.0, "{scheme:?} public key mismatch");
+            assert_eq!(rust_pair.1, node_pair.1, "{scheme:?} secret key mismatch");
+        }
+    }
+
+    #[test]
+    fn pq_public_key_derivation_matches_node_for_all_schemes() {
+        for (scheme, tag) in [
+            (PqScheme::Falcon512, 0x61),
+            (PqScheme::Falcon1024, 0x62),
+            (PqScheme::MlDsa44, 0x63),
+            (PqScheme::MlDsa65, 0x64),
+            (PqScheme::MlDsa87, 0x65),
+        ] {
+            let (_pk, sk) = deterministic_keypair(scheme, tag);
+            let rust_pk = PqPublicKey::from_secret_key(&sk).unwrap();
+            let node_pk = node_public_key_from_secret(scheme, &sk);
+            assert_eq!(rust_pk, node_pk, "{scheme:?} derived public key mismatch");
+        }
+    }
+
+    #[test]
+    fn pq_signatures_cross_verify_with_node_for_msg32_and_msg64() {
+        let msg32 = [0xA5u8; 32];
+        let msg64 = [0x5Au8; 64];
+
+        for (scheme, tag) in [
+            (PqScheme::Falcon512, 0x71),
+            (PqScheme::Falcon1024, 0x72),
+            (PqScheme::MlDsa44, 0x73),
+            (PqScheme::MlDsa65, 0x74),
+            (PqScheme::MlDsa87, 0x75),
+        ] {
+            let (pk, sk) = deterministic_keypair(scheme, tag);
+
+            let rust_sig32 = PqSignature::sign_msg32(&msg32, &sk).unwrap();
+            assert!(node_verify_message(scheme, &msg32, &rust_sig32, &pk, false));
+
+            let rust_sig64 = PqSignature::sign_msg64(&msg64, &sk).unwrap();
+            assert!(node_verify_message(scheme, &msg64, &rust_sig64, &pk, false));
+
+            let node_sig32 = node_sign_message(scheme, &msg32, &sk, false);
+            node_sig32.verify_msg32(&msg32, &pk).unwrap();
+
+            let node_sig64 = node_sign_message(scheme, &msg64, &sk, false);
+            node_sig64.verify_msg64(&msg64, &pk).unwrap();
+        }
+    }
+
+    #[test]
+    fn pqhd_keygen_from_stream_key_matches_node_for_all_schemes() {
+        let master_seed = [0x42u8; 32];
+        let master = pqhd::make_master_node(&master_seed);
+        let vectors = [
+            (PqScheme::Falcon512, pqhd::make_v1_leaf_path(PqScheme::Falcon512, 0, 0, 7)),
+            (PqScheme::Falcon1024, pqhd::make_v1_leaf_path(PqScheme::Falcon1024, 0, 1, 9)),
+            (PqScheme::MlDsa44, pqhd::make_v1_leaf_path(PqScheme::MlDsa44, 1, 0, 3)),
+            (PqScheme::MlDsa65, pqhd::make_v1_leaf_path(PqScheme::MlDsa65, 2, 1, 5)),
+            (PqScheme::MlDsa87, pqhd::make_v1_leaf_path(PqScheme::MlDsa87, 3, 0, 11)),
+        ];
+
+        for (scheme, path) in vectors {
+            let leaf = pqhd::derive_path(&path, &master).unwrap();
+            let material = pqhd::derive_leaf_material_v1(&leaf.node_secret, &path).unwrap();
+            let rust_pair = pqhd::derive_keypair_v1(&material).unwrap();
+            let node_pair = node_keypair_from_stream_key(scheme, material.stream_key.as_slice());
+
+            assert_eq!(material.scheme, scheme);
+            assert_eq!(rust_pair.0, node_pair.0, "{scheme:?} PQHD public key mismatch");
+            assert_eq!(rust_pair.1, node_pair.1, "{scheme:?} PQHD secret key mismatch");
+        }
     }
 }

@@ -9,6 +9,7 @@ use bitcoin::MlKem512SharedSecret;
 use chacha20_poly1305::chacha20::{ChaCha20, Key, Nonce};
 use chacha20_poly1305::ChaCha20Poly1305;
 use hashes::{hkdf::Hkdf, sha256};
+use zeroize::Zeroize;
 
 use crate::Magic;
 
@@ -58,8 +59,24 @@ impl FsChaCha20 {
             self.chacha20.apply_keystream(&mut new_key);
             self.rekey_counter += 1;
             self.chacha20 = ChaCha20::new(Key::new(new_key), nonce96(0, self.rekey_counter), 0);
+            new_key.zeroize();
             self.chunk_counter = 0;
         }
+    }
+}
+
+impl Drop for FsChaCha20 {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for FsChaCha20 {
+    fn zeroize(&mut self) {
+        self.chacha20 = ChaCha20::new(Key::new([0_u8; 32]), nonce96(0, 0), 0);
+        self.rekey_interval = 0;
+        self.chunk_counter = 0;
+        self.rekey_counter = 0;
     }
 }
 
@@ -91,6 +108,7 @@ impl FsChaCha20Poly1305 {
             let mut one_block = [0_u8; 64];
             self.keystream(nonce96(u32::MAX, self.rekey_counter), &mut one_block);
             self.key.copy_from_slice(&one_block[..32]);
+            one_block.zeroize();
             self.packet_counter = 0;
             self.rekey_counter += 1;
         }
@@ -147,6 +165,21 @@ impl FsChaCha20Poly1305 {
         plain1.copy_from_slice(&payload[..plain1.len()]);
         plain2.copy_from_slice(&payload[plain1.len()..]);
         Ok(())
+    }
+}
+
+impl Drop for FsChaCha20Poly1305 {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for FsChaCha20Poly1305 {
+    fn zeroize(&mut self) {
+        self.key.zeroize();
+        self.rekey_interval = 0;
+        self.packet_counter = 0;
+        self.rekey_counter = 0;
     }
 }
 
@@ -239,15 +272,17 @@ impl Bip324PqCipher {
         let hkdf = Hkdf::<sha256::HashEngine>::new(&salt, shared_secret);
         let side = initiator != self_decrypt;
 
-        let initiator_l = hkdf_expand_32(&hkdf, b"initiator_L");
-        let initiator_p = hkdf_expand_32(&hkdf, b"initiator_P");
-        let responder_l = hkdf_expand_32(&hkdf, b"responder_L");
-        let responder_p = hkdf_expand_32(&hkdf, b"responder_P");
-        let garbage = hkdf_expand_32(&hkdf, b"garbage_terminators");
-        let session_id = hkdf_expand_32(&hkdf, b"session_id");
+        let mut initiator_l = hkdf_expand_32(&hkdf, b"initiator_L");
+        let mut initiator_p = hkdf_expand_32(&hkdf, b"initiator_P");
+        let mut responder_l = hkdf_expand_32(&hkdf, b"responder_L");
+        let mut responder_p = hkdf_expand_32(&hkdf, b"responder_P");
+        let mut garbage = hkdf_expand_32(&hkdf, b"garbage_terminators");
+        let mut session_id = hkdf_expand_32(&hkdf, b"session_id");
 
-        let (send_l, recv_l) = if side { (initiator_l, responder_l) } else { (responder_l, initiator_l) };
-        let (send_p, recv_p) = if side { (initiator_p, responder_p) } else { (responder_p, initiator_p) };
+        let mut send_l = if side { initiator_l } else { responder_l };
+        let mut recv_l = if side { responder_l } else { initiator_l };
+        let mut send_p = if side { initiator_p } else { responder_p };
+        let mut recv_p = if side { responder_p } else { initiator_p };
 
         let mut send_garbage_terminator = [0_u8; Self::GARBAGE_TERMINATOR_LEN];
         let mut recv_garbage_terminator = [0_u8; Self::GARBAGE_TERMINATOR_LEN];
@@ -263,7 +298,7 @@ impl Bip324PqCipher {
             );
         }
 
-        Self {
+        let cipher = Self {
             send_l_cipher: FsChaCha20::new(send_l, Self::REKEY_INTERVAL),
             recv_l_cipher: FsChaCha20::new(recv_l, Self::REKEY_INTERVAL),
             send_p_cipher: FsChaCha20Poly1305::new(send_p, Self::REKEY_INTERVAL),
@@ -271,7 +306,20 @@ impl Bip324PqCipher {
             session_id,
             send_garbage_terminator,
             recv_garbage_terminator,
-        }
+        };
+
+        initiator_l.zeroize();
+        initiator_p.zeroize();
+        responder_l.zeroize();
+        responder_p.zeroize();
+        garbage.zeroize();
+        session_id.zeroize();
+        send_l.zeroize();
+        recv_l.zeroize();
+        send_p.zeroize();
+        recv_p.zeroize();
+
+        cipher
     }
 
     /// Encrypts one packet into `output`.
@@ -325,7 +373,9 @@ impl Bip324PqCipher {
         }
         let mut buf = [0_u8; Self::LENGTH_LEN];
         self.recv_l_cipher.crypt(input, &mut buf);
-        Ok(u32::from(buf[0]) | (u32::from(buf[1]) << 8) | (u32::from(buf[2]) << 16))
+        let len = u32::from(buf[0]) | (u32::from(buf[1]) << 8) | (u32::from(buf[2]) << 16);
+        buf.zeroize();
+        Ok(len)
     }
 
     /// Decrypts one packet body and returns whether the ignore bit was set.
@@ -347,7 +397,9 @@ impl Bip324PqCipher {
 
         let mut header = [0_u8; Self::HEADER_LEN];
         self.recv_p_cipher.decrypt(input, aad, &mut header, contents)?;
-        Ok((header[0] & Self::IGNORE_BIT) == Self::IGNORE_BIT)
+        let ignore = (header[0] & Self::IGNORE_BIT) == Self::IGNORE_BIT;
+        header.zeroize();
+        Ok(ignore)
     }
 
     /// Returns the transport session identifier.
@@ -364,9 +416,28 @@ impl Bip324PqCipher {
     }
 }
 
+impl Drop for Bip324PqCipher {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for Bip324PqCipher {
+    fn zeroize(&mut self) {
+        self.send_l_cipher.zeroize();
+        self.recv_l_cipher.zeroize();
+        self.send_p_cipher.zeroize();
+        self.recv_p_cipher.zeroize();
+        self.session_id.zeroize();
+        self.send_garbage_terminator.zeroize();
+        self.recv_garbage_terminator.zeroize();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::vec;
+    use core::mem::needs_drop;
 
     use super::*;
 
@@ -553,5 +624,12 @@ mod tests {
             .decrypt(&ciphertext[Bip324PqCipher::LENGTH_LEN..], &aad, &mut decoded)
             .expect_err("corruption must fail");
         assert_eq!(err, Bip324PqError::AuthenticationFailed);
+    }
+
+    #[test]
+    fn cipher_types_require_drop_for_zeroization() {
+        assert!(needs_drop::<FsChaCha20>());
+        assert!(needs_drop::<FsChaCha20Poly1305>());
+        assert!(needs_drop::<Bip324PqCipher>());
     }
 }

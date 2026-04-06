@@ -4,6 +4,7 @@
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <logging.h>
+#include <pq/pq_api.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
@@ -255,6 +256,170 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_transaction(const char* tx_hex)
         return CheckTransaction(CTransaction(tx), state) ? 1 : 0;
     } catch (const std::exception&) {
         return 0;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pq_keygen_from_seed(
+    uint8_t scheme_prefix,
+    const uint8_t* seed,
+    size_t seed_len,
+    uint8_t* pk_out,
+    size_t pk_len,
+    uint8_t* sk_out,
+    size_t sk_len)
+{
+    try {
+        const pq::SchemeInfo* info = pq::SchemeFromPrefix(scheme_prefix);
+        if (info == nullptr || seed == nullptr || pk_out == nullptr || sk_out == nullptr) return -1;
+        if (pk_len != info->pubkey_bytes || sk_len != info->seckey_bytes) return 0;
+
+        int rc = -1;
+        switch (info->id) {
+        case pq::SchemeId::FALCON_512:
+            rc = PQCLEAN_FALCON512_CLEAN_crypto_sign_keypair_deterministic(pk_out, sk_out, seed, seed_len);
+            break;
+        case pq::SchemeId::FALCON_1024:
+            rc = PQCLEAN_FALCON1024_CLEAN_crypto_sign_keypair_deterministic(pk_out, sk_out, seed, seed_len);
+            break;
+        case pq::SchemeId::MLDSA_44:
+            rc = PQCLEAN_MLDSA44_CLEAN_crypto_sign_keypair_deterministic(pk_out, sk_out, seed, seed_len);
+            break;
+        case pq::SchemeId::MLDSA_65:
+            rc = PQCLEAN_MLDSA65_CLEAN_crypto_sign_keypair_deterministic(pk_out, sk_out, seed, seed_len);
+            break;
+        case pq::SchemeId::MLDSA_87:
+            rc = PQCLEAN_MLDSA87_CLEAN_crypto_sign_keypair_deterministic(pk_out, sk_out, seed, seed_len);
+            break;
+        default:
+            return 0;
+        }
+
+        return rc == 0 ? 1 : 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pqhd_keygen_from_stream_key(
+    uint8_t scheme_prefix,
+    const uint8_t* stream_key,
+    size_t stream_key_len,
+    uint8_t* pk_out,
+    size_t pk_len,
+    uint8_t* sk_out,
+    size_t sk_len)
+{
+    try {
+        const pq::SchemeInfo* info = pq::SchemeFromPrefix(scheme_prefix);
+        if (info == nullptr || stream_key == nullptr || pk_out == nullptr || sk_out == nullptr) return -1;
+        if (pk_len != info->pubkey_bytes || sk_len != info->seckey_bytes) return 0;
+
+        std::vector<uint8_t> pk;
+        pq::SecureKeyBytes sk;
+        const bool ok = pq::KeyGenFromSeedBytes(
+            /*pqhd_version=*/1,
+            info->id,
+            std::span<const uint8_t>(stream_key, stream_key_len),
+            pk,
+            sk);
+        if (!ok || pk.size() != pk_len || sk.size() != sk_len) return 0;
+
+        std::copy(pk.begin(), pk.end(), pk_out);
+        std::copy(sk.begin(), sk.end(), sk_out);
+        return 1;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pq_compute_public_key(
+    uint8_t scheme_prefix,
+    const uint8_t* sk,
+    size_t sk_len,
+    uint8_t* pk_out,
+    size_t pk_len)
+{
+    try {
+        const pq::SchemeInfo* info = pq::SchemeFromPrefix(scheme_prefix);
+        if (info == nullptr || sk == nullptr || pk_out == nullptr) return -1;
+        const bool ok = pq::ComputePublicKeyFromSecret(
+            *info,
+            std::span<const unsigned char>(sk, sk_len),
+            std::span<unsigned char>(pk_out, pk_len));
+        return ok ? 1 : 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pq_sign_message(
+    uint8_t scheme_prefix,
+    const uint8_t* msg,
+    size_t msg_len,
+    const uint8_t* sk,
+    size_t sk_len,
+    int legacy_mode,
+    uint8_t* sig_out,
+    size_t* sig_len)
+{
+    if (msg == nullptr || sk == nullptr || sig_len == nullptr) return -1;
+    try {
+        const pq::SchemeInfo* info = pq::SchemeFromPrefix(scheme_prefix);
+        if (info == nullptr) return -1;
+
+        std::vector<unsigned char> sig;
+        const bool ok = msg_len == 32
+            ? pq::Sign(*info, std::span<const unsigned char>(msg, msg_len), std::span<const unsigned char>(sk, sk_len), sig, legacy_mode != 0)
+            : msg_len == 64
+                ? pq::Sign64(*info, std::span<const unsigned char>(msg, msg_len), std::span<const unsigned char>(sk, sk_len), sig, legacy_mode != 0)
+                : false;
+        if (!ok) return 0;
+
+        if (sig_out == nullptr || *sig_len < sig.size()) {
+            *sig_len = sig.size();
+            return 0;
+        }
+        std::copy(sig.begin(), sig.end(), sig_out);
+        *sig_len = sig.size();
+        return 1;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pq_verify_message(
+    uint8_t scheme_prefix,
+    const uint8_t* msg,
+    size_t msg_len,
+    const uint8_t* sig,
+    size_t sig_len,
+    const uint8_t* pk,
+    size_t pk_len,
+    int legacy_mode)
+{
+    if (msg == nullptr || sig == nullptr || pk == nullptr) return -1;
+    try {
+        const pq::SchemeInfo* info = pq::SchemeFromPrefix(scheme_prefix);
+        if (info == nullptr) return -1;
+
+        const bool ok = msg_len == 32
+            ? pq::Verify(
+                *info,
+                std::span<const unsigned char>(msg, msg_len),
+                std::span<const unsigned char>(sig, sig_len),
+                std::span<const unsigned char>(pk, pk_len),
+                legacy_mode != 0)
+            : msg_len == 64
+                ? pq::Verify64(
+                    *info,
+                    std::span<const unsigned char>(msg, msg_len),
+                    std::span<const unsigned char>(sig, sig_len),
+                    std::span<const unsigned char>(pk, pk_len),
+                    legacy_mode != 0)
+                : false;
+        return ok ? 1 : 0;
+    } catch (const std::exception&) {
+        return -1;
     }
 }
 

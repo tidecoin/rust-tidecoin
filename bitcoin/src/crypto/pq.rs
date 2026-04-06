@@ -11,19 +11,14 @@ use core::fmt;
 use falcon::prelude::FnDsaKeyPair as FalconKeyPair;
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
 use fn_dsa::{
-    signature_size,
-    FN_DSA_LOGN_512, FN_DSA_LOGN_1024,
-    SigningKey, SigningKeyStandard,
-    VerifyingKey, VerifyingKeyStandard,
-    DOMAIN_NONE, HASH_ID_ORIGINAL_FALCON,
+    signature_size, SigningKey, SigningKeyStandard, VerifyingKey, VerifyingKeyStandard,
+    DOMAIN_NONE, FN_DSA_LOGN_1024, FN_DSA_LOGN_512, HASH_ID_ORIGINAL_FALCON,
 };
 use hashes::hash160;
-use ml_kem::{
-    KemCore, EncodedSizeUser, EncapsulateDeterministic, B32,
-    MlKem512,
-};
 use ml_kem::kem::{Decapsulate, Encapsulate};
+use ml_kem::{EncapsulateDeterministic, EncodedSizeUser, KemCore, MlKem512, B32};
 use rand_core::RngCore;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::network::Params;
 use crate::prelude::Vec;
@@ -58,7 +53,9 @@ impl PqScheme {
     }
 
     /// Returns the on-wire prefix byte for this scheme.
-    pub fn prefix(self) -> u8 { self as u8 }
+    pub fn prefix(self) -> u8 {
+        self as u8
+    }
 
     /// Raw public key length in bytes (without the scheme prefix).
     pub fn pubkey_len(self) -> usize {
@@ -94,10 +91,14 @@ impl PqScheme {
     }
 
     /// Public key length including the one-byte scheme prefix.
-    pub fn prefixed_pubkey_len(self) -> usize { self.pubkey_len() + 1 }
+    pub fn prefixed_pubkey_len(self) -> usize {
+        self.pubkey_len() + 1
+    }
 
     /// Secret key length including the one-byte scheme prefix.
-    pub fn prefixed_seckey_len(self) -> usize { self.seckey_len() + 1 }
+    pub fn prefixed_seckey_len(self) -> usize {
+        self.seckey_len() + 1
+    }
 
     /// Deterministic keygen seed length used by Tidecoin PQHD v1.
     pub fn deterministic_seed_len(self) -> usize {
@@ -122,34 +123,60 @@ impl PqScheme {
     pub fn generate_keypair(self) -> (PqPublicKey, PqSecretKey) {
         match self {
             Self::Falcon512 => {
-                let mut seed = [0u8; 48];
-                rand_core::OsRng.fill_bytes(&mut seed);
-                let keypair = FalconKeyPair::generate_deterministic(&seed, FN_DSA_LOGN_512).expect("Falcon-512 keygen");
-                (PqPublicKey::from_backend(self, keypair.public_key()), PqSecretKey::from_backend(self, keypair.private_key()))
+                let mut seed = Zeroizing::new([0u8; 48]);
+                rand_core::OsRng.fill_bytes(seed.as_mut());
+                let keypair = FalconKeyPair::generate_deterministic(seed.as_ref(), FN_DSA_LOGN_512)
+                    .expect("Falcon-512 keygen");
+                (
+                    PqPublicKey::from_backend(self, keypair.public_key()),
+                    PqSecretKey::from_backend(self, keypair.private_key()),
+                )
             }
             Self::Falcon1024 => {
-                let mut seed = [0u8; 48];
-                rand_core::OsRng.fill_bytes(&mut seed);
-                let keypair = FalconKeyPair::generate_deterministic(&seed, FN_DSA_LOGN_1024).expect("Falcon-1024 keygen");
-                (PqPublicKey::from_backend(self, keypair.public_key()), PqSecretKey::from_backend(self, keypair.private_key()))
+                let mut seed = Zeroizing::new([0u8; 48]);
+                rand_core::OsRng.fill_bytes(seed.as_mut());
+                let keypair = FalconKeyPair::generate_deterministic(seed.as_ref(), FN_DSA_LOGN_1024)
+                    .expect("Falcon-1024 keygen");
+                (
+                    PqPublicKey::from_backend(self, keypair.public_key()),
+                    PqSecretKey::from_backend(self, keypair.private_key()),
+                )
             }
             Self::MlDsa44 => {
-                let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(&mut rand_core::OsRng).expect("ML-DSA-44 keygen");
-                (PqPublicKey::from_backend(self, &pk.into_bytes()), PqSecretKey::from_backend(self, &sk.into_bytes()))
+                let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(&mut rand_core::OsRng)
+                    .expect("ML-DSA-44 keygen");
+                let sk_bytes = Zeroizing::new(sk.into_bytes());
+                (
+                    PqPublicKey::from_backend(self, &pk.into_bytes()),
+                    PqSecretKey::from_backend(self, sk_bytes.as_ref()),
+                )
             }
             Self::MlDsa65 => {
-                let (pk, sk) = fips204::ml_dsa_65::try_keygen_with_rng(&mut rand_core::OsRng).expect("ML-DSA-65 keygen");
-                (PqPublicKey::from_backend(self, &pk.into_bytes()), PqSecretKey::from_backend(self, &sk.into_bytes()))
+                let (pk, sk) = fips204::ml_dsa_65::try_keygen_with_rng(&mut rand_core::OsRng)
+                    .expect("ML-DSA-65 keygen");
+                let sk_bytes = Zeroizing::new(sk.into_bytes());
+                (
+                    PqPublicKey::from_backend(self, &pk.into_bytes()),
+                    PqSecretKey::from_backend(self, sk_bytes.as_ref()),
+                )
             }
             Self::MlDsa87 => {
-                let (pk, sk) = fips204::ml_dsa_87::try_keygen_with_rng(&mut rand_core::OsRng).expect("ML-DSA-87 keygen");
-                (PqPublicKey::from_backend(self, &pk.into_bytes()), PqSecretKey::from_backend(self, &sk.into_bytes()))
+                let (pk, sk) = fips204::ml_dsa_87::try_keygen_with_rng(&mut rand_core::OsRng)
+                    .expect("ML-DSA-87 keygen");
+                let sk_bytes = Zeroizing::new(sk.into_bytes());
+                (
+                    PqPublicKey::from_backend(self, &pk.into_bytes()),
+                    PqSecretKey::from_backend(self, sk_bytes.as_ref()),
+                )
             }
         }
     }
 
     /// Generates a deterministic PQ keypair from a scheme-specific seed.
-    pub fn generate_keypair_from_seed(self, seed: &[u8]) -> Result<(PqPublicKey, PqSecretKey), PqError> {
+    pub fn generate_keypair_from_seed(
+        self,
+        seed: &[u8],
+    ) -> Result<(PqPublicKey, PqSecretKey), PqError> {
         let expected = self.deterministic_seed_len();
         if seed.len() != expected {
             return Err(PqError::InvalidSeedLength { expected, got: seed.len() });
@@ -161,26 +188,39 @@ impl PqScheme {
                     Self::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let keypair = FalconKeyPair::generate_deterministic(seed, logn).map_err(|_| PqError::BackendFailure)?;
-                Ok((PqPublicKey::from_backend(self, keypair.public_key()), PqSecretKey::from_backend(self, keypair.private_key())))
+                let keypair = FalconKeyPair::generate_deterministic(seed, logn)
+                    .map_err(|_| PqError::BackendFailure)?;
+                Ok((
+                    PqPublicKey::from_backend(self, keypair.public_key()),
+                    PqSecretKey::from_backend(self, keypair.private_key()),
+                ))
             }
             Self::MlDsa44 => {
                 let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
                 let (pk, sk) = fips204::ml_dsa_44::KG::keygen_from_seed(xi);
-                Ok((PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
-                    PqSecretKey { scheme: self, data: sk.into_bytes().to_vec() }))
+                let sk_bytes = Zeroizing::new(sk.into_bytes());
+                Ok((
+                    PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
+                    PqSecretKey { scheme: self, data: sk_bytes[..].to_vec() },
+                ))
             }
             Self::MlDsa65 => {
                 let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
                 let (pk, sk) = fips204::ml_dsa_65::KG::keygen_from_seed(xi);
-                Ok((PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
-                    PqSecretKey { scheme: self, data: sk.into_bytes().to_vec() }))
+                let sk_bytes = Zeroizing::new(sk.into_bytes());
+                Ok((
+                    PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
+                    PqSecretKey { scheme: self, data: sk_bytes[..].to_vec() },
+                ))
             }
             Self::MlDsa87 => {
                 let xi: &[u8; 32] = seed.try_into().map_err(|_| PqError::BackendFailure)?;
                 let (pk, sk) = fips204::ml_dsa_87::KG::keygen_from_seed(xi);
-                Ok((PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
-                    PqSecretKey { scheme: self, data: sk.into_bytes().to_vec() }))
+                let sk_bytes = Zeroizing::new(sk.into_bytes());
+                Ok((
+                    PqPublicKey { scheme: self, data: pk.into_bytes().to_vec() },
+                    PqSecretKey { scheme: self, data: sk_bytes[..].to_vec() },
+                ))
             }
         }
     }
@@ -194,36 +234,48 @@ pub struct PqPublicKey {
 }
 
 impl PqPublicKey {
-    fn from_backend(scheme: PqScheme, data: &[u8]) -> Self { Self { scheme, data: data.to_vec() } }
+    fn from_backend(scheme: PqScheme, data: &[u8]) -> Self {
+        Self { scheme, data: data.to_vec() }
+    }
 
     /// Derives the public key matching the given secret key.
     pub fn from_secret_key(sk: &PqSecretKey) -> Result<Self, PqError> {
         let scheme = sk.scheme();
         let data = match scheme {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                FalconKeyPair::public_key_from_private(sk.as_bytes()).map_err(|_| PqError::BackendFailure)?
+                FalconKeyPair::public_key_from_private(sk.as_bytes())
+                    .map_err(|_| PqError::BackendFailure)?
             }
             _ => {
                 let result: Result<Vec<u8>, PqError> = match scheme {
                     PqScheme::MlDsa44 => {
-                        let sk_arr: [u8; 2560] = sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                        let sk_obj = fips204::ml_dsa_44::PrivateKey::try_from_bytes(sk_arr).map_err(|_| PqError::BackendFailure)?;
+                        let sk_arr = Zeroizing::new(
+                            sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
+                        );
+                        let sk_obj = fips204::ml_dsa_44::PrivateKey::try_from_bytes(*sk_arr)
+                            .map_err(|_| PqError::BackendFailure)?;
                         Ok(sk_obj.get_public_key().into_bytes().to_vec())
                     }
                     PqScheme::MlDsa65 => {
-                        let sk_arr: [u8; 4032] = sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                        let sk_obj = fips204::ml_dsa_65::PrivateKey::try_from_bytes(sk_arr).map_err(|_| PqError::BackendFailure)?;
+                        let sk_arr = Zeroizing::new(
+                            sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
+                        );
+                        let sk_obj = fips204::ml_dsa_65::PrivateKey::try_from_bytes(*sk_arr)
+                            .map_err(|_| PqError::BackendFailure)?;
                         Ok(sk_obj.get_public_key().into_bytes().to_vec())
                     }
                     PqScheme::MlDsa87 => {
-                        let sk_arr: [u8; 4896] = sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                        let sk_obj = fips204::ml_dsa_87::PrivateKey::try_from_bytes(sk_arr).map_err(|_| PqError::BackendFailure)?;
+                        let sk_arr = Zeroizing::new(
+                            sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
+                        );
+                        let sk_obj = fips204::ml_dsa_87::PrivateKey::try_from_bytes(*sk_arr)
+                            .map_err(|_| PqError::BackendFailure)?;
                         Ok(sk_obj.get_public_key().into_bytes().to_vec())
                     }
                     _ => unreachable!(),
                 };
                 result?
-            },
+            }
         };
 
         Ok(Self { scheme, data })
@@ -249,10 +301,14 @@ impl PqPublicKey {
     }
 
     /// Returns the scheme this key belongs to.
-    pub fn scheme(&self) -> PqScheme { self.scheme }
+    pub fn scheme(&self) -> PqScheme {
+        self.scheme
+    }
 
     /// Raw public key bytes without the scheme prefix.
-    pub fn as_bytes(&self) -> &[u8] { &self.data }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 
     /// HASH160 of the prefixed public key, suitable for P2PKH / P2WPKH addresses.
     pub fn key_id(&self) -> hash160::Hash {
@@ -267,8 +323,22 @@ pub struct PqSecretKey {
     data: Vec<u8>,
 }
 
+impl Drop for PqSecretKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for PqSecretKey {
+    fn zeroize(&mut self) {
+        self.data.zeroize();
+    }
+}
+
 impl PqSecretKey {
-    fn from_backend(scheme: PqScheme, data: &[u8]) -> Self { Self { scheme, data: data.to_vec() } }
+    fn from_backend(scheme: PqScheme, data: &[u8]) -> Self {
+        Self { scheme, data: data.to_vec() }
+    }
 
     /// Creates a secret key from raw bytes for the given scheme.
     pub fn from_slice(scheme: PqScheme, data: &[u8]) -> Result<Self, PqError> {
@@ -325,18 +395,22 @@ impl PqSecretKey {
     }
 
     /// Serializes as `[scheme_prefix_byte][raw_seckey_bytes]`.
-    pub fn to_prefixed_bytes(&self) -> Vec<u8> {
+    pub fn to_prefixed_bytes(&self) -> Zeroizing<Vec<u8>> {
         let mut buf = Vec::with_capacity(1 + self.data.len());
         buf.push(self.scheme.prefix());
         buf.extend_from_slice(&self.data);
-        buf
+        Zeroizing::new(buf)
     }
 
     /// Returns the scheme this key belongs to.
-    pub fn scheme(&self) -> PqScheme { self.scheme }
+    pub fn scheme(&self) -> PqScheme {
+        self.scheme
+    }
 
     /// Raw secret key bytes.
-    pub fn as_bytes(&self) -> &[u8] { &self.data }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 /// A raw post-quantum signature (without the sighash type byte).
@@ -347,16 +421,24 @@ pub struct PqSignature {
 
 impl PqSignature {
     /// Wraps raw signature bytes.
-    pub fn from_slice(data: &[u8]) -> Self { Self { data: data.to_vec() } }
+    pub fn from_slice(data: &[u8]) -> Self {
+        Self { data: data.to_vec() }
+    }
 
     /// Raw signature bytes.
-    pub fn as_bytes(&self) -> &[u8] { &self.data }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 
     /// Length of the raw signature in bytes.
-    pub fn len(&self) -> usize { self.data.len() }
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 
     /// Returns whether the signature is empty.
-    pub fn is_empty(&self) -> bool { self.data.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 
     /// Signs a 32-byte message digest with the given secret key.
     pub fn sign_msg32(msg: &[u8; 32], sk: &PqSecretKey) -> Result<Self, PqError> {
@@ -423,28 +505,49 @@ impl PqSignature {
                     PqScheme::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let mut signing_key = SigningKeyStandard::decode(sk.as_bytes())
-                    .ok_or(PqError::BackendFailure)?;
+                let mut signing_key =
+                    SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
                 let mut sig = vec![0u8; signature_size(logn)];
-                signing_key.sign(&mut rand_core::OsRng, &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg, &mut sig);
+                signing_key.sign(
+                    &mut rand_core::OsRng,
+                    &DOMAIN_NONE,
+                    &HASH_ID_ORIGINAL_FALCON,
+                    msg,
+                    &mut sig,
+                );
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa44 => {
-                let sk_arr: [u8; 2560] = sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let sk_obj = fips204::ml_dsa_44::PrivateKey::try_from_bytes(sk_arr).map_err(|_| PqError::BackendFailure)?;
-                let sig = sk_obj.try_sign_with_rng(&mut rand_core::OsRng, msg, &[]).map_err(|_| PqError::BackendFailure)?;
+                let sk_arr = Zeroizing::new(
+                    sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
+                );
+                let sk_obj = fips204::ml_dsa_44::PrivateKey::try_from_bytes(*sk_arr)
+                    .map_err(|_| PqError::BackendFailure)?;
+                let sig = sk_obj
+                    .try_sign_with_rng(&mut rand_core::OsRng, msg, &[])
+                    .map_err(|_| PqError::BackendFailure)?;
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa65 => {
-                let sk_arr: [u8; 4032] = sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let sk_obj = fips204::ml_dsa_65::PrivateKey::try_from_bytes(sk_arr).map_err(|_| PqError::BackendFailure)?;
-                let sig = sk_obj.try_sign_with_rng(&mut rand_core::OsRng, msg, &[]).map_err(|_| PqError::BackendFailure)?;
+                let sk_arr = Zeroizing::new(
+                    sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
+                );
+                let sk_obj = fips204::ml_dsa_65::PrivateKey::try_from_bytes(*sk_arr)
+                    .map_err(|_| PqError::BackendFailure)?;
+                let sig = sk_obj
+                    .try_sign_with_rng(&mut rand_core::OsRng, msg, &[])
+                    .map_err(|_| PqError::BackendFailure)?;
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa87 => {
-                let sk_arr: [u8; 4896] = sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let sk_obj = fips204::ml_dsa_87::PrivateKey::try_from_bytes(sk_arr).map_err(|_| PqError::BackendFailure)?;
-                let sig = sk_obj.try_sign_with_rng(&mut rand_core::OsRng, msg, &[]).map_err(|_| PqError::BackendFailure)?;
+                let sk_arr = Zeroizing::new(
+                    sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
+                );
+                let sk_obj = fips204::ml_dsa_87::PrivateKey::try_from_bytes(*sk_arr)
+                    .map_err(|_| PqError::BackendFailure)?;
+                let sig = sk_obj
+                    .try_sign_with_rng(&mut rand_core::OsRng, msg, &[])
+                    .map_err(|_| PqError::BackendFailure)?;
                 Self::from_slice(&sig)
             }
         })
@@ -454,10 +557,16 @@ impl PqSignature {
         if sk.scheme() != PqScheme::Falcon512 {
             return Self::sign_message(msg, sk);
         }
-        let mut signing_key = SigningKeyStandard::decode(sk.as_bytes())
-            .ok_or(PqError::BackendFailure)?;
+        let mut signing_key =
+            SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
         let mut sig = vec![0u8; signature_size(FN_DSA_LOGN_512)];
-        signing_key.sign(&mut rand_core::OsRng, &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg, &mut sig);
+        signing_key.sign(
+            &mut rand_core::OsRng,
+            &DOMAIN_NONE,
+            &HASH_ID_ORIGINAL_FALCON,
+            msg,
+            &mut sig,
+        );
         let trimmed_len = sig.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
         let min_len = 42;
         let final_len = trimmed_len.max(min_len);
@@ -468,29 +577,59 @@ impl PqSignature {
     fn verify_message(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
         match pk.scheme() {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                let vk = VerifyingKeyStandard::decode(pk.as_bytes())
-                    .ok_or(PqError::BackendFailure)?;
+                let vk =
+                    VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
                 let ok = vk.verify(self.as_bytes(), &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg)
-                    || vk.verify_varlen(self.as_bytes(), &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg);
-                if ok { Ok(()) } else { Err(PqError::VerificationFailed) }
+                    || vk.verify_varlen(
+                        self.as_bytes(),
+                        &DOMAIN_NONE,
+                        &HASH_ID_ORIGINAL_FALCON,
+                        msg,
+                    );
+                if ok {
+                    Ok(())
+                } else {
+                    Err(PqError::VerificationFailed)
+                }
             }
             PqScheme::MlDsa44 => {
-                let pk_arr: [u8; 1312] = pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let pk_obj = fips204::ml_dsa_44::PublicKey::try_from_bytes(pk_arr).map_err(|_| PqError::BackendFailure)?;
-                let sig_arr: [u8; 2420] = self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
-                if pk_obj.verify(msg, &sig_arr, &[]) { Ok(()) } else { Err(PqError::VerificationFailed) }
+                let pk_arr: [u8; 1312] =
+                    pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
+                let pk_obj = fips204::ml_dsa_44::PublicKey::try_from_bytes(pk_arr)
+                    .map_err(|_| PqError::BackendFailure)?;
+                let sig_arr: [u8; 2420] =
+                    self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
+                if pk_obj.verify(msg, &sig_arr, &[]) {
+                    Ok(())
+                } else {
+                    Err(PqError::VerificationFailed)
+                }
             }
             PqScheme::MlDsa65 => {
-                let pk_arr: [u8; 1952] = pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let pk_obj = fips204::ml_dsa_65::PublicKey::try_from_bytes(pk_arr).map_err(|_| PqError::BackendFailure)?;
-                let sig_arr: [u8; 3309] = self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
-                if pk_obj.verify(msg, &sig_arr, &[]) { Ok(()) } else { Err(PqError::VerificationFailed) }
+                let pk_arr: [u8; 1952] =
+                    pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
+                let pk_obj = fips204::ml_dsa_65::PublicKey::try_from_bytes(pk_arr)
+                    .map_err(|_| PqError::BackendFailure)?;
+                let sig_arr: [u8; 3309] =
+                    self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
+                if pk_obj.verify(msg, &sig_arr, &[]) {
+                    Ok(())
+                } else {
+                    Err(PqError::VerificationFailed)
+                }
             }
             PqScheme::MlDsa87 => {
-                let pk_arr: [u8; 2592] = pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let pk_obj = fips204::ml_dsa_87::PublicKey::try_from_bytes(pk_arr).map_err(|_| PqError::BackendFailure)?;
-                let sig_arr: [u8; 4627] = self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
-                if pk_obj.verify(msg, &sig_arr, &[]) { Ok(()) } else { Err(PqError::VerificationFailed) }
+                let pk_arr: [u8; 2592] =
+                    pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
+                let pk_obj = fips204::ml_dsa_87::PublicKey::try_from_bytes(pk_arr)
+                    .map_err(|_| PqError::BackendFailure)?;
+                let sig_arr: [u8; 4627] =
+                    self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
+                if pk_obj.verify(msg, &sig_arr, &[]) {
+                    Ok(())
+                } else {
+                    Err(PqError::VerificationFailed)
+                }
             }
         }
     }
@@ -499,8 +638,7 @@ impl PqSignature {
         if pk.scheme() != PqScheme::Falcon512 {
             return self.verify_message(msg, pk);
         }
-        let vk = VerifyingKeyStandard::decode(pk.as_bytes())
-            .ok_or(PqError::BackendFailure)?;
+        let vk = VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
         if vk.verify_varlen(self.as_bytes(), &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg) {
             Ok(())
         } else {
@@ -511,8 +649,9 @@ impl PqSignature {
     fn verify_message_allow_legacy(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
         match self.verify_message(msg, pk) {
             Ok(()) => Ok(()),
-            Err(PqError::VerificationFailed) if pk.scheme() == PqScheme::Falcon512 =>
-                self.verify_message_legacy(msg, pk),
+            Err(PqError::VerificationFailed) if pk.scheme() == PqScheme::Falcon512 => {
+                self.verify_message_legacy(msg, pk)
+            }
             Err(err) => Err(err),
         }
     }
@@ -548,13 +687,27 @@ impl MlKem512PublicKey {
     }
 
     /// Returns the raw public key bytes.
-    pub fn as_bytes(&self) -> &[u8] { &self.data }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 /// An ML-KEM-512 secret key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MlKem512SecretKey {
     data: Vec<u8>,
+}
+
+impl Drop for MlKem512SecretKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for MlKem512SecretKey {
+    fn zeroize(&mut self) {
+        self.data.zeroize();
+    }
 }
 
 impl MlKem512SecretKey {
@@ -570,7 +723,9 @@ impl MlKem512SecretKey {
     }
 
     /// Returns the raw secret key bytes.
-    pub fn as_bytes(&self) -> &[u8] { &self.data }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 /// An ML-KEM-512 ciphertext.
@@ -592,13 +747,27 @@ impl MlKem512Ciphertext {
     }
 
     /// Returns the raw ciphertext bytes.
-    pub fn as_bytes(&self) -> &[u8] { &self.data }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 /// An ML-KEM-512 shared secret.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MlKem512SharedSecret {
     data: [u8; MLKEM512_SHARED_SECRET_BYTES],
+}
+
+impl Drop for MlKem512SharedSecret {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Zeroize for MlKem512SharedSecret {
+    fn zeroize(&mut self) {
+        self.data.zeroize();
+    }
 }
 
 impl MlKem512SharedSecret {
@@ -616,7 +785,9 @@ impl MlKem512SharedSecret {
     }
 
     /// Returns the raw shared-secret bytes.
-    pub fn as_bytes(&self) -> &[u8; MLKEM512_SHARED_SECRET_BYTES] { &self.data }
+    pub fn as_bytes(&self) -> &[u8; MLKEM512_SHARED_SECRET_BYTES] {
+        &self.data
+    }
 }
 
 /// An initialized ML-KEM-512 keypair.
@@ -630,9 +801,12 @@ impl MlKem512Keypair {
     /// Generates a fresh random ML-KEM-512 keypair.
     pub fn generate() -> Self {
         let (dk, ek) = MlKem512::generate(&mut rand_core::OsRng);
+        let mut dk_bytes = dk.as_bytes();
+        let secret_key = MlKem512SecretKey { data: dk_bytes.as_slice().to_vec() };
+        dk_bytes.as_mut_slice().zeroize();
         Self {
             public_key: MlKem512PublicKey { data: ek.as_bytes().as_slice().to_vec() },
-            secret_key: MlKem512SecretKey { data: dk.as_bytes().as_slice().to_vec() },
+            secret_key,
         }
     }
 
@@ -645,12 +819,17 @@ impl MlKem512Keypair {
             });
         }
 
-        let d = B32::try_from(&coins[..32]).map_err(|_| PqError::BackendFailure)?;
-        let z = B32::try_from(&coins[32..64]).map_err(|_| PqError::BackendFailure)?;
+        let mut d = B32::try_from(&coins[..32]).map_err(|_| PqError::BackendFailure)?;
+        let mut z = B32::try_from(&coins[32..64]).map_err(|_| PqError::BackendFailure)?;
         let (dk, ek) = MlKem512::generate_deterministic(&d, &z);
+        let mut dk_bytes = dk.as_bytes();
+        let secret_key = MlKem512SecretKey { data: dk_bytes.as_slice().to_vec() };
+        dk_bytes.as_mut_slice().zeroize();
+        d.as_mut_slice().zeroize();
+        z.as_mut_slice().zeroize();
         Ok(Self {
             public_key: MlKem512PublicKey { data: ek.as_bytes().as_slice().to_vec() },
-            secret_key: MlKem512SecretKey { data: dk.as_bytes().as_slice().to_vec() },
+            secret_key,
         })
     }
 
@@ -663,10 +842,14 @@ impl MlKem512Keypair {
     }
 
     /// Returns the public key.
-    pub fn public_key(&self) -> &MlKem512PublicKey { &self.public_key }
+    pub fn public_key(&self) -> &MlKem512PublicKey {
+        &self.public_key
+    }
 
     /// Returns the secret key.
-    pub fn secret_key(&self) -> &MlKem512SecretKey { &self.secret_key }
+    pub fn secret_key(&self) -> &MlKem512SecretKey {
+        &self.secret_key
+    }
 
     /// Consumes the keypair and returns both parts.
     pub fn into_parts(self) -> (MlKem512PublicKey, MlKem512SecretKey) {
@@ -677,13 +860,18 @@ impl MlKem512Keypair {
 impl MlKem512PublicKey {
     /// Encapsulates to this public key.
     pub fn encapsulate(&self) -> Result<(MlKem512Ciphertext, MlKem512SharedSecret), PqError> {
-        let ek_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
-            .map_err(|_| PqError::BackendFailure)?;
+        let ek_arr =
+            <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
+                .map_err(|_| PqError::BackendFailure)?;
         let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
-        let (ct, ss) = ek.encapsulate(&mut rand_core::OsRng).map_err(|_| PqError::BackendFailure)?;
+        let (ct, ss) =
+            ek.encapsulate(&mut rand_core::OsRng).map_err(|_| PqError::BackendFailure)?;
+        let mut ss = ss;
+        let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
+        ss.as_mut_slice().zeroize();
         Ok((
             MlKem512Ciphertext { data: ct.as_slice().to_vec() },
-            MlKem512SharedSecret::from_slice(ss.as_slice())?,
+            shared_secret,
         ))
     }
 
@@ -699,25 +887,41 @@ impl MlKem512PublicKey {
             });
         }
 
-        let ek_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
-            .map_err(|_| PqError::BackendFailure)?;
+        let ek_arr =
+            <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
+                .map_err(|_| PqError::BackendFailure)?;
         let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
-        let m = B32::try_from(coins).map_err(|_| PqError::BackendFailure)?;
+        let mut m = B32::try_from(coins).map_err(|_| PqError::BackendFailure)?;
         let (ct, ss) = ek.encapsulate_deterministic(&m).map_err(|_| PqError::BackendFailure)?;
-        Ok((MlKem512Ciphertext { data: ct.as_slice().to_vec() }, MlKem512SharedSecret::from_slice(ss.as_slice())?))
+        let mut ss = ss;
+        let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
+        m.as_mut_slice().zeroize();
+        ss.as_mut_slice().zeroize();
+        Ok((
+            MlKem512Ciphertext { data: ct.as_slice().to_vec() },
+            shared_secret,
+        ))
     }
 }
 
 impl MlKem512SecretKey {
     /// Decapsulates an ML-KEM-512 ciphertext with this secret key.
-    pub fn decapsulate(&self, ciphertext: &MlKem512Ciphertext) -> Result<MlKem512SharedSecret, PqError> {
-        let dk_arr = <ml_kem::Encoded<<MlKem512 as KemCore>::DecapsulationKey>>::try_from(self.as_bytes())
-            .map_err(|_| PqError::BackendFailure)?;
+    pub fn decapsulate(
+        &self,
+        ciphertext: &MlKem512Ciphertext,
+    ) -> Result<MlKem512SharedSecret, PqError> {
+        let mut dk_arr =
+            <ml_kem::Encoded<<MlKem512 as KemCore>::DecapsulationKey>>::try_from(self.as_bytes())
+                .map_err(|_| PqError::BackendFailure)?;
         let dk = <<MlKem512 as KemCore>::DecapsulationKey as EncodedSizeUser>::from_bytes(&dk_arr);
         let ct_arr = <ml_kem::Ciphertext<MlKem512>>::try_from(ciphertext.as_bytes())
             .map_err(|_| PqError::BackendFailure)?;
         let ss = dk.decapsulate(&ct_arr).map_err(|_| PqError::BackendFailure)?;
-        MlKem512SharedSecret::from_slice(ss.as_slice())
+        let mut ss = ss;
+        let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
+        dk_arr.as_mut_slice().zeroize();
+        ss.as_mut_slice().zeroize();
+        Ok(shared_secret)
     }
 }
 
@@ -763,16 +967,23 @@ impl fmt::Display for PqError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownScheme(b) => write!(f, "unknown PQ scheme prefix: 0x{:02x}", b),
-            Self::InvalidKeyLength { expected, got } =>
-                write!(f, "invalid key length: expected {} bytes, got {}", expected, got),
-            Self::InvalidSeedLength { expected, got } =>
-                write!(f, "invalid deterministic seed length: expected {} bytes, got {}", expected, got),
-            Self::InvalidSignatureLength { max, got } =>
-                write!(f, "invalid signature length: max {} bytes, got {}", max, got),
-            Self::InvalidSecretKeyEncoding(scheme) =>
-                write!(f, "invalid secret key encoding for {:?}", scheme),
-            Self::InvalidSecretKeyEncodingForLength(len) =>
-                write!(f, "invalid secret key encoding for {}-byte key", len),
+            Self::InvalidKeyLength { expected, got } => {
+                write!(f, "invalid key length: expected {} bytes, got {}", expected, got)
+            }
+            Self::InvalidSeedLength { expected, got } => write!(
+                f,
+                "invalid deterministic seed length: expected {} bytes, got {}",
+                expected, got
+            ),
+            Self::InvalidSignatureLength { max, got } => {
+                write!(f, "invalid signature length: max {} bytes, got {}", max, got)
+            }
+            Self::InvalidSecretKeyEncoding(scheme) => {
+                write!(f, "invalid secret key encoding for {:?}", scheme)
+            }
+            Self::InvalidSecretKeyEncodingForLength(len) => {
+                write!(f, "invalid secret key encoding for {}-byte key", len)
+            }
             Self::VerificationFailed => write!(f, "signature verification failed"),
             Self::BackendFailure => write!(f, "backend PQ operation failed"),
             Self::EmptyData => write!(f, "empty data"),
@@ -873,7 +1084,10 @@ mod tests {
     #[test]
     fn pubkey_unknown_scheme() {
         let data = vec![0xFF; 100];
-        assert_eq!(PqPublicKey::from_prefixed_slice(&data).unwrap_err(), PqError::UnknownScheme(0xFF));
+        assert_eq!(
+            PqPublicKey::from_prefixed_slice(&data).unwrap_err(),
+            PqError::UnknownScheme(0xFF)
+        );
     }
 
     #[test]
@@ -1179,5 +1393,12 @@ mod tests {
         assert_eq!(ct1, ct2);
         assert_eq!(ss1, ss2);
         assert_eq!(recovered, ss1);
+    }
+
+    #[test]
+    fn secret_types_require_drop_for_zeroization() {
+        assert!(core::mem::needs_drop::<PqSecretKey>());
+        assert!(core::mem::needs_drop::<MlKem512SecretKey>());
+        assert!(core::mem::needs_drop::<MlKem512SharedSecret>());
     }
 }
