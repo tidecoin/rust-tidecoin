@@ -69,6 +69,8 @@ mod poly;
 mod vect;
 mod zint31;
 
+pub mod pqclean_compat;
+
 #[cfg(all(not(feature = "no_avx2"),
     any(target_arch = "x86_64", target_arch = "x86")))]
 mod ntru_avx2;

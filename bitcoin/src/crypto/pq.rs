@@ -8,11 +8,11 @@
 
 use core::fmt;
 
-use falcon::prelude::FnDsaKeyPair as FalconKeyPair;
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
 use fn_dsa::{
-    signature_size, SigningKey, SigningKeyStandard, VerifyingKey, VerifyingKeyStandard,
-    DOMAIN_NONE, FN_DSA_LOGN_1024, FN_DSA_LOGN_512, HASH_ID_ORIGINAL_FALCON,
+    keygen_pqclean, pubkey_from_signing_key, sign_key_size, signature_size, vrfy_key_size,
+    SigningKey, SigningKeyStandard, VerifyingKey, VerifyingKeyStandard, DOMAIN_NONE,
+    FN_DSA_LOGN_1024, FN_DSA_LOGN_512, HASH_ID_ORIGINAL_FALCON,
 };
 use hashes::hash160;
 use ml_kem::kem::{Decapsulate, Encapsulate};
@@ -125,21 +125,29 @@ impl PqScheme {
             Self::Falcon512 => {
                 let mut seed = Zeroizing::new([0u8; 48]);
                 rand_core::OsRng.fill_bytes(seed.as_mut());
-                let keypair = FalconKeyPair::generate_deterministic(seed.as_ref(), FN_DSA_LOGN_512)
-                    .expect("Falcon-512 keygen");
+                let mut sk_buf = Zeroizing::new(vec![0u8; sign_key_size(FN_DSA_LOGN_512)]);
+                let mut vk_buf = vec![0u8; vrfy_key_size(FN_DSA_LOGN_512)];
+                assert!(
+                    keygen_pqclean(FN_DSA_LOGN_512, &seed[..], &mut sk_buf[..], &mut vk_buf[..]),
+                    "Falcon-512 keygen"
+                );
                 (
-                    PqPublicKey::from_backend(self, keypair.public_key()),
-                    PqSecretKey::from_backend(self, keypair.private_key()),
+                    PqPublicKey::from_backend(self, &vk_buf),
+                    PqSecretKey::from_backend(self, &sk_buf),
                 )
             }
             Self::Falcon1024 => {
                 let mut seed = Zeroizing::new([0u8; 48]);
                 rand_core::OsRng.fill_bytes(seed.as_mut());
-                let keypair = FalconKeyPair::generate_deterministic(seed.as_ref(), FN_DSA_LOGN_1024)
-                    .expect("Falcon-1024 keygen");
+                let mut sk_buf = Zeroizing::new(vec![0u8; sign_key_size(FN_DSA_LOGN_1024)]);
+                let mut vk_buf = vec![0u8; vrfy_key_size(FN_DSA_LOGN_1024)];
+                assert!(
+                    keygen_pqclean(FN_DSA_LOGN_1024, &seed[..], &mut sk_buf[..], &mut vk_buf[..]),
+                    "Falcon-1024 keygen"
+                );
                 (
-                    PqPublicKey::from_backend(self, keypair.public_key()),
-                    PqSecretKey::from_backend(self, keypair.private_key()),
+                    PqPublicKey::from_backend(self, &vk_buf),
+                    PqSecretKey::from_backend(self, &sk_buf),
                 )
             }
             Self::MlDsa44 => {
@@ -188,11 +196,14 @@ impl PqScheme {
                     Self::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let keypair = FalconKeyPair::generate_deterministic(seed, logn)
-                    .map_err(|_| PqError::BackendFailure)?;
+                let mut sk_buf = Zeroizing::new(vec![0u8; sign_key_size(logn)]);
+                let mut vk_buf = vec![0u8; vrfy_key_size(logn)];
+                if !keygen_pqclean(logn, seed, &mut sk_buf[..], &mut vk_buf[..]) {
+                    return Err(PqError::BackendFailure);
+                }
                 Ok((
-                    PqPublicKey::from_backend(self, keypair.public_key()),
-                    PqSecretKey::from_backend(self, keypair.private_key()),
+                    PqPublicKey::from_backend(self, &vk_buf),
+                    PqSecretKey::from_backend(self, &sk_buf),
                 ))
             }
             Self::MlDsa44 => {
@@ -243,8 +254,15 @@ impl PqPublicKey {
         let scheme = sk.scheme();
         let data = match scheme {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                FalconKeyPair::public_key_from_private(sk.as_bytes())
-                    .map_err(|_| PqError::BackendFailure)?
+                let logn = match scheme {
+                    PqScheme::Falcon512 => FN_DSA_LOGN_512,
+                    _ => FN_DSA_LOGN_1024,
+                };
+                let mut vk = vec![0u8; vrfy_key_size(logn)];
+                if !pubkey_from_signing_key(sk.as_bytes(), &mut vk) {
+                    return Err(PqError::BackendFailure);
+                }
+                vk
             }
             _ => {
                 let result: Result<Vec<u8>, PqError> = match scheme {
