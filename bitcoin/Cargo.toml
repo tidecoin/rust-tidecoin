@@ -38,7 +38,7 @@ network = { package = "tidecoin-network-kind", path = "../network", version = "0
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc", "hex"] }
 secp256k1 = { version = "0.32.0-beta.2", default-features = false, features = ["alloc"] }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = ["alloc"] }
-fn-dsa = { path = "../fn-dsa/fn-dsa" }
+tide-fn-dsa = { path = "../../tide-fn-dsa/tide-fn-dsa" }
 rand_core = { version = "0.6", features = ["getrandom"] }
 ml-kem = { version = "0.2.3", default-features = false, features = ["deterministic", "zeroize"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }

@@ -14,7 +14,7 @@ and likely also a file of their own.
 - `chacha20_poly1305`: ChaCha20 stream cipher with the Poly1305 MAC.
 - `consensus_encoding`: Consensus encoding and decoding.
 - `crypto`: Cryptography support for the rust-tidecoin ecosystem.
-- `fn-dsa`: FN-DSA (Falcon) post-quantum signature crates (vendored).
+- `tide-fn-dsa`: external Tidecoin-specific FN-DSA (Falcon) post-quantum signature crates.
 - `hashes`: Tidecoin hashes library.
 - `internals`: Used internally by crates in this repo.
 - `io`: Tidecoin I/O library (to support `no_std`).

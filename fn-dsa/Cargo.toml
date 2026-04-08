@@ -1,9 +1,0 @@
-[workspace]
-members = [
-    "fn-dsa",
-    "fn-dsa-comm",
-    "fn-dsa-kgen",
-    "fn-dsa-sign",
-    "fn-dsa-vrfy",
-]
-resolver = "2"

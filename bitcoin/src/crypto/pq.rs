@@ -9,15 +9,15 @@
 use core::fmt;
 
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
-use fn_dsa::{
-    keygen_pqclean, pubkey_from_signing_key, sign_key_size, signature_size, vrfy_key_size,
-    SigningKey, SigningKeyStandard, VerifyingKey, VerifyingKeyStandard, DOMAIN_NONE,
-    FN_DSA_LOGN_1024, FN_DSA_LOGN_512, HASH_ID_ORIGINAL_FALCON,
-};
 use hashes::hash160;
 use ml_kem::kem::{Decapsulate, Encapsulate};
 use ml_kem::{EncapsulateDeterministic, EncodedSizeUser, KemCore, MlKem512, B32};
 use rand_core::RngCore;
+use tide_fn_dsa::{
+    sign_key_size, vrfy_key_size, FalconProfile, KeyPairGeneratorStandard,
+    SigningKey as TideSigningKey, SigningKeyStandard, VerifyingKey as TideVerifyingKey,
+    VerifyingKeyStandard, FN_DSA_LOGN_1024, FN_DSA_LOGN_512, TIDECOIN_LEGACY_FALCON512_SIG_MAX,
+};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::network::Params;
@@ -125,30 +125,50 @@ impl PqScheme {
             Self::Falcon512 => {
                 let mut seed = Zeroizing::new([0u8; 48]);
                 rand_core::OsRng.fill_bytes(seed.as_mut());
-                let mut sk_buf = Zeroizing::new(vec![0u8; sign_key_size(FN_DSA_LOGN_512)]);
-                let mut vk_buf = vec![0u8; vrfy_key_size(FN_DSA_LOGN_512)];
-                assert!(
-                    keygen_pqclean(FN_DSA_LOGN_512, &seed[..], &mut sk_buf[..], &mut vk_buf[..]),
-                    "Falcon-512 keygen"
-                );
-                (
-                    PqPublicKey::from_backend(self, &vk_buf),
-                    PqSecretKey::from_backend(self, &sk_buf),
-                )
+                let mut sk_buf = Zeroizing::new(vec![
+                    0u8;
+                    sign_key_size(FN_DSA_LOGN_512).expect(
+                        "known Falcon-512 secret-key size"
+                    )
+                ]);
+                let mut vk_buf = vec![
+                    0u8;
+                    vrfy_key_size(FN_DSA_LOGN_512)
+                        .expect("known Falcon-512 public-key size")
+                ];
+                KeyPairGeneratorStandard::default()
+                    .keygen_from_seed_pqclean(
+                        FN_DSA_LOGN_512,
+                        &seed[..],
+                        &mut sk_buf[..],
+                        &mut vk_buf[..],
+                    )
+                    .expect("Falcon-512 keygen");
+                (PqPublicKey::from_backend(self, &vk_buf), PqSecretKey::from_backend(self, &sk_buf))
             }
             Self::Falcon1024 => {
                 let mut seed = Zeroizing::new([0u8; 48]);
                 rand_core::OsRng.fill_bytes(seed.as_mut());
-                let mut sk_buf = Zeroizing::new(vec![0u8; sign_key_size(FN_DSA_LOGN_1024)]);
-                let mut vk_buf = vec![0u8; vrfy_key_size(FN_DSA_LOGN_1024)];
-                assert!(
-                    keygen_pqclean(FN_DSA_LOGN_1024, &seed[..], &mut sk_buf[..], &mut vk_buf[..]),
-                    "Falcon-1024 keygen"
-                );
-                (
-                    PqPublicKey::from_backend(self, &vk_buf),
-                    PqSecretKey::from_backend(self, &sk_buf),
-                )
+                let mut sk_buf = Zeroizing::new(vec![
+                    0u8;
+                    sign_key_size(FN_DSA_LOGN_1024).expect(
+                        "known Falcon-1024 secret-key size"
+                    )
+                ]);
+                let mut vk_buf = vec![
+                    0u8;
+                    vrfy_key_size(FN_DSA_LOGN_1024)
+                        .expect("known Falcon-1024 public-key size")
+                ];
+                KeyPairGeneratorStandard::default()
+                    .keygen_from_seed_pqclean(
+                        FN_DSA_LOGN_1024,
+                        &seed[..],
+                        &mut sk_buf[..],
+                        &mut vk_buf[..],
+                    )
+                    .expect("Falcon-1024 keygen");
+                (PqPublicKey::from_backend(self, &vk_buf), PqSecretKey::from_backend(self, &sk_buf))
             }
             Self::MlDsa44 => {
                 let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(&mut rand_core::OsRng)
@@ -196,9 +216,17 @@ impl PqScheme {
                     Self::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let mut sk_buf = Zeroizing::new(vec![0u8; sign_key_size(logn)]);
-                let mut vk_buf = vec![0u8; vrfy_key_size(logn)];
-                if !keygen_pqclean(logn, seed, &mut sk_buf[..], &mut vk_buf[..]) {
+                let mut sk_buf = Zeroizing::new(vec![
+                    0u8;
+                    sign_key_size(logn)
+                        .map_err(|_| PqError::BackendFailure)?
+                ]);
+                let mut vk_buf =
+                    vec![0u8; vrfy_key_size(logn).map_err(|_| PqError::BackendFailure)?];
+                if KeyPairGeneratorStandard::default()
+                    .keygen_from_seed_pqclean(logn, seed, &mut sk_buf[..], &mut vk_buf[..])
+                    .is_err()
+                {
                     return Err(PqError::BackendFailure);
                 }
                 Ok((
@@ -258,10 +286,10 @@ impl PqPublicKey {
                     PqScheme::Falcon512 => FN_DSA_LOGN_512,
                     _ => FN_DSA_LOGN_1024,
                 };
-                let mut vk = vec![0u8; vrfy_key_size(logn)];
-                if !pubkey_from_signing_key(sk.as_bytes(), &mut vk) {
-                    return Err(PqError::BackendFailure);
-                }
+                let signing_key =
+                    SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
+                let mut vk = vec![0u8; vrfy_key_size(logn).map_err(|_| PqError::BackendFailure)?];
+                signing_key.to_verifying_key(&mut vk).map_err(|_| PqError::BackendFailure)?;
                 vk
             }
             _ => {
@@ -519,26 +547,18 @@ impl PqSignature {
     fn sign_message(msg: &[u8], sk: &PqSecretKey) -> Result<Self, PqError> {
         Ok(match sk.scheme() {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                let logn = match sk.scheme() {
-                    PqScheme::Falcon512 => FN_DSA_LOGN_512,
-                    _ => FN_DSA_LOGN_1024,
-                };
                 let mut signing_key =
                     SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
-                let mut sig = vec![0u8; signature_size(logn)];
-                signing_key.sign(
-                    &mut rand_core::OsRng,
-                    &DOMAIN_NONE,
-                    &HASH_ID_ORIGINAL_FALCON,
-                    msg,
-                    &mut sig,
-                );
+                let mut sig = vec![0u8; sk.scheme().max_sig_len()];
+                let sig_len = signing_key
+                    .sign_falcon(&mut rand_core::OsRng, FalconProfile::PqClean, msg, &mut sig)
+                    .map_err(|_| PqError::BackendFailure)?;
+                sig.truncate(sig_len);
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa44 => {
-                let sk_arr = Zeroizing::new(
-                    sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
-                );
+                let sk_arr =
+                    Zeroizing::new(sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?);
                 let sk_obj = fips204::ml_dsa_44::PrivateKey::try_from_bytes(*sk_arr)
                     .map_err(|_| PqError::BackendFailure)?;
                 let sig = sk_obj
@@ -547,9 +567,8 @@ impl PqSignature {
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa65 => {
-                let sk_arr = Zeroizing::new(
-                    sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
-                );
+                let sk_arr =
+                    Zeroizing::new(sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?);
                 let sk_obj = fips204::ml_dsa_65::PrivateKey::try_from_bytes(*sk_arr)
                     .map_err(|_| PqError::BackendFailure)?;
                 let sig = sk_obj
@@ -558,9 +577,8 @@ impl PqSignature {
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa87 => {
-                let sk_arr = Zeroizing::new(
-                    sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?,
-                );
+                let sk_arr =
+                    Zeroizing::new(sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?);
                 let sk_obj = fips204::ml_dsa_87::PrivateKey::try_from_bytes(*sk_arr)
                     .map_err(|_| PqError::BackendFailure)?;
                 let sig = sk_obj
@@ -577,18 +595,16 @@ impl PqSignature {
         }
         let mut signing_key =
             SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
-        let mut sig = vec![0u8; signature_size(FN_DSA_LOGN_512)];
-        signing_key.sign(
-            &mut rand_core::OsRng,
-            &DOMAIN_NONE,
-            &HASH_ID_ORIGINAL_FALCON,
-            msg,
-            &mut sig,
-        );
-        let trimmed_len = sig.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
-        let min_len = 42;
-        let final_len = trimmed_len.max(min_len);
-        sig.truncate(final_len);
+        let mut sig = vec![0u8; TIDECOIN_LEGACY_FALCON512_SIG_MAX];
+        let sig_len = signing_key
+            .sign_falcon(
+                &mut rand_core::OsRng,
+                FalconProfile::TidecoinLegacyFalcon512,
+                msg,
+                &mut sig,
+            )
+            .map_err(|_| PqError::BackendFailure)?;
+        sig.truncate(sig_len);
         Ok(Self { data: sig })
     }
 
@@ -597,14 +613,7 @@ impl PqSignature {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
                 let vk =
                     VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-                let ok = vk.verify(self.as_bytes(), &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg)
-                    || vk.verify_varlen(
-                        self.as_bytes(),
-                        &DOMAIN_NONE,
-                        &HASH_ID_ORIGINAL_FALCON,
-                        msg,
-                    );
-                if ok {
+                if vk.verify_falcon(FalconProfile::PqClean, self.as_bytes(), msg) {
                     Ok(())
                 } else {
                     Err(PqError::VerificationFailed)
@@ -657,7 +666,7 @@ impl PqSignature {
             return self.verify_message(msg, pk);
         }
         let vk = VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-        if vk.verify_varlen(self.as_bytes(), &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg) {
+        if vk.verify_falcon(FalconProfile::TidecoinLegacyFalcon512, self.as_bytes(), msg) {
             Ok(())
         } else {
             Err(PqError::VerificationFailed)
@@ -887,10 +896,7 @@ impl MlKem512PublicKey {
         let mut ss = ss;
         let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
         ss.as_mut_slice().zeroize();
-        Ok((
-            MlKem512Ciphertext { data: ct.as_slice().to_vec() },
-            shared_secret,
-        ))
+        Ok((MlKem512Ciphertext { data: ct.as_slice().to_vec() }, shared_secret))
     }
 
     /// Deterministically encapsulates using Tidecoin-node coins.
@@ -915,10 +921,7 @@ impl MlKem512PublicKey {
         let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
         m.as_mut_slice().zeroize();
         ss.as_mut_slice().zeroize();
-        Ok((
-            MlKem512Ciphertext { data: ct.as_slice().to_vec() },
-            shared_secret,
-        ))
+        Ok((MlKem512Ciphertext { data: ct.as_slice().to_vec() }, shared_secret))
     }
 }
 

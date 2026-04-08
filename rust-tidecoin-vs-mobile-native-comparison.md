@@ -16,12 +16,11 @@
 
 | Aspect | `rust-tidecoin` | `mobile-native/rust-core` |
 |---|---|---|
-| Crate(s) | `fn-dsa` (local path `../fn-dsa/fn-dsa`) and `falcon-rs` 0.2.2 | `falcon` (local path `../falcon-rust/falcon`, v1.0.0) |
-| What `falcon-rs`/`falcon` provides | Local alias `FalconKeyPair = falcon::prelude::FnDsaKeyPair`, used for deterministic keygen | Keygen, sign, verify (entire Falcon implementation) |
-| What `fn-dsa` provides | `SigningKeyStandard`, `VerifyingKeyStandard` for sign/verify | N/A |
-| Signing randomness | `rand_core::OsRng` passed to `signing_key.sign()` | `OsRng.fill_bytes()` into SHAKE256 seed for `falcon_sign_dyn` |
-| Signing call | `SigningKeyStandard::sign(&mut OsRng, &DOMAIN_NONE, &HASH_ID_ORIGINAL_FALCON, msg, &mut sig)` | `falcon_sign_dyn(&mut rng, &mut sig, MAX_LEN, FALCON_SIG_COMPRESS, sk, ...)` |
-| Signature format | Falcon strict mode uses fn-dsa fixed-size buffers (`signature_size(logn)`); Falcon-512 also has a trimmed legacy mode | Compressed format (`FALCON_SIG_COMPRESS = 1`) |
+| Crate(s) | `tide-fn-dsa` (local path `../../tide-fn-dsa/tide-fn-dsa`) | `falcon` (local path `../falcon-rust/falcon`, v1.0.0) |
+| What the Falcon backend provides | Deterministic keygen, pubkey derivation, strict Falcon sign/verify, and Tidecoin legacy Falcon-512 sign/verify | Keygen, sign, verify (entire Falcon implementation) |
+| Signing randomness | `rand_core::OsRng` passed to `sign_falcon()` | `OsRng.fill_bytes()` into SHAKE256 seed for `falcon_sign_dyn` |
+| Signing call | `SigningKeyStandard::sign_falcon(&mut OsRng, FalconProfile::PqClean, msg, &mut sig)` | `falcon_sign_dyn(&mut rng, &mut sig, MAX_LEN, FALCON_SIG_COMPRESS, sk, ...)` |
+| Signature format | Strict mode uses PQClean-compatible compressed Falcon signatures; Falcon-512 also supports the Tidecoin legacy 690-byte envelope | Compressed format (`FALCON_SIG_COMPRESS = 1`) |
 
 ## Key Size Constants
 
@@ -178,7 +177,7 @@ Whole-repo note: the current iOS/Android app-side recipient parsers accept `tbc`
 
 The mobile app currently has one signing path: `falcon_sign_dyn` with compressed format and random nonce, producing variable-length signatures truncated to actual length. With `tidecoin-pq`, it gains:
 
-- **Strict signing** (`sign_msg32`, `sign_msg64`): Falcon uses fn-dsa full-length buffers, while ML-DSA uses its FIPS 204 signing path. Note that current Falcon verification still accepts both fixed-length and varlen signatures, even when `VERIFY_PQ_STRICT` is set.
+- **Strict signing** (`sign_msg32`, `sign_msg64`): Falcon uses `tide-fn-dsa` PQClean-compatible signing, while ML-DSA uses its FIPS 204 signing path.
 - **Legacy signing** (`sign_msg32_legacy`, `sign_msg64_legacy`): publicly available for all schemes, but only Falcon-512 gets distinct trailing-zero trimming with a 42-byte floor; other schemes fall back to normal signing.
 - **Hybrid verification** (`verify_msg32_allow_legacy`, `verify_msg64_allow_legacy`): adds legacy fallback for Falcon-512 and otherwise behaves like normal verification.
 

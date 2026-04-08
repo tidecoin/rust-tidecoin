@@ -95,7 +95,7 @@ review them.
 | `tidecoin-internals` | Internal macros and utilities |
 | `base58ck` | Base58 encoding with checksum |
 | `chacha20-poly1305` | AEAD encryption |
-| `fn-dsa` | FN-DSA (Falcon) post-quantum signatures (vendored) |
+| `tide-fn-dsa` | Tidecoin-specific FN-DSA (Falcon) post-quantum signatures |
 
 ## Contributing
 
