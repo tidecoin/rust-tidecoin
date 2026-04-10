@@ -12,7 +12,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use hashes::sha256d;
 use internals::write_err;
 
-/// A bitcoin block hash.
+/// A Tidecoin block hash.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHash(sha256d::Hash);
 
@@ -43,7 +43,9 @@ impl encoding::Encodable for BlockHash {
 impl encoding::Decodable for BlockHash {
     type Decoder = BlockHashDecoder;
     #[inline]
-    fn decoder() -> Self::Decoder { BlockHashDecoder(encoding::ArrayDecoder::<32>::new()) }
+    fn decoder() -> Self::Decoder {
+        BlockHashDecoder(encoding::ArrayDecoder::<32>::new())
+    }
 }
 
 encoding::encoder_newtype_exact! {
@@ -57,12 +59,16 @@ pub struct BlockHashDecoder(encoding::ArrayDecoder<32>);
 impl BlockHashDecoder {
     /// Constructs a new [`BlockHash`] decoder.
     #[inline]
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 impl Default for BlockHashDecoder {
     #[inline]
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl encoding::Decoder for BlockHashDecoder {
@@ -81,7 +87,9 @@ impl encoding::Decoder for BlockHashDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 /// An error consensus decoding an `BlockHash`.
@@ -89,7 +97,9 @@ impl encoding::Decoder for BlockHashDecoder {
 pub struct BlockHashDecoderError(encoding::UnexpectedEofError);
 
 impl From<Infallible> for BlockHashDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for BlockHashDecoderError {
@@ -100,7 +110,9 @@ impl fmt::Display for BlockHashDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for BlockHashDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 #[cfg(test)]

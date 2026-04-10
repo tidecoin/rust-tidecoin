@@ -1,5 +1,5 @@
-use tidecoin_consensus_encoding::{ArrayEncoder, Encodable, EncodableByteIter, Encoder2};
 use hex::BytesToHexIter;
+use tidecoin_consensus_encoding::{ArrayEncoder, Encodable, EncodableByteIter, Encoder2};
 
 struct TestArray<const N: usize>([u8; N]);
 
@@ -9,7 +9,9 @@ impl<const N: usize> Encodable for TestArray<N> {
     where
         Self: 'e;
 
-    fn encoder(&self) -> Self::Encoder<'_> { ArrayEncoder::without_length_prefix(self.0) }
+    fn encoder(&self) -> Self::Encoder<'_> {
+        ArrayEncoder::without_length_prefix(self.0)
+    }
 }
 
 struct TestCatArray<const N: usize, const M: usize>([u8; N], [u8; M]);

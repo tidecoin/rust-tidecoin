@@ -30,11 +30,15 @@ include!("./generic.rs");
 
 impl WitnessMerkleNode {
     /// Convert a [`Wtxid`] hash to a leaf node of the tree.
-    pub fn from_leaf(leaf: Wtxid) -> Self { MerkleNode::from_leaf(leaf) }
+    pub fn from_leaf(leaf: Wtxid) -> Self {
+        MerkleNode::from_leaf(leaf)
+    }
 
     /// Combine two nodes to get a single node. The final node of a tree is called the "root".
     #[must_use]
-    pub fn combine(&self, other: &Self) -> Self { MerkleNode::combine(self, other) }
+    pub fn combine(&self, other: &Self) -> Self {
+        MerkleNode::combine(self, other)
+    }
 
     /// Given an iterator of leaves, compute the Merkle root.
     ///
@@ -63,7 +67,9 @@ impl encoding::Encodable for WitnessMerkleNode {
 impl encoding::Decodable for WitnessMerkleNode {
     type Decoder = WitnessMerkleNodeDecoder;
     #[inline]
-    fn decoder() -> Self::Decoder { WitnessMerkleNodeDecoder(encoding::ArrayDecoder::<32>::new()) }
+    fn decoder() -> Self::Decoder {
+        WitnessMerkleNodeDecoder(encoding::ArrayDecoder::<32>::new())
+    }
 }
 
 encoding::encoder_newtype_exact! {
@@ -77,12 +83,16 @@ pub struct WitnessMerkleNodeDecoder(encoding::ArrayDecoder<32>);
 impl WitnessMerkleNodeDecoder {
     /// Constructs a new [`WitnessMerkleNode`] decoder.
     #[inline]
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 impl Default for WitnessMerkleNodeDecoder {
     #[inline]
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl encoding::Decoder for WitnessMerkleNodeDecoder {
@@ -101,7 +111,9 @@ impl encoding::Decoder for WitnessMerkleNodeDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 /// An error consensus decoding an `WitnessMerkleNode`.
@@ -109,7 +121,9 @@ impl encoding::Decoder for WitnessMerkleNodeDecoder {
 pub struct WitnessMerkleNodeDecoderError(encoding::UnexpectedEofError);
 
 impl From<Infallible> for WitnessMerkleNodeDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for WitnessMerkleNodeDecoderError {
@@ -120,7 +134,9 @@ impl fmt::Display for WitnessMerkleNodeDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for WitnessMerkleNodeDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 #[cfg(test)]

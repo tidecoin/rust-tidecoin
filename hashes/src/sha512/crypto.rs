@@ -9,15 +9,27 @@ use internals::slice::SliceExt;
 use super::{HashEngine, BLOCK_SIZE};
 
 #[allow(non_snake_case)]
-fn Ch(x: u64, y: u64, z: u64) -> u64 { z ^ (x & (y ^ z)) }
+fn Ch(x: u64, y: u64, z: u64) -> u64 {
+    z ^ (x & (y ^ z))
+}
 #[allow(non_snake_case)]
-fn Maj(x: u64, y: u64, z: u64) -> u64 { (x & y) | (z & (x | y)) }
+fn Maj(x: u64, y: u64, z: u64) -> u64 {
+    (x & y) | (z & (x | y))
+}
 #[allow(non_snake_case)]
-fn Sigma0(x: u64) -> u64 { x.rotate_left(36) ^ x.rotate_left(30) ^ x.rotate_left(25) }
+fn Sigma0(x: u64) -> u64 {
+    x.rotate_left(36) ^ x.rotate_left(30) ^ x.rotate_left(25)
+}
 #[allow(non_snake_case)]
-fn Sigma1(x: u64) -> u64 { x.rotate_left(50) ^ x.rotate_left(46) ^ x.rotate_left(23) }
-fn sigma0(x: u64) -> u64 { x.rotate_left(63) ^ x.rotate_left(56) ^ (x >> 7) }
-fn sigma1(x: u64) -> u64 { x.rotate_left(45) ^ x.rotate_left(3) ^ (x >> 6) }
+fn Sigma1(x: u64) -> u64 {
+    x.rotate_left(50) ^ x.rotate_left(46) ^ x.rotate_left(23)
+}
+fn sigma0(x: u64) -> u64 {
+    x.rotate_left(63) ^ x.rotate_left(56) ^ (x >> 7)
+}
+fn sigma1(x: u64) -> u64 {
+    x.rotate_left(45) ^ x.rotate_left(3) ^ (x >> 6)
+}
 
 #[cfg(feature = "small-hash")]
 #[macro_use]
@@ -80,11 +92,11 @@ mod fast_hash {
 impl HashEngine {
     // Algorithm copied from libsecp256k1
     pub(crate) fn process_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-        debug_assert!(!blocks.is_empty() && blocks.len() % BLOCK_SIZE == 0);
+        debug_assert!(!blocks.is_empty() && blocks.len().is_multiple_of(BLOCK_SIZE));
 
         for block in blocks.chunks_exact(BLOCK_SIZE) {
             let mut w = [0u64; 16];
-            for (w_val, buff_bytes) in w.iter_mut().zip(block.bitcoin_as_chunks().0) {
+            for (w_val, buff_bytes) in w.iter_mut().zip(block.as_nonzero_chunks().0) {
                 *w_val = u64::from_be_bytes(*buff_bytes);
             }
 

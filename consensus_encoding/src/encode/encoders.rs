@@ -22,11 +22,15 @@ pub struct BytesEncoder<'sl> {
 
 impl<'sl> BytesEncoder<'sl> {
     /// Constructs a byte encoder which encodes the given byte slice, with no length prefix.
-    pub const fn without_length_prefix(sl: &'sl [u8]) -> Self { Self { sl: Some(sl) } }
+    pub const fn without_length_prefix(sl: &'sl [u8]) -> Self {
+        Self { sl: Some(sl) }
+    }
 }
 
 impl Encoder for BytesEncoder<'_> {
-    fn current_chunk(&self) -> &[u8] { self.sl.unwrap_or_default() }
+    fn current_chunk(&self) -> &[u8] {
+        self.sl.unwrap_or_default()
+    }
 
     fn advance(&mut self) -> bool {
         self.sl = None;
@@ -36,7 +40,9 @@ impl Encoder for BytesEncoder<'_> {
 
 impl<'sl> ExactSizeEncoder for BytesEncoder<'sl> {
     #[inline]
-    fn len(&self) -> usize { self.sl.map_or(0, <[u8]>::len) }
+    fn len(&self) -> usize {
+        self.sl.map_or(0, <[u8]>::len)
+    }
 }
 
 /// An encoder for a single array.
@@ -47,12 +53,16 @@ pub struct ArrayEncoder<const N: usize> {
 
 impl<const N: usize> ArrayEncoder<N> {
     /// Constructs an encoder which encodes the array with no length prefix.
-    pub const fn without_length_prefix(arr: [u8; N]) -> Self { Self { arr: Some(arr) } }
+    pub const fn without_length_prefix(arr: [u8; N]) -> Self {
+        Self { arr: Some(arr) }
+    }
 }
 
 impl<const N: usize> Encoder for ArrayEncoder<N> {
     #[inline]
-    fn current_chunk(&self) -> &[u8] { self.arr.as_ref().map(|x| &x[..]).unwrap_or_default() }
+    fn current_chunk(&self) -> &[u8] {
+        self.arr.as_ref().map(|x| &x[..]).unwrap_or_default()
+    }
 
     #[inline]
     fn advance(&mut self) -> bool {
@@ -63,7 +73,9 @@ impl<const N: usize> Encoder for ArrayEncoder<N> {
 
 impl<const N: usize> ExactSizeEncoder for ArrayEncoder<N> {
     #[inline]
-    fn len(&self) -> usize { self.arr.map_or(0, |a| a.len()) }
+    fn len(&self) -> usize {
+        self.arr.map_or(0, |a| a.len())
+    }
 }
 
 /// An encoder for a reference to an array.
@@ -77,12 +89,16 @@ pub struct ArrayRefEncoder<'e, const N: usize> {
 
 impl<'e, const N: usize> ArrayRefEncoder<'e, N> {
     /// Constructs an encoder which encodes the array reference with no length prefix.
-    pub const fn without_length_prefix(arr: &'e [u8; N]) -> Self { Self { arr: Some(arr) } }
+    pub const fn without_length_prefix(arr: &'e [u8; N]) -> Self {
+        Self { arr: Some(arr) }
+    }
 }
 
 impl<const N: usize> Encoder for ArrayRefEncoder<'_, N> {
     #[inline]
-    fn current_chunk(&self) -> &[u8] { self.arr.map(|x| &x[..]).unwrap_or_default() }
+    fn current_chunk(&self) -> &[u8] {
+        self.arr.map(|x| &x[..]).unwrap_or_default()
+    }
 
     #[inline]
     fn advance(&mut self) -> bool {
@@ -93,7 +109,9 @@ impl<const N: usize> Encoder for ArrayRefEncoder<'_, N> {
 
 impl<const N: usize> ExactSizeEncoder for ArrayRefEncoder<'_, N> {
     #[inline]
-    fn len(&self) -> usize { self.arr.map_or(0, |a| a.len()) }
+    fn len(&self) -> usize {
+        self.arr.map_or(0, |a| a.len())
+    }
 }
 
 /// An encoder for a list of encodable types.
@@ -136,7 +154,9 @@ impl<'e, T: Encodable> Clone for SliceEncoder<'e, T>
 where
     T::Encoder<'e>: Clone,
 {
-    fn clone(&self) -> Self { Self { sl: self.sl, cur_enc: self.cur_enc.clone() } }
+    fn clone(&self) -> Self {
+        Self { sl: self.sl, cur_enc: self.cur_enc.clone() }
+    }
 }
 
 impl<T: Encodable> Encoder for SliceEncoder<'_, T> {

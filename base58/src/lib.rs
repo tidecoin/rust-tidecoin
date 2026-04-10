@@ -227,20 +227,32 @@ trait Buffer: Sized {
 
 #[cfg(feature = "alloc")]
 impl Buffer for Vec<u8> {
-    fn push(&mut self, val: u8) { Self::push(self, val) }
+    fn push(&mut self, val: u8) {
+        Self::push(self, val);
+    }
 
-    fn slice(&self) -> &[u8] { self }
+    fn slice(&self) -> &[u8] {
+        self
+    }
 
-    fn slice_mut(&mut self) -> &mut [u8] { self }
+    fn slice_mut(&mut self) -> &mut [u8] {
+        self
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl<const N: usize> Buffer for ArrayVec<u8, N> {
-    fn push(&mut self, val: u8) { Self::push(self, val) }
+    fn push(&mut self, val: u8) {
+        Self::push(self, val);
+    }
 
-    fn slice(&self) -> &[u8] { self.as_slice() }
+    fn slice(&self) -> &[u8] {
+        self.as_slice()
+    }
 
-    fn slice_mut(&mut self) -> &mut [u8] { self.as_mut_slice() }
+    fn slice_mut(&mut self) -> &mut [u8] {
+        self.as_mut_slice()
+    }
 }
 
 #[cfg(feature = "alloc")]

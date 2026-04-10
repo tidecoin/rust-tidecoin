@@ -71,7 +71,9 @@ mod encapsulate {
         /// # use tidecoin_units::Amount;
         /// assert_eq!(Amount::ONE_TDC.to_sat(), 100_000_000);
         /// ```
-        pub const fn to_sat(self) -> u64 { self.0 }
+        pub const fn to_sat(self) -> u64 {
+            self.0
+        }
 
         /// Constructs a new [`Amount`] from the given number of tidoshis.
         ///
@@ -125,8 +127,9 @@ impl Amount {
         let sats = const_casts::u32_to_u64(satoshi);
         match Self::from_sat(sats) {
             Ok(amount) => amount,
-            Err(_) =>
-                panic!("unreachable - u32 input [0 to 4,294,967,295 satoshis] is within range"),
+            Err(_) => {
+                panic!("unreachable - u32 input [0 to 4,294,967,295 satoshis] is within range")
+            }
         }
     }
 
@@ -242,7 +245,9 @@ impl Amount {
     /// # Ok::<_, amount::OutOfRangeError>(())
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn to_tdc(self) -> f64 { self.to_float_in(Denomination::Tidecoin) }
+    pub fn to_tdc(self) -> f64 {
+        self.to_float_in(Denomination::Tidecoin)
+    }
 
     /// Converts this [`Amount`] in floating-point notation in the given [`Denomination`].
     ///
@@ -273,8 +278,7 @@ impl Amount {
     pub fn from_sat_hex(s: &str) -> Result<Self, ParseAmountError> {
         let amount = parse_int::hex_u64_prefixed(s)
             .map_err(|e| ParseAmountError(ParseAmountErrorInner::PrefixedHex(e)))?;
-        Ok(Self::from_sat(amount)
-            .map_err(|e| ParseAmountError(ParseAmountErrorInner::OutOfRange(e)))?)
+        Self::from_sat(amount).map_err(|e| ParseAmountError(ParseAmountErrorInner::OutOfRange(e)))
     }
 
     /// Constructs a new `Amount` from an unprefixed hex string.
@@ -287,8 +291,7 @@ impl Amount {
     pub fn from_sat_unprefixed_hex(s: &str) -> Result<Self, ParseAmountError> {
         let amount = parse_int::hex_u64_unprefixed(s)
             .map_err(|e| ParseAmountError(ParseAmountErrorInner::UnprefixedHex(e)))?;
-        Ok(Self::from_sat(amount)
-            .map_err(|e| ParseAmountError(ParseAmountErrorInner::OutOfRange(e)))?)
+        Self::from_sat(amount).map_err(|e| ParseAmountError(ParseAmountErrorInner::OutOfRange(e)))
     }
 
     /// Constructs a new object that implements [`fmt::Display`] in the given [`Denomination`].
@@ -342,7 +345,9 @@ impl Amount {
     /// # Ok::<_, amount::OutOfRangeError>(())
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn to_string_in(self, denom: Denomination) -> String { self.display_in(denom).to_string() }
+    pub fn to_string_in(self, denom: Denomination) -> String {
+        self.display_in(denom).to_string()
+    }
 
     /// Returns a formatted string representing this [`Amount`] in the given [`Denomination`],
     /// suffixed with the abbreviation for the denomination.
@@ -463,10 +468,11 @@ impl Amount {
         // Mul by 1,000 because we use per/kwu.
         if let Some(sats) = self.to_sat().checked_mul(1_000) {
             match sats.checked_div(wu) {
-                Some(fee_rate) =>
+                Some(fee_rate) => {
                     if let Ok(amount) = Self::from_sat(fee_rate) {
                         return FeeRate::from_per_kwu(amount);
-                    },
+                    }
+                }
                 None => return R::Error(E::while_doing(MathOp::Div)),
             }
         }
@@ -543,7 +549,9 @@ impl Amount {
 crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(Amount, to_sat);
 
 impl default::Default for Amount {
-    fn default() -> Self { Self::ZERO }
+    fn default() -> Self {
+        Self::ZERO
+    }
 }
 
 impl fmt::Debug for Amount {
@@ -587,7 +595,9 @@ impl FromStr for Amount {
 impl TryFrom<SignedAmount> for Amount {
     type Error = OutOfRangeError;
 
-    fn try_from(value: SignedAmount) -> Result<Self, Self::Error> { value.to_unsigned() }
+    fn try_from(value: SignedAmount) -> Result<Self, Self::Error> {
+        value.to_unsigned()
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -613,12 +623,16 @@ pub struct AmountDecoder(encoding::ArrayDecoder<8>);
 #[cfg(feature = "encoding")]
 impl AmountDecoder {
     /// Constructs a new [`Amount`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl Default for AmountDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -638,13 +652,17 @@ impl encoding::Decoder for AmountDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl encoding::Decodable for Amount {
     type Decoder = AmountDecoder;
-    fn decoder() -> Self::Decoder { AmountDecoder(encoding::ArrayDecoder::<8>::new()) }
+    fn decoder() -> Self::Decoder {
+        AmountDecoder(encoding::ArrayDecoder::<8>::new())
+    }
 }
 
 #[cfg(feature = "arbitrary")]

@@ -66,7 +66,9 @@ mod encapsulate {
         /// # use tidecoin_units::SignedAmount;
         /// assert_eq!(SignedAmount::ONE_TDC.to_sat(), 100_000_000);
         /// ```
-        pub const fn to_sat(self) -> i64 { self.0 }
+        pub const fn to_sat(self) -> i64 {
+            self.0
+        }
 
         /// Constructs a new [`SignedAmount`] from the given number of tidoshis.
         ///
@@ -137,8 +139,7 @@ impl SignedAmount {
                 is_greater_than_max: true,
             }))
         })?;
-        Ok(Self::from_sat(amount)
-            .map_err(|e| ParseAmountError(ParseAmountErrorInner::OutOfRange(e)))?)
+        Self::from_sat(amount).map_err(|e| ParseAmountError(ParseAmountErrorInner::OutOfRange(e)))
     }
 
     /// Converts from a value expressing a decimal number of tidecoin to a [`SignedAmount`].
@@ -237,7 +238,9 @@ impl SignedAmount {
 
     /// Expresses this [`SignedAmount`] as a floating-point value in Tidecoin.
     #[cfg(feature = "alloc")]
-    pub fn to_tdc(self) -> f64 { self.to_float_in(Denomination::Tidecoin) }
+    pub fn to_tdc(self) -> f64 {
+        self.to_float_in(Denomination::Tidecoin)
+    }
 
     /// Constructs a new `SignedAmount` from a prefixed hex string.
     ///
@@ -334,7 +337,9 @@ impl SignedAmount {
     /// # Ok::<_, amount::OutOfRangeError>(())
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn to_string_in(self, denom: Denomination) -> String { self.display_in(denom).to_string() }
+    pub fn to_string_in(self, denom: Denomination) -> String {
+        self.display_in(denom).to_string()
+    }
 
     /// Returns a formatted string representing this [`SignedAmount`] in the given [`Denomination`],
     /// suffixed with the abbreviation for the denomination.
@@ -378,19 +383,25 @@ impl SignedAmount {
     /// - `1` if the amount is positive
     /// - `-1` if the amount is negative
     #[must_use]
-    pub fn signum(self) -> i64 { self.to_sat().signum() }
+    pub fn signum(self) -> i64 {
+        self.to_sat().signum()
+    }
 
     /// Checks if this [`SignedAmount`] is positive.
     ///
     /// Returns `true` if this [`SignedAmount`] is positive and `false` if
     /// this [`SignedAmount`] is zero or negative.
-    pub fn is_positive(self) -> bool { self.to_sat().is_positive() }
+    pub fn is_positive(self) -> bool {
+        self.to_sat().is_positive()
+    }
 
     /// Checks if this [`SignedAmount`] is negative.
     ///
     /// Returns `true` if this [`SignedAmount`] is negative and `false` if
     /// this [`SignedAmount`] is zero or positive.
-    pub fn is_negative(self) -> bool { self.to_sat().is_negative() }
+    pub fn is_negative(self) -> bool {
+        self.to_sat().is_negative()
+    }
 
     /// Returns the absolute value of this [`SignedAmount`].
     ///
@@ -400,7 +411,9 @@ impl SignedAmount {
     #[must_use]
     #[deprecated(since = "1.0.0-rc.0", note = "Never returns none, use `abs()` instead")]
     #[allow(clippy::unnecessary_wraps)] // To match stdlib function definition.
-    pub const fn checked_abs(self) -> Option<Self> { Some(self.abs()) }
+    pub const fn checked_abs(self) -> Option<Self> {
+        Some(self.abs())
+    }
 
     /// Checked addition.
     ///
@@ -513,7 +526,9 @@ impl SignedAmount {
 crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(SignedAmount, to_sat);
 
 impl default::Default for SignedAmount {
-    fn default() -> Self { Self::ZERO }
+    fn default() -> Self {
+        Self::ZERO
+    }
 }
 
 impl fmt::Debug for SignedAmount {

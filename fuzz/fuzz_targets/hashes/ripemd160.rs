@@ -1,8 +1,8 @@
 #![cfg_attr(fuzzing, no_main)]
 #![cfg_attr(not(fuzzing), allow(unused))]
 
-use bitcoin::hashes::{ripemd160, HashEngine};
 use libfuzzer_sys::fuzz_target;
+use tidecoin::hashes::{ripemd160, HashEngine};
 
 #[cfg(not(fuzzing))]
 fn main() {}

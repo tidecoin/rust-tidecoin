@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Bitcoin scripts.
+//! Tidecoin scripts.
 
 mod borrowed;
+mod builder;
+mod instruction;
 mod owned;
+mod push_bytes;
 mod tag;
 #[cfg(test)]
 mod tests;
@@ -25,8 +28,11 @@ use crate::prelude::{Borrow, BorrowMut, Box, Cow, ToOwned, Vec};
 #[rustfmt::skip]                // Keep public re-exports separate.
 #[doc(inline)]
 pub use self::{
+    builder::Builder,
     borrowed::{Script, ScriptEncoder},
+    instruction::{Instruction, InstructionIndices, Instructions},
     owned::{ScriptBuf, ScriptBufDecoder, ScriptBufDecoderError},
+    push_bytes::{PushBytes, PushBytesBuf, PushBytesError, ScriptIntError},
     tag::{Tag, RedeemScriptTag, ScriptPubKeyTag, ScriptSigTag, WitnessScriptTag},
 };
 #[doc(inline)]
@@ -64,6 +70,32 @@ pub type WitnessScriptBuf = ScriptBuf<WitnessScriptTag>;
 /// A reference to a Segwit v0 witness script.
 pub type WitnessScript = Script<WitnessScriptTag>;
 
+/// Basic script decoding/building errors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+    /// Non-minimal push encoding.
+    NonMinimalPush,
+    /// Script ended while parsing an instruction.
+    EarlyEndOfScript,
+    /// Numeric overflow while parsing or serializing a script integer.
+    NumericOverflow,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NonMinimalPush => f.write_str("non-minimal datapush"),
+            Self::EarlyEndOfScript => f.write_str("unexpected end of script"),
+            Self::NumericOverflow => {
+                f.write_str("numeric overflow (number on stack larger than 4 bytes)")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
 /// The maximum allowed redeem script size for a P2SH output.
 pub const MAX_REDEEM_SCRIPT_SIZE: usize = 520;
 /// The maximum allowed redeem script size of the witness script.
@@ -72,8 +104,8 @@ pub const MAX_WITNESS_SCRIPT_SIZE: usize = 10_000;
 /// Either a redeem script or a Segwit version 0 scriptpubkey.
 ///
 /// In the case of P2SH-wrapped Segwit version outputs, we take a Segwit scriptPubKey
-/// and put it in a redeem script slot. The Bitcoin script interpreter has special
-/// logic to handle this case, which is reflected in our API in several methods
+/// and put it in a redeem script slot. Tidecoin script validation has special logic to handle this
+/// case, which is reflected in our API in several methods
 /// relating to P2SH and signature hashing. These methods take either a normal
 /// P2SH redeem script, or a Segwit version 0 scriptpubkey.
 ///
@@ -144,16 +176,77 @@ impl TryFrom<&WitnessScript> for WScriptHash {
     }
 }
 
+/// Encodes an integer in script number format.
+pub fn write_scriptint(out: &mut [u8; 8], n: i64) -> usize {
+    let mut len = 0;
+    if n == 0 {
+        return len;
+    }
+
+    let neg = n < 0;
+    let mut abs = n.unsigned_abs();
+    while abs > 0xFF {
+        out[len] = (abs & 0xFF) as u8;
+        len += 1;
+        abs >>= 8;
+    }
+    if abs & 0x80 != 0 {
+        out[len] = abs as u8;
+        len += 1;
+        out[len] = if neg { 0x80 } else { 0 };
+        len += 1;
+    } else {
+        abs |= if neg { 0x80 } else { 0 };
+        out[len] = abs as u8;
+        len += 1;
+    }
+    len
+}
+
+/// Decodes a script integer without enforcing minimal encoding.
+///
+/// # Errors
+///
+/// Returns [`ScriptIntError::NumericOverflow`] when `v` exceeds the standard 4-byte script bound.
+///
+/// # Panics
+///
+/// Panics only if the internal 4-byte bound invariant is violated.
+pub fn read_scriptint_non_minimal(v: &[u8]) -> Result<i32, ScriptIntError> {
+    if v.is_empty() {
+        return Ok(0);
+    }
+    if v.len() > 4 {
+        return Err(ScriptIntError::NumericOverflow);
+    }
+
+    let mut ret = 0i64;
+    let mut sh = 0;
+    for byte in v {
+        ret += i64::from(*byte) << sh;
+        sh += 8;
+    }
+    if v[v.len() - 1] & 0x80 != 0 {
+        ret &= (1 << (sh - 1)) - 1;
+        ret = -ret;
+    }
+    Ok(i32::try_from(ret).expect("4 bytes or less fits in i32"))
+}
+
 // We keep all the `Script` and `ScriptBuf` impls together since it's easier to see side-by-side.
 
 impl<T> From<ScriptBuf<T>> for Box<Script<T>> {
     #[inline]
-    fn from(v: ScriptBuf<T>) -> Self { v.into_boxed_script() }
+    fn from(v: ScriptBuf<T>) -> Self {
+        v.into_boxed_script()
+    }
 }
 
 impl<T> From<ScriptBuf<T>> for Cow<'_, Script<T>> {
     #[inline]
-    fn from(value: ScriptBuf<T>) -> Self { Cow::Owned(value) }
+    fn from(value: ScriptBuf<T>) -> Self {
+        Cow::Owned(value)
+    }
 }
 
 impl<'a, T> From<Cow<'a, Script<T>>> for ScriptBuf<T> {
@@ -178,79 +271,109 @@ impl<'a, T> From<Cow<'a, Script<T>>> for Box<Script<T>> {
 
 impl<'a, T> From<&'a Script<T>> for Box<Script<T>> {
     #[inline]
-    fn from(value: &'a Script<T>) -> Self { value.to_owned().into() }
+    fn from(value: &'a Script<T>) -> Self {
+        value.to_owned().into()
+    }
 }
 
 impl<'a, T> From<&'a Script<T>> for ScriptBuf<T> {
     #[inline]
-    fn from(value: &'a Script<T>) -> Self { value.to_owned() }
+    fn from(value: &'a Script<T>) -> Self {
+        value.to_owned()
+    }
 }
 
 impl<'a, T> From<&'a Script<T>> for Cow<'a, Script<T>> {
     #[inline]
-    fn from(value: &'a Script<T>) -> Self { Cow::Borrowed(value) }
+    fn from(value: &'a Script<T>) -> Self {
+        Cow::Borrowed(value)
+    }
 }
 
 /// Note: This will fail to compile on old Rust for targets that don't support atomics
 #[cfg(target_has_atomic = "ptr")]
 impl<'a, T> From<&'a Script<T>> for Arc<Script<T>> {
     #[inline]
-    fn from(value: &'a Script<T>) -> Self { Script::from_arc_bytes(Arc::from(value.as_bytes())) }
+    fn from(value: &'a Script<T>) -> Self {
+        Script::from_arc_bytes(Arc::from(value.as_bytes()))
+    }
 }
 
 impl<'a, T> From<&'a Script<T>> for Rc<Script<T>> {
     #[inline]
-    fn from(value: &'a Script<T>) -> Self { Script::from_rc_bytes(Rc::from(value.as_bytes())) }
+    fn from(value: &'a Script<T>) -> Self {
+        Script::from_rc_bytes(Rc::from(value.as_bytes()))
+    }
 }
 
 impl<T> From<Vec<u8>> for ScriptBuf<T> {
     #[inline]
-    fn from(v: Vec<u8>) -> Self { Self::from_bytes(v) }
+    fn from(v: Vec<u8>) -> Self {
+        Self::from_bytes(v)
+    }
 }
 
 impl<T> From<ScriptBuf<T>> for Vec<u8> {
     #[inline]
-    fn from(v: ScriptBuf<T>) -> Self { v.into_bytes() }
+    fn from(v: ScriptBuf<T>) -> Self {
+        v.into_bytes()
+    }
 }
 
 impl<T> AsRef<Self> for Script<T> {
     #[inline]
-    fn as_ref(&self) -> &Self { self }
+    fn as_ref(&self) -> &Self {
+        self
+    }
 }
 
 impl<T> AsRef<Script<T>> for ScriptBuf<T> {
     #[inline]
-    fn as_ref(&self) -> &Script<T> { self }
+    fn as_ref(&self) -> &Script<T> {
+        self
+    }
 }
 
 impl<T> AsRef<[u8]> for Script<T> {
     #[inline]
-    fn as_ref(&self) -> &[u8] { self.as_bytes() }
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
 }
 
 impl<T> AsRef<[u8]> for ScriptBuf<T> {
     #[inline]
-    fn as_ref(&self) -> &[u8] { self.as_bytes() }
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
 }
 
 impl<T> AsMut<Self> for Script<T> {
     #[inline]
-    fn as_mut(&mut self) -> &mut Self { self }
+    fn as_mut(&mut self) -> &mut Self {
+        self
+    }
 }
 
 impl<T> AsMut<Script<T>> for ScriptBuf<T> {
     #[inline]
-    fn as_mut(&mut self) -> &mut Script<T> { self }
+    fn as_mut(&mut self) -> &mut Script<T> {
+        self
+    }
 }
 
 impl<T> AsMut<[u8]> for Script<T> {
     #[inline]
-    fn as_mut(&mut self) -> &mut [u8] { self.as_mut_bytes() }
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.as_mut_bytes()
+    }
 }
 
 impl<T> AsMut<[u8]> for ScriptBuf<T> {
     #[inline]
-    fn as_mut(&mut self) -> &mut [u8] { self.as_mut_bytes() }
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.as_mut_bytes()
+    }
 }
 
 impl<T> fmt::Debug for Script<T> {
@@ -263,7 +386,9 @@ impl<T> fmt::Debug for Script<T> {
 
 impl<T> fmt::Debug for ScriptBuf<T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Debug::fmt(self.as_script(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self.as_script(), f)
+    }
 }
 
 impl<T> fmt::Display for Script<T> {
@@ -335,7 +460,9 @@ impl<T> fmt::Display for Script<T> {
 
 impl<T> fmt::Display for ScriptBuf<T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(self.as_script(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self.as_script(), f)
+    }
 }
 
 #[cfg(feature = "hex")]
@@ -349,7 +476,9 @@ impl<T> fmt::LowerHex for Script<T> {
 #[cfg(feature = "hex")]
 impl<T> fmt::LowerHex for ScriptBuf<T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(self.as_script(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(self.as_script(), f)
+    }
 }
 
 #[cfg(feature = "hex")]
@@ -363,27 +492,37 @@ impl<T> fmt::UpperHex for Script<T> {
 #[cfg(feature = "hex")]
 impl<T> fmt::UpperHex for ScriptBuf<T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::UpperHex::fmt(self.as_script(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::UpperHex::fmt(self.as_script(), f)
+    }
 }
 
 impl<T> Borrow<Script<T>> for ScriptBuf<T> {
     #[inline]
-    fn borrow(&self) -> &Script<T> { self }
+    fn borrow(&self) -> &Script<T> {
+        self
+    }
 }
 
 impl<T> BorrowMut<Script<T>> for ScriptBuf<T> {
     #[inline]
-    fn borrow_mut(&mut self) -> &mut Script<T> { self }
+    fn borrow_mut(&mut self) -> &mut Script<T> {
+        self
+    }
 }
 
 impl<T: PartialEq> PartialEq<ScriptBuf<T>> for Script<T> {
     #[inline]
-    fn eq(&self, other: &ScriptBuf<T>) -> bool { self.eq(other.as_script()) }
+    fn eq(&self, other: &ScriptBuf<T>) -> bool {
+        self.eq(other.as_script())
+    }
 }
 
 impl<T: PartialEq> PartialEq<Script<T>> for ScriptBuf<T> {
     #[inline]
-    fn eq(&self, other: &Script<T>) -> bool { self.as_script().eq(other) }
+    fn eq(&self, other: &Script<T>) -> bool {
+        self.as_script().eq(other)
+    }
 }
 
 impl<T: PartialOrd> PartialOrd<Script<T>> for ScriptBuf<T> {

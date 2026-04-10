@@ -14,12 +14,10 @@ use hashes::sha256d;
 #[cfg(doc)]
 use crate::OutPoint;
 
-/// A bitcoin transaction hash/transaction ID.
+/// A Tidecoin transaction hash/transaction ID.
 ///
-/// For compatibility with the existing Bitcoin infrastructure and historical and current
-/// versions of the Bitcoin Core software itself, this and other [`sha256d::Hash`] types, are
-/// serialized in reverse byte order when converted to a hex string via [`std::fmt::Display`]
-/// trait operations.
+/// This and other [`sha256d::Hash`] types are serialized in reverse byte order when converted to
+/// a hex string via [`std::fmt::Display`] trait operations.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Txid(sha256d::Hash);
 

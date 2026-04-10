@@ -22,40 +22,58 @@ pub struct Hmac<T: Hash>(T);
 
 impl<T: Hash + str::FromStr> str::FromStr for Hmac<T> {
     type Err = <T as str::FromStr>::Err;
-    fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(Self(str::FromStr::from_str(s)?)) }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(str::FromStr::from_str(s)?))
+    }
 }
 
 impl<T: Hash> PartialEq for Hmac<T> {
-    fn eq(&self, other: &Self) -> bool { crate::cmp::fixed_time_eq(self.as_ref(), other.as_ref()) }
+    fn eq(&self, other: &Self) -> bool {
+        crate::cmp::fixed_time_eq(self.as_ref(), other.as_ref())
+    }
 }
 
 impl<T: Hash> Eq for Hmac<T> {}
 
 impl<T: Hash + fmt::Debug> fmt::Debug for Hmac<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Debug::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
+    }
 }
 
 impl<T: Hash + fmt::Display> fmt::Display for Hmac<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 impl<T: Hash + fmt::LowerHex> fmt::LowerHex for Hmac<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.0, f)
+    }
 }
 
 impl<T: Hash> convert::AsRef<[u8]> for Hmac<T> {
     // Calling as_byte_array is more reliable
-    fn as_ref(&self) -> &[u8] { self.0.as_byte_array().as_ref() }
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_byte_array().as_ref()
+    }
 }
 
 impl<T: Hash> Hash for Hmac<T> {
     type Bytes = T::Bytes;
 
-    fn from_byte_array(bytes: T::Bytes) -> Self { Self(T::from_byte_array(bytes)) }
+    fn from_byte_array(bytes: T::Bytes) -> Self {
+        Self(T::from_byte_array(bytes))
+    }
 
-    fn to_byte_array(self) -> Self::Bytes { self.0.to_byte_array() }
+    fn to_byte_array(self) -> Self::Bytes {
+        self.0.to_byte_array()
+    }
 
-    fn as_byte_array(&self) -> &Self::Bytes { self.0.as_byte_array() }
+    fn as_byte_array(&self) -> &Self::Bytes {
+        self.0.as_byte_array()
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -128,7 +146,9 @@ impl<T: HashEngine> HmacEngine<T> {
     }
 
     /// A special constructor giving direct access to the underlying "inner" and "outer" engines.
-    pub fn from_inner_engines(iengine: T, oengine: T) -> Self { Self { iengine, oengine } }
+    pub fn from_inner_engines(iengine: T, oengine: T) -> Self {
+        Self { iengine, oengine }
+    }
 
     /// Attempts to erase the contents of the underlying hash engines
     ///
@@ -148,8 +168,12 @@ impl<T: HashEngine> HashEngine for HmacEngine<T> {
     type Bytes = T::Bytes;
     const BLOCK_SIZE: usize = T::BLOCK_SIZE;
 
-    fn n_bytes_hashed(&self) -> u64 { self.iengine.n_bytes_hashed() }
-    fn input(&mut self, buf: &[u8]) { self.iengine.input(buf) }
+    fn n_bytes_hashed(&self) -> u64 {
+        self.iengine.n_bytes_hashed()
+    }
+    fn input(&mut self, buf: &[u8]) {
+        self.iengine.input(buf);
+    }
     fn finalize(mut self) -> Self::Hash {
         let ihash = self.iengine.finalize();
         self.oengine.input(ihash.as_ref());

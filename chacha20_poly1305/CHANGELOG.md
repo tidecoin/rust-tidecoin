@@ -1,11 +1,10 @@
-# 0.1.2 - 2025-05-15
+# Changelog
 
-* Fixed a bug which was doubling the amount of work, performance should be improved [#4083](https://github.com/rust-bitcoin/rust-bitcoin/pull/4083).
+All notable Tidecoin-specific changes for the AEAD helper crate are documented here.
 
-# 0.1.1 - 2024-11-07
+## Unreleased
 
-* The crate is now `no_std`.
-
-# 0.1.0 - 2024-10-28
-
-* Initial release to create the chacha20-poly1305 crate.
+- Kept this crate as the Tidecoin workspace AEAD support layer for transport code.
+- Preserved no-std and allocation feature boundaries needed by the p2p stack.
+- Aligned crate ownership and MSRV with the Tidecoin workspace.
+- Set the crate MSRV to Rust 1.94.1.

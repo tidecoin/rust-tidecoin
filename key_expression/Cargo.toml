@@ -9,7 +9,7 @@ categories = ["cryptography::cryptocurrencies"]
 keywords = ["tidecoin", "peer-to-peer", "cryptography"]
 readme = "README.md"
 edition = "2021"
-rust-version = "1.74.0"
+rust-version = "1.94.1"
 exclude = ["tests", "contrib"]
 
 [features]
@@ -18,7 +18,7 @@ std = ["alloc", "tidecoin/std"]
 alloc = []
 
 [dependencies]
-tidecoin = { path = "../bitcoin", version = "0.33.0-beta", default-features = false }
+tidecoin = { path = "../tidecoin", version = "0.33.0-beta", default-features = false }
 
 [dev-dependencies]
 

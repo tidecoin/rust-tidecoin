@@ -45,11 +45,7 @@ mod tests {
 
     #[test]
     fn default_p2p_port() {
-        let networks = [
-            Network::Tidecoin,
-            Network::Testnet,
-            Network::Regtest,
-        ];
+        let networks = [Network::Tidecoin, Network::Testnet, Network::Regtest];
 
         let p2p_ports = vec![8755, 18755, 18778];
 
@@ -60,14 +56,9 @@ mod tests {
 
     #[test]
     fn default_network_magic() {
-        let networks = [
-            Network::Tidecoin,
-            Network::Testnet,
-            Network::Regtest,
-        ];
+        let networks = [Network::Tidecoin, Network::Testnet, Network::Regtest];
 
-        let network_magics =
-            vec![Magic::TIDECOIN, Magic::TESTNET, Magic::REGTEST];
+        let network_magics = vec![Magic::TIDECOIN, Magic::TESTNET, Magic::REGTEST];
 
         for (network, network_magic) in networks.iter().zip(network_magics) {
             assert_eq!(network.default_network_magic(), network_magic);

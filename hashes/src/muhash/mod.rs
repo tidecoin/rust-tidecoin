@@ -29,13 +29,19 @@ internals::transparent_newtype! {
 
 impl Hash {
     /// Constructs a new hash from the underlying byte array.
-    pub const fn from_byte_array(bytes: [u8; BYTE_SIZE]) -> Self { Self(bytes) }
+    pub const fn from_byte_array(bytes: [u8; BYTE_SIZE]) -> Self {
+        Self(bytes)
+    }
 
     /// Returns the underlying byte array.
-    pub const fn to_byte_array(self) -> [u8; BYTE_SIZE] { self.0 }
+    pub const fn to_byte_array(self) -> [u8; BYTE_SIZE] {
+        self.0
+    }
 
     /// Returns a reference to the underlying byte array.
-    pub const fn as_byte_array(&self) -> &[u8; BYTE_SIZE] { &self.0 }
+    pub const fn as_byte_array(&self) -> &[u8; BYTE_SIZE] {
+        &self.0
+    }
 }
 
 crate::internal_macros::hash_trait_impls!(BYTE_SIZE * 8, false);

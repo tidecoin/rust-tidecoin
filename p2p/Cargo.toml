@@ -9,22 +9,21 @@ categories = ["cryptography::cryptocurrencies"]
 keywords = ["tidecoin", "peer-to-peer"]
 readme = "README.md"
 edition = "2021"
-rust-version = "1.74.0"
+rust-version = "1.94.1"
 exclude = ["tests", "contrib"]
 
 [features]
 default = ["std"]
-std = ["encoding/std", "hashes/std", "network/std", "hex-stable/std", "hex-unstable/std", "internals/std", "io/std", "units/std", "bitcoin/std", "primitives/std"]
-arbitrary = ["dep:arbitrary", "bitcoin/arbitrary"]
+std = ["encoding/std", "hashes/std", "network/std", "hex-stable/std", "hex-unstable/std", "internals/std", "io/std", "units/std", "primitives/std"]
+arbitrary = ["dep:arbitrary", "primitives/arbitrary"]
 serde = ["dep:serde", "hashes/serde"]
 
 [dependencies]
-bitcoin = { path = "../bitcoin/", package = "tidecoin", default-features = false }
 chacha20-poly1305 = { path = "../chacha20_poly1305", version = "0.1.2", default-features = false, features = ["alloc"] }
-encoding = { package = "tidecoin-consensus-encoding", version = "0.1.0", path = "../consensus_encoding", default-features = false }
-hashes = { package = "tidecoin_hashes", version = "0.20.0", path = "../hashes", default-features = false }
+encoding = { package = "tidecoin-consensus-encoding", version = "0.1.0", path = "../consensus_encoding", default-features = false, features = ["alloc"] }
+hashes = { package = "tidecoin_hashes", version = "0.20.0", path = "../hashes", default-features = false, features = ["hex"] }
 network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.0", default-features = false }
-primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false }
+primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["hex"] }
 hex-stable = { package = "hex-conservative", version = "1.0.0", default-features = false, features = ["alloc"] }
 hex-unstable = { package = "hex-conservative", version = "0.3.2", default-features = false }
 internals = { package = "tidecoin-internals", path = "../internals", default-features = false }

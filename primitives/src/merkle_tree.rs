@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Bitcoin Merkle tree functions.
+//! Tidecoin Merkle tree functions.
 
-// This module is unusual in that it exists because of a bunch of (krufty) reasons:
-//
-// - We based the name off of the original `bitcoin` module.
-// - We want the API to be the same here as in `bitcoin`.
-// - We define all the other hash types in some module so the merkle tree hash types need a module.
-//
-// C'est la vie.
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
@@ -75,9 +68,9 @@ pub(crate) trait MerkleNode: Copy + PartialEq {
                     let right = stack.pop().unwrap();
                     let left = stack.pop().unwrap();
                     if left.1 == right.1 {
-                        // Reject duplicate trees since they are guaranteed-invalid (Bitcoin does
-                        // not allow duplicate transactions in block) but can be used to confuse
-                        // nodes about legitimate blocks. See CVE 2012-2459 and the block comment
+                        // Reject duplicate trees since duplicate transactions are invalid in a
+                        // block and can be used to confuse nodes about legitimate blocks. See the
+                        // block validation notes
                         // below.
                         return None;
                     }
@@ -86,9 +79,9 @@ pub(crate) trait MerkleNode: Copy + PartialEq {
                     n >>= 1;
                 }
             }
-            // ...then, deal with incomplete trees. Bitcoin does a weird thing in
-            // which it doubles-up nodes of the tree to fill out the tree, rather
-            // than treating incomplete branches specially. This makes this tree
+            // ...then, deal with incomplete trees. The consensus algorithm duplicates final
+            // branches to fill out the tree rather than treating incomplete branches specially.
+            // This makes this tree
             // construction vulnerable to collisions (see CVE 2012-2459).
             //
             // (It is also vulnerable to collisions because it does not distinguish
@@ -120,7 +113,9 @@ pub(crate) trait MerkleNode: Copy + PartialEq {
 // provided methods in the trait definition.
 impl MerkleNode for TxMerkleNode {
     type Leaf = Txid;
-    fn from_leaf(leaf: Self::Leaf) -> Self { Self::from_byte_array(leaf.to_byte_array()) }
+    fn from_leaf(leaf: Self::Leaf) -> Self {
+        Self::from_byte_array(leaf.to_byte_array())
+    }
 
     fn combine(&self, other: &Self) -> Self {
         let mut encoder = sha256d::Hash::engine();
@@ -131,7 +126,9 @@ impl MerkleNode for TxMerkleNode {
 }
 impl MerkleNode for WitnessMerkleNode {
     type Leaf = Wtxid;
-    fn from_leaf(leaf: Self::Leaf) -> Self { Self::from_byte_array(leaf.to_byte_array()) }
+    fn from_leaf(leaf: Self::Leaf) -> Self {
+        Self::from_byte_array(leaf.to_byte_array())
+    }
 
     fn combine(&self, other: &Self) -> Self {
         let mut encoder = sha256d::Hash::engine();

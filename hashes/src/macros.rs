@@ -449,7 +449,9 @@ pub mod serde_details {
     pub struct HexVisitor<ValueT>(PhantomData<ValueT>);
 
     impl<ValueT> Default for HexVisitor<ValueT> {
-        fn default() -> Self { Self(PhantomData) }
+        fn default() -> Self {
+            Self(PhantomData)
+        }
     }
 
     impl<ValueT> de::Visitor<'_> for HexVisitor<ValueT>
@@ -486,7 +488,9 @@ pub mod serde_details {
     pub struct BytesVisitor<ValueT, const N: usize>(PhantomData<ValueT>);
 
     impl<ValueT, const N: usize> Default for BytesVisitor<ValueT, N> {
-        fn default() -> Self { Self(PhantomData) }
+        fn default() -> Self {
+            Self(PhantomData)
+        }
     }
 
     impl<ValueT, const N: usize> de::Visitor<'_> for BytesVisitor<ValueT, N>
@@ -600,7 +604,9 @@ mod test {
     crate::impl_debug_only_for_newtype!(TestHash);
 
     impl TestHash {
-        fn all_zeros() -> Self { Self::from_byte_array([0; 32]) }
+        fn all_zeros() -> Self {
+            Self::from_byte_array([0; 32])
+        }
     }
 
     #[test]

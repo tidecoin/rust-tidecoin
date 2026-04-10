@@ -14,7 +14,7 @@ const USER_AGENT_VERSION: UserAgentVersion = UserAgentVersion::new(SOFTWARE_VERS
 const SOFTWARE_NAME: &str = "rust-client";
 
 fn main() {
-    // This example establishes a connection to a Bitcoin node, sends the initial
+    // This example establishes a connection to a Tidecoin node, sends the initial
     // "version" message, waits for the reply, and finally closes the connection.
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -75,7 +75,7 @@ fn main() {
 }
 
 fn build_version_message(address: SocketAddr) -> message::NetworkMessage {
-    // Building version message, see https://en.bitcoin.it/wiki/Protocol_documentation#version
+    // Build the network version message for the peer handshake.
     let my_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
 
     // The version of the p2p protocol this client will use

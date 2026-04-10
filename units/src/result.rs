@@ -216,7 +216,9 @@ impl<T: fmt::Debug> NumOpResult<T> {
 
     /// Returns `true` if the numeric result is invalid.
     #[inline]
-    pub fn is_error(&self) -> bool { !self.is_valid() }
+    pub fn is_error(&self) -> bool {
+        !self.is_valid()
+    }
 }
 
 // Implement Add/Sub on NumOpResults for all wrapped types that already implement Add/Sub on themselves
@@ -359,19 +361,29 @@ impl MathOp {
     }
 
     /// Returns `true` if this operation error'ed due to division by zero.
-    pub fn is_div_by_zero(self) -> bool { !self.is_overflow() }
+    pub fn is_div_by_zero(self) -> bool {
+        !self.is_overflow()
+    }
 
     /// Returns `true` if this operation error'ed due to addition.
-    pub fn is_addition(self) -> bool { self == Self::Add }
+    pub fn is_addition(self) -> bool {
+        self == Self::Add
+    }
 
     /// Returns `true` if this operation error'ed due to subtraction.
-    pub fn is_subtraction(self) -> bool { self == Self::Sub }
+    pub fn is_subtraction(self) -> bool {
+        self == Self::Sub
+    }
 
     /// Returns `true` if this operation error'ed due to multiplication.
-    pub fn is_multiplication(self) -> bool { self == Self::Mul }
+    pub fn is_multiplication(self) -> bool {
+        self == Self::Mul
+    }
 
     /// Returns `true` if this operation error'ed due to negation.
-    pub fn is_negation(self) -> bool { self == Self::Neg }
+    pub fn is_negation(self) -> bool {
+        self == Self::Neg
+    }
 }
 
 impl fmt::Display for MathOp {
@@ -401,21 +413,31 @@ pub mod error {
     pub struct NumOpError(pub(super) MathOp);
 
     impl From<Infallible> for NumOpError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl NumOpError {
         /// Constructs a [`NumOpError`] caused by `op`.
-        pub(crate) const fn while_doing(op: MathOp) -> Self { Self(op) }
+        pub(crate) const fn while_doing(op: MathOp) -> Self {
+            Self(op)
+        }
 
         /// Returns `true` if this operation error'ed due to overflow.
-        pub fn is_overflow(self) -> bool { self.0.is_overflow() }
+        pub fn is_overflow(self) -> bool {
+            self.0.is_overflow()
+        }
 
         /// Returns `true` if this operation error'ed due to division by zero.
-        pub fn is_div_by_zero(self) -> bool { self.0.is_div_by_zero() }
+        pub fn is_div_by_zero(self) -> bool {
+            self.0.is_div_by_zero()
+        }
 
         /// Returns the [`MathOp`] that caused this error.
-        pub fn operation(self) -> MathOp { self.0 }
+        pub fn operation(self) -> MathOp {
+            self.0
+        }
     }
 
     impl fmt::Display for NumOpError {

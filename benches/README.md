@@ -1,11 +1,10 @@
-# Rust Bitcoin Benchmarks
+# Rust Tidecoin Benchmarks
 
-Criterion based benchmarks for `rust-bitcoin`.
+Criterion-based benchmarks for `rust-tidecoin`.
 
 ## Minimum Supported Rust Version (MSRV)
 
-This crate’s MSRV is determined by its Criterion dependency. It currently requires **Rust 1.81**.
-This higher MSRV applies only to the benches crate and does not affect other crates in this repository.
+This crate follows the repository MSRV, currently **Rust 1.94.1**.
 
 ## Running the benchmarks
 
@@ -39,13 +38,13 @@ View reports:
 
 ## Adding a new benchmark
 
-1. Create a new Rust file for your benchmark in the subfolder for the crate e.g. `benches/bitcoin/base58.rs`.
+1. Create a new Rust file for your benchmark in the subfolder for the crate e.g. `benches/tidecoin/base58.rs`.
 2. Add it in `benches/Cargo.toml` including the path, with `harness = false`:
 
 ```toml
 [[bench]]
 name = "base58"
-path = "bitcoin/base58.rs"
+path = "tidecoin/base58.rs"
 harness = false
 ```
 

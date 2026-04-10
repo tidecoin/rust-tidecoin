@@ -21,7 +21,9 @@ use alloc::string::{String, ToString};
 use core::fmt;
 use core::str::FromStr;
 
-use tidecoin::{pqhd, Params, PqError, PqPublicKey, PqScheme, PqSecretKey, PqhdSeedId};
+#[cfg(feature = "alloc")]
+use tidecoin::Params;
+use tidecoin::{pqhd, PqError, PqPublicKey, PqScheme, PqSecretKey, PqhdSeedId};
 
 /// Wallet descriptor output types used by Tidecoin's PQHD wallet generator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,7 +51,9 @@ impl WalletOutputType {
 }
 
 impl fmt::Display for WalletOutputType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(self.as_str()) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 impl FromStr for WalletOutputType {
@@ -127,25 +131,39 @@ impl PqhdKeyExpression {
     }
 
     /// Returns the seed id.
-    pub fn seed_id(&self) -> PqhdSeedId { self.seed_id }
+    pub fn seed_id(&self) -> PqhdSeedId {
+        self.seed_id
+    }
 
     /// Returns the scheme.
-    pub fn scheme(&self) -> PqScheme { self.scheme }
+    pub fn scheme(&self) -> PqScheme {
+        self.scheme
+    }
 
     /// Returns the node-style scheme prefix byte.
-    pub fn scheme_prefix(&self) -> u8 { self.scheme.prefix() }
+    pub fn scheme_prefix(&self) -> u8 {
+        self.scheme.prefix()
+    }
 
     /// Returns the account element.
-    pub fn account(&self) -> u32 { self.account }
+    pub fn account(&self) -> u32 {
+        self.account
+    }
 
     /// Returns the change element (`0` receive, `1` internal/change).
-    pub fn change(&self) -> u32 { self.change }
+    pub fn change(&self) -> u32 {
+        self.change
+    }
 
     /// Returns the final derivation component.
-    pub fn index(&self) -> KeyIndex { self.index }
+    pub fn index(&self) -> KeyIndex {
+        self.index
+    }
 
     /// Returns whether this is a ranged expression (`*h`).
-    pub fn is_range(&self) -> bool { self.index == KeyIndex::Wildcard }
+    pub fn is_range(&self) -> bool {
+        self.index == KeyIndex::Wildcard
+    }
 
     /// Returns descriptor metadata for the encoded path.
     pub fn key_path_info(&self) -> PqhdKeyPathInfo {
@@ -162,7 +180,9 @@ impl PqhdKeyExpression {
     }
 
     /// Returns the referenced seed ids.
-    pub fn seed_ids(&self) -> [PqhdSeedId; 1] { [self.seed_id] }
+    pub fn seed_ids(&self) -> [PqhdSeedId; 1] {
+        [self.seed_id]
+    }
 
     /// Resolves the full hardened PQHD v1 leaf path.
     ///
@@ -195,7 +215,8 @@ impl PqhdKeyExpression {
         let path = self.leaf_path(external_index)?;
         let master = pqhd::make_master_node(master_seed);
         let leaf = pqhd::derive_path(&path, &master).ok_or(Error::InvalidLeafPath)?;
-        let material = pqhd::derive_leaf_material_v1(&leaf.node_secret, &path).ok_or(Error::InvalidLeafPath)?;
+        let material = pqhd::derive_leaf_material_v1(&leaf.node_secret, &path)
+            .ok_or(Error::InvalidLeafPath)?;
         pqhd::derive_keypair_v1(&material).map_err(Error::Pq)
     }
 
@@ -287,7 +308,8 @@ impl FromStr for PqhdKeyExpression {
         if scheme_u32 > u32::from(u8::MAX) {
             return Err(Error::SchemeIdOutOfRange(scheme_u32));
         }
-        let scheme = PqScheme::from_prefix(scheme_u32 as u8).ok_or(Error::UnknownScheme(scheme_u32))?;
+        let scheme =
+            PqScheme::from_prefix(scheme_u32 as u8).ok_or(Error::UnknownScheme(scheme_u32))?;
 
         let change = elems[4];
         validate_change(change)?;
@@ -311,19 +333,29 @@ impl PqhdDescriptor {
     }
 
     /// Returns the wrapper output type.
-    pub fn output_type(&self) -> WalletOutputType { self.output_type }
+    pub fn output_type(&self) -> WalletOutputType {
+        self.output_type
+    }
 
     /// Returns the wrapped key expression.
-    pub fn key_expression(&self) -> &PqhdKeyExpression { &self.key_expression }
+    pub fn key_expression(&self) -> &PqhdKeyExpression {
+        &self.key_expression
+    }
 
     /// Returns whether the wrapped key expression is ranged.
-    pub fn is_range(&self) -> bool { self.key_expression.is_range() }
+    pub fn is_range(&self) -> bool {
+        self.key_expression.is_range()
+    }
 
     /// Returns the wrapped scheme prefix.
-    pub fn scheme_prefix(&self) -> u8 { self.key_expression.scheme_prefix() }
+    pub fn scheme_prefix(&self) -> u8 {
+        self.key_expression.scheme_prefix()
+    }
 
     /// Returns the wrapped seed ids.
-    pub fn seed_ids(&self) -> [PqhdSeedId; 1] { self.key_expression.seed_ids() }
+    pub fn seed_ids(&self) -> [PqhdSeedId; 1] {
+        self.key_expression.seed_ids()
+    }
 }
 
 impl fmt::Display for PqhdDescriptor {
@@ -344,19 +376,13 @@ impl FromStr for PqhdDescriptor {
         if let Some(inner) = s.strip_prefix("pkh(").and_then(|rest| rest.strip_suffix(')')) {
             return Ok(Self::new(WalletOutputType::Legacy, inner.parse()?));
         }
-        if let Some(inner) = s
-            .strip_prefix("sh(wpkh(")
-            .and_then(|rest| rest.strip_suffix("))"))
-        {
+        if let Some(inner) = s.strip_prefix("sh(wpkh(").and_then(|rest| rest.strip_suffix("))")) {
             return Ok(Self::new(WalletOutputType::P2shSegwit, inner.parse()?));
         }
         if let Some(inner) = s.strip_prefix("wpkh(").and_then(|rest| rest.strip_suffix(')')) {
             return Ok(Self::new(WalletOutputType::Bech32, inner.parse()?));
         }
-        if let Some(inner) = s
-            .strip_prefix("wsh512(pk(")
-            .and_then(|rest| rest.strip_suffix("))"))
-        {
+        if let Some(inner) = s.strip_prefix("wsh512(pk(").and_then(|rest| rest.strip_suffix("))")) {
             return Ok(Self::new(WalletOutputType::Bech32Pq, inner.parse()?));
         }
         Err(Error::UnknownDescriptorWrapper)
@@ -460,41 +486,62 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotPqhdExpression => f.write_str("not a pqhd() key expression"),
-            Self::SeedIdLength(len) =>
-                write!(f, "pqhd() seed id is not 32-byte hex ({} characters)", len),
+            Self::SeedIdLength(len) => {
+                write!(f, "pqhd() seed id is not 32-byte hex ({} characters)", len)
+            }
             Self::InvalidSeedId => f.write_str("pqhd() seed id is not valid hex"),
-            Self::MultipathUnsupported => f.write_str("pqhd() does not support multipath derivation"),
+            Self::MultipathUnsupported => {
+                f.write_str("pqhd() does not support multipath derivation")
+            }
             Self::WildcardMustBeHardened => f.write_str("pqhd() wildcard form must use *h"),
-            Self::WildcardMustBeFinalElement => f.write_str("pqhd() wildcard must be the final path element"),
+            Self::WildcardMustBeFinalElement => {
+                f.write_str("pqhd() wildcard must be the final path element")
+            }
             Self::HardenedOnly => f.write_str("pqhd() derivation must be hardened-only"),
             Self::InvalidPathElement => f.write_str("pqhd() path element is not a valid u32"),
-            Self::PathElementCount(count) =>
-                write!(f, "pqhd() expects 6 hardened path elements after the seed id, got {}", count),
-            Self::WildcardRequiresFiveFixedElements(count) =>
-                write!(f, "pqhd() wildcard form must have exactly 5 fixed elements before *h, got {}", count),
-            Self::FixedRequiresSixElements(count) =>
-                write!(f, "pqhd() fixed form must have exactly 6 hardened path elements, got {}", count),
-            Self::PurposeMustBe(expected, got) =>
-                write!(f, "pqhd() purpose must be {}, got {}", expected, got),
-            Self::CoinTypeMustBe(expected, got) =>
-                write!(f, "pqhd() coin_type must be {}, got {}", expected, got),
-            Self::SchemeIdOutOfRange(got) =>
-                write!(f, "pqhd() scheme id must fit in uint8, got {}", got),
-            Self::UnknownScheme(got) =>
-                write!(f, "pqhd() scheme id {} is not recognized", got),
+            Self::PathElementCount(count) => write!(
+                f,
+                "pqhd() expects 6 hardened path elements after the seed id, got {}",
+                count
+            ),
+            Self::WildcardRequiresFiveFixedElements(count) => write!(
+                f,
+                "pqhd() wildcard form must have exactly 5 fixed elements before *h, got {}",
+                count
+            ),
+            Self::FixedRequiresSixElements(count) => write!(
+                f,
+                "pqhd() fixed form must have exactly 6 hardened path elements, got {}",
+                count
+            ),
+            Self::PurposeMustBe(expected, got) => {
+                write!(f, "pqhd() purpose must be {}, got {}", expected, got)
+            }
+            Self::CoinTypeMustBe(expected, got) => {
+                write!(f, "pqhd() coin_type must be {}, got {}", expected, got)
+            }
+            Self::SchemeIdOutOfRange(got) => {
+                write!(f, "pqhd() scheme id must fit in uint8, got {}", got)
+            }
+            Self::UnknownScheme(got) => write!(f, "pqhd() scheme id {} is not recognized", got),
             Self::InvalidChange(got) => write!(f, "pqhd() change must be 0 or 1, got {}", got),
-            Self::MissingIndexForRangedExpression =>
-                f.write_str("pqhd() ranged expression requires an external index"),
-            Self::UnexpectedIndexForFixedExpression =>
-                f.write_str("pqhd() fixed expression does not accept an external index"),
-            Self::InvalidLeafPath => f.write_str("pqhd() resolved path is not a valid Tidecoin PQHD v1 leaf"),
+            Self::MissingIndexForRangedExpression => {
+                f.write_str("pqhd() ranged expression requires an external index")
+            }
+            Self::UnexpectedIndexForFixedExpression => {
+                f.write_str("pqhd() fixed expression does not accept an external index")
+            }
+            Self::InvalidLeafPath => {
+                f.write_str("pqhd() resolved path is not a valid Tidecoin PQHD v1 leaf")
+            }
             Self::Pq(err) => fmt::Display::fmt(err, f),
-            Self::SchemeNotAllowedAtHeight { scheme, height } =>
-                write!(f, "PQ scheme {:?} not allowed at height {}", scheme, height),
-            Self::Bech32PqNotAllowedAtHeight(height) =>
-                write!(f, "PQ v1 outputs not allowed at height {}", height),
-            Self::UnknownDescriptorWrapper =>
-                f.write_str("unsupported pqhd() descriptor wrapper"),
+            Self::SchemeNotAllowedAtHeight { scheme, height } => {
+                write!(f, "PQ scheme {:?} not allowed at height {}", scheme, height)
+            }
+            Self::Bech32PqNotAllowedAtHeight(height) => {
+                write!(f, "PQ v1 outputs not allowed at height {}", height)
+            }
+            Self::UnknownDescriptorWrapper => f.write_str("unsupported pqhd() descriptor wrapper"),
         }
     }
 }
@@ -538,11 +585,15 @@ mod tests {
     use super::*;
 
     fn seed_id() -> PqhdSeedId {
-        PqhdSeedId::from_str("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f").unwrap()
+        PqhdSeedId::from_str("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+            .unwrap()
     }
 
     fn master_seed() -> [u8; 32] {
-        tidecoin::hex::decode_to_array::<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f").unwrap()
+        tidecoin::hex::decode_to_array::<32>(
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )
+        .unwrap()
     }
 
     #[test]
@@ -606,9 +657,7 @@ mod tests {
 
         let err = format!(
             "{}",
-            "pqhd(0001020304)/10007h/6868h/7h/0h/0h/*h"
-                .parse::<PqhdKeyExpression>()
-                .unwrap_err()
+            "pqhd(0001020304)/10007h/6868h/7h/0h/0h/*h".parse::<PqhdKeyExpression>().unwrap_err()
         );
         assert!(err.contains("seed id"));
     }
@@ -634,18 +683,12 @@ mod tests {
     fn pqhd_descriptor_wrappers_roundtrip() {
         let seed = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
         let cases = [
-            (
-                WalletOutputType::Legacy,
-                format!("pkh(pqhd({seed})/10007h/6868h/7h/0h/0h/*h)"),
-            ),
+            (WalletOutputType::Legacy, format!("pkh(pqhd({seed})/10007h/6868h/7h/0h/0h/*h)")),
             (
                 WalletOutputType::P2shSegwit,
                 format!("sh(wpkh(pqhd({seed})/10007h/6868h/7h/0h/0h/*h))"),
             ),
-            (
-                WalletOutputType::Bech32,
-                format!("wpkh(pqhd({seed})/10007h/6868h/7h/0h/0h/*h)"),
-            ),
+            (WalletOutputType::Bech32, format!("wpkh(pqhd({seed})/10007h/6868h/7h/0h/0h/*h)")),
             (
                 WalletOutputType::Bech32Pq,
                 format!("wsh512(pk(pqhd({seed})/10007h/6868h/7h/0h/0h/*h))"),

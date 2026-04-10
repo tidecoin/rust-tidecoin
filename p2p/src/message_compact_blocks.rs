@@ -11,8 +11,6 @@ use arbitrary::{Arbitrary, Unstructured};
 use encoding::{ArrayDecoder, ArrayEncoder, Decoder2, Encoder2};
 use internals::write_err;
 
-use crate::consensus::impl_consensus_encoding;
-
 /// sendcmpct message
 #[derive(PartialEq, Eq, Clone, Debug, Copy, PartialOrd, Ord, Hash)]
 pub struct SendCmpct {
@@ -60,7 +58,9 @@ impl encoding::Decoder for SendCmpctDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for SendCmpct {
@@ -76,7 +76,9 @@ impl encoding::Decodable for SendCmpct {
 pub struct SendCmpctDecoderError(<SendCmpctInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for SendCmpctDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for SendCmpctDecoderError {
@@ -87,10 +89,10 @@ impl fmt::Display for SendCmpctDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for SendCmpctDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
-
-impl_consensus_encoding!(SendCmpct, send_compact, version);
 
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for SendCmpct {

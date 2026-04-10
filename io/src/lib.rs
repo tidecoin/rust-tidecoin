@@ -11,7 +11,7 @@
 //! `std::io`'s traits without unnecessary complexity.
 //!
 //! For examples of how to use and implement the types and traits in this crate see `io.rs` in the
-//! `github.com/nicenemo/rust-tidecoin/bitcoin/examples/` directory.
+//! `github.com/nicenemo/rust-tidecoin/tidecoin/examples/` directory.
 
 #![no_std]
 // Coding conventions.
@@ -214,18 +214,26 @@ impl<R: BufRead> BufRead for Take<R> {
 
 impl<T: Read + ?Sized> Read for &'_ mut T {
     #[inline]
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> { (**self).read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        (**self).read(buf)
+    }
 
     #[inline]
-    fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> { (**self).read_exact(buf) }
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        (**self).read_exact(buf)
+    }
 }
 
 impl<T: BufRead + ?Sized> BufRead for &'_ mut T {
     #[inline]
-    fn fill_buf(&mut self) -> Result<&[u8]> { (**self).fill_buf() }
+    fn fill_buf(&mut self) -> Result<&[u8]> {
+        (**self).fill_buf()
+    }
 
     #[inline]
-    fn consume(&mut self, amount: usize) { (**self).consume(amount) }
+    fn consume(&mut self, amount: usize) {
+        (**self).consume(amount);
+    }
 }
 
 impl Read for &[u8] {
@@ -240,11 +248,15 @@ impl Read for &[u8] {
 
 impl BufRead for &[u8] {
     #[inline]
-    fn fill_buf(&mut self) -> Result<&[u8]> { Ok(self) }
+    fn fill_buf(&mut self) -> Result<&[u8]> {
+        Ok(self)
+    }
 
     // This panics if amount is out of bounds, same as the std version.
     #[inline]
-    fn consume(&mut self, amount: usize) { *self = &self[amount..] }
+    fn consume(&mut self, amount: usize) {
+        *self = &self[amount..];
+    }
 }
 
 /// Wraps an in memory buffer providing `position` functionality for read and write.
@@ -257,11 +269,15 @@ pub struct Cursor<T> {
 impl<T: AsRef<[u8]>> Cursor<T> {
     /// Constructs a new `Cursor` by wrapping `inner`.
     #[inline]
-    pub const fn new(inner: T) -> Self { Self { inner, pos: 0 } }
+    pub const fn new(inner: T) -> Self {
+        Self { inner, pos: 0 }
+    }
 
     /// Returns the position read or written up to thus far.
     #[inline]
-    pub const fn position(&self) -> u64 { self.pos }
+    pub const fn position(&self) -> u64 {
+        self.pos
+    }
 
     /// Sets the internal position.
     ///
@@ -270,32 +286,42 @@ impl<T: AsRef<[u8]>> Cursor<T> {
     /// Note that setting a position that is larger than the buffer length will cause reads to
     /// succeed by reading zero bytes. Further, writes will be no-op zero length writes.
     #[inline]
-    pub fn set_position(&mut self, position: u64) { self.pos = position; }
+    pub fn set_position(&mut self, position: u64) {
+        self.pos = position;
+    }
 
     /// Returns the inner buffer.
     ///
     /// This is the whole wrapped buffer, including the bytes already read.
     #[inline]
-    pub fn into_inner(self) -> T { self.inner }
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
 
     /// Returns a reference to the inner buffer.
     ///
     /// This is the whole wrapped buffer, including the bytes already read.
     #[inline]
-    pub const fn get_ref(&self) -> &T { &self.inner }
+    pub const fn get_ref(&self) -> &T {
+        &self.inner
+    }
 
     /// Returns a mutable reference to the inner buffer.
     ///
     /// This is the whole wrapped buffer, including the bytes already read.
     #[inline]
-    pub fn get_mut(&mut self) -> &mut T { &mut self.inner }
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
 
     /// Returns a reference to the inner buffer.
     ///
     /// This is the whole wrapped buffer, including the bytes already read.
     #[inline]
     #[deprecated(since = "0.3.0", note = "use `get_ref()` instead")]
-    pub fn inner(&self) -> &T { &self.inner }
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
 }
 
 impl<T: AsRef<[u8]>> Read for Cursor<T> {
@@ -323,7 +349,9 @@ impl<T: AsRef<[u8]>> BufRead for Cursor<T> {
     }
 
     #[inline]
-    fn consume(&mut self, amount: usize) { self.pos = self.pos.saturating_add(amount as u64); }
+    fn consume(&mut self, amount: usize) {
+        self.pos = self.pos.saturating_add(amount as u64);
+    }
 }
 
 impl<T: AsMut<[u8]>> Write for Cursor<T> {
@@ -337,7 +365,9 @@ impl<T: AsMut<[u8]>> Write for Cursor<T> {
     }
 
     #[inline]
-    fn flush(&mut self) -> Result<()> { Ok(()) }
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// A generic trait describing an output stream.
@@ -380,13 +410,19 @@ pub trait Write {
 
 impl<T: Write> Write for &'_ mut T {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> Result<usize> { (**self).write(buf) }
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        (**self).write(buf)
+    }
 
     #[inline]
-    fn write_all(&mut self, buf: &[u8]) -> Result<()> { (**self).write_all(buf) }
+    fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+        (**self).write_all(buf)
+    }
 
     #[inline]
-    fn flush(&mut self) -> Result<()> { (**self).flush() }
+    fn flush(&mut self) -> Result<()> {
+        (**self).flush()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -398,7 +434,9 @@ impl Write for alloc::vec::Vec<u8> {
     }
 
     #[inline]
-    fn flush(&mut self) -> Result<()> { Ok(()) }
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl Write for &mut [u8] {
@@ -411,7 +449,9 @@ impl Write for &mut [u8] {
     }
 
     #[inline]
-    fn flush(&mut self) -> Result<()> { Ok(()) }
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// A sink to which all writes succeed.
@@ -422,34 +462,46 @@ pub struct Sink;
 
 impl Write for Sink {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> Result<usize> { Ok(buf.len()) }
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        Ok(buf.len())
+    }
 
     #[inline]
-    fn write_all(&mut self, _: &[u8]) -> Result<()> { Ok(()) }
+    fn write_all(&mut self, _: &[u8]) -> Result<()> {
+        Ok(())
+    }
 
     #[inline]
-    fn flush(&mut self) -> Result<()> { Ok(()) }
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Returns a sink to which all writes succeed.
 ///
 /// See [`std::io::sink`] for more information.
 #[inline]
-pub fn sink() -> Sink { Sink }
+pub fn sink() -> Sink {
+    Sink
+}
 
 /// Wraps a `std` I/O type to implement the traits from this crate.
 ///
 /// All methods are passed through converting the errors.
 #[cfg(feature = "std")]
 #[inline]
-pub const fn from_std<T>(std_io: T) -> FromStd<T> { FromStd::new(std_io) }
+pub const fn from_std<T>(std_io: T) -> FromStd<T> {
+    FromStd::new(std_io)
+}
 
 /// Wraps a mutable reference to `std` I/O type to implement the traits from this crate.
 ///
 /// All methods are passed through converting the errors.
 #[cfg(feature = "std")]
 #[inline]
-pub fn from_std_mut<T>(std_io: &mut T) -> &mut FromStd<T> { FromStd::new_mut(std_io) }
+pub fn from_std_mut<T>(std_io: &mut T) -> &mut FromStd<T> {
+    FromStd::new_mut(std_io)
+}
 
 /// Encodes a `consensus_encoding` object to an I/O writer.
 ///
@@ -645,7 +697,9 @@ where
 
 #[cfg(feature = "std")]
 impl<D> From<Error> for ReadError<D> {
-    fn from(e: Error) -> Self { Self::Io(e) }
+    fn from(e: Error) -> Self {
+        Self::Io(e)
+    }
 }
 
 #[cfg(test)]
@@ -836,7 +890,9 @@ mod tests {
 
     impl Decodable for TestArray {
         type Decoder = TestArrayDecoder;
-        fn decoder() -> Self::Decoder { TestArrayDecoder { inner: ArrayDecoder::new() } }
+        fn decoder() -> Self::Decoder {
+            TestArrayDecoder { inner: ArrayDecoder::new() }
+        }
     }
 
     struct TestArrayDecoder {
@@ -855,7 +911,9 @@ mod tests {
             self.inner.end().map(TestArray)
         }
 
-        fn read_limit(&self) -> usize { self.inner.read_limit() }
+        fn read_limit(&self) -> usize {
+            self.inner.read_limit()
+        }
     }
 
     #[test]

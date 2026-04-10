@@ -19,7 +19,9 @@ impl Encodable for CompactSizeUsize {
         = CompactSizeEncoder
     where
         Self: 'e;
-    fn encoder(&self) -> Self::Encoder<'_> { CompactSizeEncoder::new(self.0) }
+    fn encoder(&self) -> Self::Encoder<'_> {
+        CompactSizeEncoder::new(self.0)
+    }
 }
 
 /// Wraps `CompactSizeDecoder` to produce `CompactSizeUsize`.
@@ -35,15 +37,21 @@ impl Decoder for CompactSizeUsizeDecoderWrapper {
         self.0.push_bytes(bytes)
     }
 
-    fn end(self) -> Result<Self::Output, Self::Error> { self.0.end().map(CompactSizeUsize) }
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        self.0.end().map(CompactSizeUsize)
+    }
 
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl Decodable for CompactSizeUsize {
     type Decoder = CompactSizeUsizeDecoderWrapper;
-    fn decoder() -> Self::Decoder { CompactSizeUsizeDecoderWrapper(CompactSizeDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        CompactSizeUsizeDecoderWrapper(CompactSizeDecoder::new())
+    }
 }
 
 /// A `u64` value encoded and decoded as a compact size integer.
@@ -56,7 +64,9 @@ impl Encodable for CompactSizeU64 {
         = CompactSizeEncoder
     where
         Self: 'e;
-    fn encoder(&self) -> Self::Encoder<'_> { CompactSizeEncoder::new_u64(self.0) }
+    fn encoder(&self) -> Self::Encoder<'_> {
+        CompactSizeEncoder::new_u64(self.0)
+    }
 }
 
 /// Wraps `CompactSizeU64Decoder` to produce `CompactSizeU64`.
@@ -72,15 +82,21 @@ impl Decoder for CompactSizeU64DecoderWrapper {
         self.0.push_bytes(bytes)
     }
 
-    fn end(self) -> Result<Self::Output, Self::Error> { self.0.end().map(CompactSizeU64) }
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        self.0.end().map(CompactSizeU64)
+    }
 
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl Decodable for CompactSizeU64 {
     type Decoder = CompactSizeU64DecoderWrapper;
-    fn decoder() -> Self::Decoder { CompactSizeU64DecoderWrapper(CompactSizeU64Decoder::new()) }
+    fn decoder() -> Self::Decoder {
+        CompactSizeU64DecoderWrapper(CompactSizeU64Decoder::new())
+    }
 }
 
 #[test]

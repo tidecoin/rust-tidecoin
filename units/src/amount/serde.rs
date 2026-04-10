@@ -49,7 +49,9 @@ impl fmt::Display for DisplayFullError {
 #[cfg(not(feature = "std"))]
 #[cfg(feature = "alloc")]
 impl fmt::Display for DisplayFullError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 pub mod as_sat {

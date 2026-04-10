@@ -1,0 +1,29 @@
+[package]
+name = "tidecoin-node-parity"
+version = "0.1.0"
+authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+license = "CC0-1.0"
+repository = "https://github.com/nicenemo/rust-tidecoin/"
+documentation = "https://docs.rs/tidecoin-node-parity/"
+description = "Shared Tidecoin node-backed parity harness support."
+categories = ["cryptography::cryptocurrencies"]
+keywords = ["crypto", "tidecoin", "parity", "testing"]
+edition = "2021"
+rust-version = "1.94.1"
+build = "build.rs"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+
+[build-dependencies]
+cc = "1.2.41"
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(fuzzing)', 'cfg(kani)'] }
+
+[lints.clippy]
+redundant_clone = "warn"
+use_self = "warn"

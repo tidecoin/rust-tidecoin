@@ -135,11 +135,15 @@ impl LockTime {
 
     /// Encodes the locktime as a sequence number.
     #[inline]
-    pub fn to_sequence(self) -> Sequence { Sequence::from_consensus(self.to_consensus_u32()) }
+    pub fn to_sequence(self) -> Sequence {
+        Sequence::from_consensus(self.to_consensus_u32())
+    }
 
     /// Constructs a new `LockTime` from `n`, expecting `n` to be a 16-bit count of blocks.
     #[inline]
-    pub const fn from_height(n: u16) -> Self { Self::Blocks(NumberOfBlocks::from_height(n)) }
+    pub const fn from_height(n: u16) -> Self {
+        Self::Blocks(NumberOfBlocks::from_height(n))
+    }
 
     /// Constructs a new `LockTime` from `n`, expecting `n` to be a count of 512-second intervals.
     ///
@@ -186,11 +190,15 @@ impl LockTime {
 
     /// Returns true if this lock time value is in units of block height.
     #[inline]
-    pub const fn is_block_height(self) -> bool { matches!(self, Self::Blocks(_)) }
+    pub const fn is_block_height(self) -> bool {
+        matches!(self, Self::Blocks(_))
+    }
 
     /// Returns true if this lock time value is in units of time.
     #[inline]
-    pub const fn is_block_time(self) -> bool { !self.is_block_height() }
+    pub const fn is_block_time(self) -> bool {
+        !self.is_block_height()
+    }
 
     /// Returns true if this [`relative::LockTime`] is satisfied by the given chain state.
     ///
@@ -331,12 +339,16 @@ impl LockTime {
 
 impl From<NumberOfBlocks> for LockTime {
     #[inline]
-    fn from(h: NumberOfBlocks) -> Self { Self::Blocks(h) }
+    fn from(h: NumberOfBlocks) -> Self {
+        Self::Blocks(h)
+    }
 }
 
 impl From<NumberOf512Seconds> for LockTime {
     #[inline]
-    fn from(t: NumberOf512Seconds) -> Self { Self::Time(t) }
+    fn from(t: NumberOf512Seconds) -> Self {
+        Self::Time(t)
+    }
 }
 
 impl fmt::Display for LockTime {
@@ -358,12 +370,16 @@ impl fmt::Display for LockTime {
 impl convert::TryFrom<Sequence> for LockTime {
     type Error = DisabledLockTimeError;
     #[inline]
-    fn try_from(seq: Sequence) -> Result<Self, DisabledLockTimeError> { Self::from_sequence(seq) }
+    fn try_from(seq: Sequence) -> Result<Self, DisabledLockTimeError> {
+        Self::from_sequence(seq)
+    }
 }
 
 impl From<LockTime> for Sequence {
     #[inline]
-    fn from(lt: LockTime) -> Self { lt.to_sequence() }
+    fn from(lt: LockTime) -> Self {
+        lt.to_sequence()
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -407,19 +423,25 @@ impl NumberOfBlocks {
 
     /// Constructs a new [`NumberOfBlocks`] using a count of blocks.
     #[inline]
-    pub const fn from_height(blocks: u16) -> Self { Self(blocks) }
+    pub const fn from_height(blocks: u16) -> Self {
+        Self(blocks)
+    }
 
     /// Express the [`NumberOfBlocks`] as a count of blocks.
     #[inline]
     #[must_use]
-    pub const fn to_height(self) -> u16 { self.0 }
+    pub const fn to_height(self) -> u16 {
+        self.0
+    }
 
     /// Returns the inner `u16` value.
     #[inline]
     #[must_use]
     #[deprecated(since = "1.0.0-rc.0", note = "use `to_height` instead")]
     #[doc(hidden)]
-    pub const fn value(self) -> u16 { self.0 }
+    pub const fn value(self) -> u16 {
+        self.0
+    }
 
     /// Returns the `u32` value used to encode this locktime in an nSequence field or
     /// argument to `OP_CHECKSEQUENCEVERIFY`.
@@ -483,13 +505,17 @@ crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(NumberOfBlocks);
 
 impl From<u16> for NumberOfBlocks {
     #[inline]
-    fn from(value: u16) -> Self { Self(value) }
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
 }
 
 parse_int::impl_parse_str_from_int_infallible!(NumberOfBlocks, u16, from);
 
 impl fmt::Display for NumberOfBlocks {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 #[deprecated(since = "1.0.0-rc.0", note = "use `NumberOf512Seconds` instead")]
@@ -517,12 +543,16 @@ impl NumberOf512Seconds {
     ///
     /// Encoding finer granularity of time for relative lock-times is not supported in Bitcoin.
     #[inline]
-    pub const fn from_512_second_intervals(intervals: u16) -> Self { Self(intervals) }
+    pub const fn from_512_second_intervals(intervals: u16) -> Self {
+        Self(intervals)
+    }
 
     /// Express the [`NumberOf512Seconds`] as an integer number of 512-second intervals.
     #[inline]
     #[must_use]
-    pub const fn to_512_second_intervals(self) -> u16 { self.0 }
+    pub const fn to_512_second_intervals(self) -> u16 {
+        self.0
+    }
 
     /// Constructs a new [`NumberOf512Seconds`] from seconds, converting the seconds into a 512
     /// second interval using truncating division.
@@ -560,14 +590,18 @@ impl NumberOf512Seconds {
 
     /// Represents the [`NumberOf512Seconds`] as an integer number of seconds.
     #[inline]
-    pub const fn to_seconds(self) -> u32 { const_casts::u16_to_u32(self.0) * 512 }
+    pub const fn to_seconds(self) -> u32 {
+        const_casts::u16_to_u32(self.0) * 512
+    }
 
     /// Returns the inner `u16` value.
     #[inline]
     #[must_use]
     #[deprecated(since = "1.0.0-rc.0", note = "use `to_512_second_intervals` instead")]
     #[doc(hidden)]
-    pub const fn value(self) -> u16 { self.0 }
+    pub const fn value(self) -> u16 {
+        self.0
+    }
 
     /// Returns the `u32` value used to encode this locktime in an nSequence field or
     /// argument to `OP_CHECKSEQUENCEVERIFY`.
@@ -629,7 +663,9 @@ crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(NumberOf512Seconds);
 parse_int::impl_parse_str_from_int_infallible!(NumberOf512Seconds, u16, from_512_second_intervals);
 
 impl fmt::Display for NumberOf512Seconds {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 #[cfg(feature = "arbitrary")]

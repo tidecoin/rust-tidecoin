@@ -19,7 +19,9 @@ pub struct LockTimeDecoderError(pub(super) encoding::UnexpectedEofError);
 
 #[cfg(feature = "encoding")]
 impl From<Infallible> for LockTimeDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -31,7 +33,9 @@ impl fmt::Display for LockTimeDecoderError {
 
 #[cfg(all(feature = "std", feature = "encoding"))]
 impl std::error::Error for LockTimeDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 /// Tried to satisfy a lock-by-time lock using a height value.
@@ -44,15 +48,21 @@ pub struct IncompatibleHeightError {
 }
 
 impl From<Infallible> for IncompatibleHeightError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl IncompatibleHeightError {
     /// Returns the value of the lock-by-time lock.
-    pub fn lock(&self) -> MedianTimePast { self.lock }
+    pub fn lock(&self) -> MedianTimePast {
+        self.lock
+    }
 
     /// Returns the height that was erroneously used to try and satisfy a lock-by-time lock.
-    pub fn incompatible(&self) -> Height { self.incompatible }
+    pub fn incompatible(&self) -> Height {
+        self.incompatible
+    }
 }
 
 impl fmt::Display for IncompatibleHeightError {
@@ -79,15 +89,21 @@ pub struct IncompatibleTimeError {
 }
 
 impl From<Infallible> for IncompatibleTimeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl IncompatibleTimeError {
     /// Returns the value of the lock-by-height lock.
-    pub fn lock(&self) -> Height { self.lock }
+    pub fn lock(&self) -> Height {
+        self.lock
+    }
 
     /// Returns the MTP that was erroneously used to try and satisfy a lock-by-height lock.
-    pub fn incompatible(&self) -> MedianTimePast { self.incompatible }
+    pub fn incompatible(&self) -> MedianTimePast {
+        self.incompatible
+    }
 }
 
 impl fmt::Display for IncompatibleTimeError {
@@ -117,11 +133,15 @@ impl fmt::Display for ParseHeightError {
 #[cfg(feature = "std")]
 impl std::error::Error for ParseHeightError {
     // To be consistent with `write_err` we need to **not** return source if overflow occurred
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { self.0.source() }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
 }
 
 impl From<ParseError> for ParseHeightError {
-    fn from(value: ParseError) -> Self { Self(value) }
+    fn from(value: ParseError) -> Self {
+        Self(value)
+    }
 }
 
 /// Error returned when parsing block time fails.
@@ -137,11 +157,15 @@ impl fmt::Display for ParseTimeError {
 #[cfg(feature = "std")]
 impl std::error::Error for ParseTimeError {
     // To be consistent with `write_err` we need to **not** return source if overflow occurred
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { self.0.source() }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
 }
 
 impl From<ParseError> for ParseTimeError {
-    fn from(value: ParseError) -> Self { Self(value) }
+    fn from(value: ParseError) -> Self {
+        Self(value)
+    }
 }
 
 /// Internal - common representation for height and time.
@@ -159,15 +183,21 @@ pub(super) enum ParseError {
 }
 
 impl From<Infallible> for ParseError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl From<Infallible> for ParseHeightError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl From<Infallible> for ParseTimeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl ParseError {
@@ -242,10 +272,14 @@ impl ParseError {
             Self::UnprefixedHex(ref err) => Some(err),
             Self::ParseInt(ParseIntError { source, .. })
                 if *source.kind() == IntErrorKind::PosOverflow =>
-                None,
+            {
+                None
+            }
             Self::ParseInt(ParseIntError { source, .. })
                 if *source.kind() == IntErrorKind::NegOverflow =>
-                None,
+            {
+                None
+            }
             Self::ParseInt(ParseIntError { source, .. }) => Some(source),
             Self::Conversion(_) => None,
         }
@@ -253,15 +287,21 @@ impl ParseError {
 }
 
 impl From<ConversionError> for ParseError {
-    fn from(value: ConversionError) -> Self { Self::Conversion(value.input.into()) }
+    fn from(value: ConversionError) -> Self {
+        Self::Conversion(value.input.into())
+    }
 }
 
 impl From<PrefixedHexError> for ParseError {
-    fn from(value: PrefixedHexError) -> Self { Self::PrefixedHex(value) }
+    fn from(value: PrefixedHexError) -> Self {
+        Self::PrefixedHex(value)
+    }
 }
 
 impl From<UnprefixedHexError> for ParseError {
-    fn from(value: UnprefixedHexError) -> Self { Self::UnprefixedHex(value) }
+    fn from(value: UnprefixedHexError) -> Self {
+        Self::UnprefixedHex(value)
+    }
 }
 
 /// Error returned when converting a `u32` to a lock time variant fails.
@@ -275,7 +315,9 @@ pub struct ConversionError {
 }
 
 impl From<Infallible> for ConversionError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl ConversionError {
@@ -298,7 +340,9 @@ impl fmt::Display for ConversionError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for ConversionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 /// Describes the two types of locking, lock-by-height and lock-by-time.
@@ -313,10 +357,12 @@ enum LockTimeUnit {
 impl fmt::Display for LockTimeUnit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Self::Blocks =>
-                write!(f, "expected lock-by-height (must be < {})", LOCK_TIME_THRESHOLD),
-            Self::Seconds =>
-                write!(f, "expected lock-by-time (must be >= {})", LOCK_TIME_THRESHOLD),
+            Self::Blocks => {
+                write!(f, "expected lock-by-height (must be < {})", LOCK_TIME_THRESHOLD)
+            }
+            Self::Seconds => {
+                write!(f, "expected lock-by-time (must be >= {})", LOCK_TIME_THRESHOLD)
+            }
         }
     }
 }

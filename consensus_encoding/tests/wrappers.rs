@@ -2,8 +2,8 @@
 
 #![cfg(feature = "std")]
 
-use tidecoin_consensus_encoding as encoding;
 use encoding::{ArrayEncoder, BytesEncoder, CompactSizeEncoder, Encodable, Encoder2, SliceEncoder};
+use tidecoin_consensus_encoding as encoding;
 
 encoding::encoder_newtype_exact! {
     /// An encoder that uses an inner `ArrayEncoder`.

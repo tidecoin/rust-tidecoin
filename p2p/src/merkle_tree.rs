@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: CC0-1.0
 //
-// This code was translated from merkleblock.h, merkleblock.cpp and pmt_tests.cpp
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
 // SPDX-License-Identifier: MIT
@@ -16,13 +15,11 @@ use core::fmt;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use bitcoin::consensus::encode::{self, Decodable, Encodable, ReadExt, WriteExt, MAX_VEC_SIZE};
 use encoding::{
     ArrayDecoder, ArrayEncoder, ByteVecDecoder, CompactSizeEncoder, Decoder2, Decoder3, Encoder2,
     Encoder3, SliceEncoder, VecDecoder,
 };
 use internals::{write_err, ToU64 as _};
-use io::{BufRead, Write};
 use primitives::block::{self, Block, Checked, HeaderDecoder, HeaderEncoder};
 use primitives::merkle_tree::TxMerkleNode;
 use primitives::transaction::{Transaction, Txid};
@@ -64,7 +61,7 @@ impl MerkleBlock {
     ///     d3ee3738d9e1446618c4571d1090db022100e2ac980643b0b82c0e88ffdfec6b64e3e6ba35e7ba5fdd7d\
     ///     5d6cc8d25c6b241501ffffffff0100f2052a010000001976a914404371705fa9bd789a2fcd52d2c580b6\
     ///     5d35549d88ac00000000").unwrap();
-    /// let block: Block = bitcoin::consensus::deserialize(&block_bytes).unwrap();
+    /// let block: Block = encoding::decode_from_slice(&block_bytes).unwrap();
     /// let block = block.validate().expect("valid block");
     ///
     /// // Constructs a new Merkle block containing a single transaction
@@ -161,7 +158,9 @@ impl encoding::Decoder for MerkleBlockDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for MerkleBlock {
@@ -176,7 +175,9 @@ impl encoding::Decodable for MerkleBlock {
 pub struct MerkleBlockDecoderError(<MerkleBlockInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for MerkleBlockDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for MerkleBlockDecoderError {
@@ -187,19 +188,8 @@ impl fmt::Display for MerkleBlockDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for MerkleBlockDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
-}
-
-impl Encodable for MerkleBlock {
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        let len = self.header.consensus_encode(w)? + self.txn.consensus_encode(w)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for MerkleBlock {
-    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
-        Ok(Self { header: Decodable::consensus_decode(r)?, txn: Decodable::consensus_decode(r)? })
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
     }
 }
 
@@ -249,13 +239,19 @@ pub struct PartialMerkleTree {
 
 impl PartialMerkleTree {
     /// Returns the total number of transactions in the block.
-    pub fn num_transactions(&self) -> u32 { self.num_transactions }
+    pub fn num_transactions(&self) -> u32 {
+        self.num_transactions
+    }
 
     /// Returns the node-is-parent-of-matched-txid bits of the partial Merkle tree.
-    pub fn bits(&self) -> &Vec<bool> { &self.bits }
+    pub fn bits(&self) -> &Vec<bool> {
+        &self.bits
+    }
 
     /// Returns the transaction ids and internal hashes of the partial Merkle tree.
-    pub fn hashes(&self) -> &Vec<TxMerkleNode> { &self.hashes }
+    pub fn hashes(&self) -> &Vec<TxMerkleNode> {
+        &self.hashes
+    }
 
     /// Constructs a new partial Merkle tree.
     ///
@@ -569,7 +565,9 @@ impl encoding::Decoder for PartialMerkleTreeDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for PartialMerkleTree {
@@ -591,7 +589,9 @@ pub struct PartialMerkleTreeDecoderError(
 );
 
 impl From<Infallible> for PartialMerkleTreeDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for PartialMerkleTreeDecoderError {
@@ -602,51 +602,8 @@ impl fmt::Display for PartialMerkleTreeDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for PartialMerkleTreeDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
-}
-
-impl Encodable for PartialMerkleTree {
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        let mut ret = self.num_transactions.consensus_encode(w)?;
-        ret += self.hashes.consensus_encode(w)?;
-
-        let nb_bytes_for_bits = self.bits.len().div_ceil(8);
-        ret += w.emit_compact_size(nb_bytes_for_bits)?;
-        for chunk in self.bits.chunks(8) {
-            let mut byte = 0u8;
-            for (i, bit) in chunk.iter().enumerate() {
-                byte |= u8::from(*bit) << i;
-            }
-            ret += byte.consensus_encode(w)?;
-        }
-        Ok(ret)
-    }
-}
-
-impl Decodable for PartialMerkleTree {
-    fn consensus_decode_from_finite_reader<R: BufRead + ?Sized>(
-        r: &mut R,
-    ) -> Result<Self, encode::Error> {
-        let num_transactions: u32 = Decodable::consensus_decode(r)?;
-        let hashes: Vec<TxMerkleNode> = Decodable::consensus_decode(r)?;
-
-        let nb_bytes_for_bits = r.read_compact_size()? as usize;
-        if nb_bytes_for_bits > MAX_VEC_SIZE {
-            return Err(encode::ParseError::OversizedVectorAllocation {
-                requested: nb_bytes_for_bits,
-                max: MAX_VEC_SIZE,
-            }
-            .into());
-        }
-        let mut bits = vec![false; nb_bytes_for_bits * 8];
-        for chunk in bits.chunks_mut(8) {
-            let byte = u8::consensus_decode(r)?;
-            for (i, bit) in chunk.iter_mut().enumerate() {
-                *bit = (byte & (1 << i)) != 0;
-            }
-        }
-
-        Ok(Self { num_transactions, bits, hashes })
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
     }
 }
 
@@ -678,7 +635,9 @@ pub enum MerkleBlockError {
 }
 
 impl From<Infallible> for MerkleBlockError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for MerkleBlockError {
@@ -756,7 +715,9 @@ mod tests {
         const P: usize = 1039;
         const Q: usize = 677;
 
-        const fn new(seed: usize) -> Self { Self { state: seed } }
+        const fn new(seed: usize) -> Self {
+            Self { state: seed }
+        }
 
         #[inline]
         fn next_usize(&mut self) -> usize {
@@ -765,10 +726,14 @@ mod tests {
         }
 
         #[inline]
-        fn next_in_range(&mut self, max: usize) -> usize { self.next_usize() % max }
+        fn next_in_range(&mut self, max: usize) -> usize {
+            self.next_usize() % max
+        }
 
         #[inline]
-        fn next_u8(&mut self) -> u8 { self.next_usize().to_le_bytes()[0] }
+        fn next_u8(&mut self) -> u8 {
+            self.next_usize().to_le_bytes()[0]
+        }
     }
 
     macro_rules! pmt_tests {
@@ -798,7 +763,9 @@ mod tests {
     );
 
     /// Parses the transaction count out of `name` with form: `pmt_test_$num`.
-    fn pmt_test_from_name(name: &str) { pmt_test(name[9..].parse().unwrap()) }
+    fn pmt_test_from_name(name: &str) {
+        pmt_test(name[9..].parse().unwrap());
+    }
 
     fn pmt_test(tx_count: usize) {
         let mut rng = LcgPrng::new(PRNG_SEED ^ tx_count);
@@ -1060,9 +1027,7 @@ mod tests {
 
     #[test]
     fn extract_matches_from_merkleblock() {
-        // Get the proof from a bitcoind by running in the terminal:
-        // $ TXID="5a4ebf66822b0b2d56bd9dc64ece0bc38ee7844a23ff1d7320a88c5fdb2ad3e2"
-        // $ bitcoin-cli gettxoutproof [\"$TXID\"]
+        // Compact partial merkle tree proof fixture.
         let mb_bytes = hex::decode_to_vec("01000000ba8b9cda965dd8e536670f9ddec10e53aab14b20bacad27b913719\
             0000000000190760b278fe7b8565fda3b968b918d5fd997f993b23674c0af3b6fde300b38f33a5914ce6ed5b\
             1b01e32f570200000002252bf9d75c4f481ebb6278d708257d1f12beb6dd30301d26c623f789b2ba6fc0e2d3\

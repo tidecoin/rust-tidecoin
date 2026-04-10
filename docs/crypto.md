@@ -1,52 +1,33 @@
-# Tidecoin keys / Tidecoin crypto
+# Tidecoin crypto
 
-The intended split is between a `tidecoin-keys` crate that carries key material and a
-`tidecoin-crypto` crate that carries the remaining crypto-oriented helpers.
+The active Tidecoin crypto stack is post-quantum-first.
 
-## `secp256k1`
+## Current ownership
 
-Both crates depend on `secp256k1`.
+- `tidecoin::crypto::pq`: PQ signature and KEM types and operations
+- `tidecoin::crypto::key`: top-level Tidecoin key-adjacent wrappers used by the public crate
+- `consensus-core::pq`: verification-only PQ facade for the consensus engine
 
-Other pieces that need secp directly or indirectly through keys/crypto:
+## Current public key surface
 
-- `addresses` for key-backed address generation
-- `bip-32` for hierarchical key derivation
-- `psbt` for key handling and signing
-- `sign_message` for Tidecoin message signatures
+The live top-level key API is intentionally narrow:
 
-## Keys
-
-Public and private keys.
-
-The split exists so that other crates can depend on key handling without pulling in the entire
-`tidecoin` crate.
-
-(Plural crate name, singular module name, matching the existing `address` / `addresses` split.)
-
-Current public types in `tidecoin::crypto::key`:
-
-- `XOnlyPublicKey`
-- `PublicKey`
-- `SortKey`
 - `PubkeyHash`
 - `WPubkeyHash`
-- `CompressedPublicKey`
-- `PrivateKey`
-- `SerializedXOnlyPublicKey`
-- Various error types
+- `PqWifKey`
+- `PqWifFormat`
+- WIF parse/validation errors
 
-### Current obvious complications
+The removed legacy key/signing surface is not part of the live Tidecoin crate.
 
-Looking at `tidecoin::crypto::key` there are a few obvious things that will need care when the
-split happens.
+## Design rule
 
-#### `NetworkKind`
+Reusable consensus-facing verification belongs below the top-level crate:
 
-We currently use `tidecoin::network::NetworkKind` in `PrivateKey`.
+- protocol/script/opcode model: `primitives`
+- validation engine: `consensus-core`
+- standalone byte-oriented API: `consensus`
+- product ergonomics and reexports: `tidecoin`
 
-- It is used to get the first byte of WIF format.
-- It is passed to functions that create addresses such as `Address::p2pkh(key, network)`.
-
-#### `ScriptBuf`
-
-This is probably fine if the split depends on `primitives`. It is only used for script code.
+If crypto is split further later, it should preserve that same ownership rule rather than creating a
+parallel second key or verification stack.

@@ -1,9 +1,9 @@
-# 0.1.0 - Initial release
+# Changelog
 
-This is, and should remain, a very simple crate.
+All notable Tidecoin-specific changes for network identifiers are documented here.
 
-Currently provides:
+## Unreleased
 
-- `Network`
-- `NetworkKind`
-- `TestnetVersion`
+- Kept this crate focused on Tidecoin network identity types: `Network`, `NetworkKind`, and `TestnetVersion`.
+- Preserved the narrow dependency boundary so network selection remains reusable from primitives, p2p, and the top-level crate.
+- Set the crate MSRV to Rust 1.94.1.

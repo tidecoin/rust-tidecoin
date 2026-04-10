@@ -252,11 +252,15 @@ macro_rules! impl_array_newtype {
         impl $thing {
             /// Constructs a new `Self` by wrapping `bytes`.
             #[inline]
-            pub fn from_byte_array(bytes: [u8; $len]) -> Self { Self(bytes) }
+            pub fn from_byte_array(bytes: [u8; $len]) -> Self {
+                Self(bytes)
+            }
 
             /// Returns a reference the underlying byte array.
             #[inline]
-            pub fn as_byte_array(&self) -> &[u8; $len] { &self.0 }
+            pub fn as_byte_array(&self) -> &[u8; $len] {
+                &self.0
+            }
 
             /// Returns the underlying byte array.
             #[inline]
@@ -271,11 +275,15 @@ macro_rules! impl_array_newtype {
 
             /// Copies the underlying bytes into a new `Vec`.
             #[inline]
-            pub fn to_vec(self) -> alloc::vec::Vec<u8> { self.0.to_vec() }
+            pub fn to_vec(self) -> alloc::vec::Vec<u8> {
+                self.0.to_vec()
+            }
 
             /// Returns a slice of the underlying bytes.
             #[inline]
-            pub fn as_bytes(&self) -> &[u8] { &self.0 }
+            pub fn as_bytes(&self) -> &[u8] {
+                &self.0
+            }
 
             /// Converts the object to a raw pointer.
             #[inline]
@@ -293,19 +301,27 @@ macro_rules! impl_array_newtype {
 
             /// Returns the length of the object as an array.
             #[inline]
-            pub fn len(&self) -> usize { $len }
+            pub fn len(&self) -> usize {
+                $len
+            }
 
             /// Returns whether the object, as an array, is empty. Always false.
             #[inline]
-            pub fn is_empty(&self) -> bool { false }
+            pub fn is_empty(&self) -> bool {
+                false
+            }
         }
 
         impl<'a> core::convert::From<[$ty; $len]> for $thing {
-            fn from(data: [$ty; $len]) -> Self { $thing(data) }
+            fn from(data: [$ty; $len]) -> Self {
+                $thing(data)
+            }
         }
 
         impl<'a> core::convert::From<&'a [$ty; $len]> for $thing {
-            fn from(data: &'a [$ty; $len]) -> Self { $thing(*data) }
+            fn from(data: &'a [$ty; $len]) -> Self {
+                $thing(*data)
+            }
         }
 
         impl<'a> core::convert::TryFrom<&'a [$ty]> for $thing {
@@ -319,36 +335,52 @@ macro_rules! impl_array_newtype {
         }
 
         impl AsRef<[$ty; $len]> for $thing {
-            fn as_ref(&self) -> &[$ty; $len] { &self.0 }
+            fn as_ref(&self) -> &[$ty; $len] {
+                &self.0
+            }
         }
 
         impl AsMut<[$ty; $len]> for $thing {
-            fn as_mut(&mut self) -> &mut [$ty; $len] { &mut self.0 }
+            fn as_mut(&mut self) -> &mut [$ty; $len] {
+                &mut self.0
+            }
         }
 
         impl AsRef<[$ty]> for $thing {
-            fn as_ref(&self) -> &[$ty] { &self.0 }
+            fn as_ref(&self) -> &[$ty] {
+                &self.0
+            }
         }
 
         impl AsMut<[$ty]> for $thing {
-            fn as_mut(&mut self) -> &mut [$ty] { &mut self.0 }
+            fn as_mut(&mut self) -> &mut [$ty] {
+                &mut self.0
+            }
         }
 
         impl core::borrow::Borrow<[$ty; $len]> for $thing {
-            fn borrow(&self) -> &[$ty; $len] { &self.0 }
+            fn borrow(&self) -> &[$ty; $len] {
+                &self.0
+            }
         }
 
         impl core::borrow::BorrowMut<[$ty; $len]> for $thing {
-            fn borrow_mut(&mut self) -> &mut [$ty; $len] { &mut self.0 }
+            fn borrow_mut(&mut self) -> &mut [$ty; $len] {
+                &mut self.0
+            }
         }
 
         // The following two are valid because `[T; N]: Borrow<[T]>`
         impl core::borrow::Borrow<[$ty]> for $thing {
-            fn borrow(&self) -> &[$ty] { &self.0 }
+            fn borrow(&self) -> &[$ty] {
+                &self.0
+            }
         }
 
         impl core::borrow::BorrowMut<[$ty]> for $thing {
-            fn borrow_mut(&mut self) -> &mut [$ty] { &mut self.0 }
+            fn borrow_mut(&mut self) -> &mut [$ty] {
+                &mut self.0
+            }
         }
 
         impl<I> core::ops::Index<I> for $thing
@@ -358,7 +390,9 @@ macro_rules! impl_array_newtype {
             type Output = <[$ty] as core::ops::Index<I>>::Output;
 
             #[inline]
-            fn index(&self, index: I) -> &Self::Output { &self.0[index] }
+            fn index(&self, index: I) -> &Self::Output {
+                &self.0[index]
+            }
         }
     };
 }

@@ -18,7 +18,9 @@ impl Encodable for TestBytes<'_> {
     where
         Self: 'e;
 
-    fn encoder(&self) -> Self::Encoder<'_> { BytesEncoder::without_length_prefix(self.0) }
+    fn encoder(&self) -> Self::Encoder<'_> {
+        BytesEncoder::without_length_prefix(self.0)
+    }
 }
 
 struct TestArray<const N: usize>([u8; N]);
@@ -29,7 +31,9 @@ impl<const N: usize> Encodable for TestArray<N> {
     where
         Self: 'e;
 
-    fn encoder(&self) -> Self::Encoder<'_> { ArrayEncoder::without_length_prefix(self.0) }
+    fn encoder(&self) -> Self::Encoder<'_> {
+        ArrayEncoder::without_length_prefix(self.0)
+    }
 }
 
 // Simple test type that implements Encodable.
@@ -59,7 +63,9 @@ impl Encodable for EmptyData {
     where
         Self: 'e;
 
-    fn encoder(&self) -> Self::Encoder<'_> { ArrayEncoder::without_length_prefix([]) }
+    fn encoder(&self) -> Self::Encoder<'_> {
+        ArrayEncoder::without_length_prefix([])
+    }
 }
 
 #[test]
@@ -112,7 +118,9 @@ fn encode_std_writer_io_error() {
             Err(std::io::Error::other("test error"))
         }
 
-        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 
     let data = TestData(0x1234_5678);
@@ -156,7 +164,9 @@ fn encode_slice_encoder_mixed_empty_and_data() {
         where
             Self: 'e;
 
-        fn encoder(&self) -> Self::Encoder<'_> { BytesEncoder::without_length_prefix(&self.0) }
+        fn encoder(&self) -> Self::Encoder<'_> {
+            BytesEncoder::without_length_prefix(&self.0)
+        }
     }
 
     let slice = &[

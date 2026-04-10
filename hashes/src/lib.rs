@@ -268,7 +268,7 @@ mod sealed {
 pub(crate) fn non_secure_erase<T: ?Sized>(val: &mut T) {
     use core::sync::atomic;
 
-    let ptr = (val as *mut T).cast::<u8>();
+    let ptr = core::ptr::from_mut(val).cast::<u8>();
     let len = core::mem::size_of_val(val);
     for i in 0..len {
         unsafe { core::ptr::write_volatile(ptr.add(i), 0) };

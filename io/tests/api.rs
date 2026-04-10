@@ -26,7 +26,9 @@ struct Enums {
 
 impl Enums {
     /// Constructs an arbitrary `Enums` instance.
-    fn new() -> Self { Self { a: ERROR_KIND } }
+    fn new() -> Self {
+        Self { a: ERROR_KIND }
+    }
 }
 
 /// A struct that includes all public non-error structs except `Take`.
@@ -77,18 +79,28 @@ impl Read for Dummy {
 }
 
 impl BufRead for Dummy {
-    fn fill_buf(&mut self) -> Result<&[u8], io::Error> { Ok(&[]) }
+    fn fill_buf(&mut self) -> Result<&[u8], io::Error> {
+        Ok(&[])
+    }
     fn consume(&mut self, _: usize) {}
 }
 
 impl Write for Dummy {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> { Ok(buf.len()) }
-    fn write_all(&mut self, _: &[u8]) -> Result<(), io::Error> { Ok(()) }
-    fn flush(&mut self) -> Result<(), io::Error> { Ok(()) }
+    fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+        Ok(buf.len())
+    }
+    fn write_all(&mut self, _: &[u8]) -> Result<(), io::Error> {
+        Ok(())
+    }
+    fn flush(&mut self) -> Result<(), io::Error> {
+        Ok(())
+    }
 }
 
 impl AsRef<[u8]> for Dummy {
-    fn as_ref(&self) -> &[u8] { &[] }
+    fn as_ref(&self) -> &[u8] {
+        &[]
+    }
 }
 
 /// A struct that includes all public non-error types.
@@ -99,7 +111,9 @@ struct Types {
 }
 
 impl Types {
-    fn new() -> Self { Self { a: Enums::new(), b: Structs::new() } }
+    fn new() -> Self {
+        Self { a: Enums::new(), b: Structs::new() }
+    }
 }
 
 /// A struct that includes all public error types.

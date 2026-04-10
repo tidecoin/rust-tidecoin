@@ -77,7 +77,9 @@ impl Sequence {
 
     /// Returns `true` if the sequence number enables absolute lock-time (`Transaction::lock_time`).
     #[inline]
-    pub fn enables_absolute_lock_time(self) -> bool { self != Self::MAX }
+    pub fn enables_absolute_lock_time(self) -> bool {
+        self != Self::MAX
+    }
 
     /// Returns `true` if the sequence number indicates that the transaction is finalized.
     ///
@@ -99,18 +101,24 @@ impl Sequence {
     ///
     /// [BIP-0112]: <https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki>
     #[inline]
-    pub fn is_final(self) -> bool { !self.enables_absolute_lock_time() }
+    pub fn is_final(self) -> bool {
+        !self.enables_absolute_lock_time()
+    }
 
     /// Returns true if the transaction opted-in to BIP-0125 replace-by-fee.
     ///
     /// Replace by fee is signaled by the sequence being less than 0xfffffffe which is checked by
     /// this method. Note, this is the highest "non-final" value (see [`Sequence::is_final`]).
     #[inline]
-    pub fn is_rbf(self) -> bool { self < Self::MIN_NO_RBF }
+    pub fn is_rbf(self) -> bool {
+        self < Self::MIN_NO_RBF
+    }
 
     /// Returns `true` if the sequence has a relative lock-time.
     #[inline]
-    pub fn is_relative_lock_time(self) -> bool { self.0 & Self::LOCK_TIME_DISABLE_FLAG_MASK == 0 }
+    pub fn is_relative_lock_time(self) -> bool {
+        self.0 & Self::LOCK_TIME_DISABLE_FLAG_MASK == 0
+    }
 
     /// Returns `true` if the sequence number encodes a block based relative lock-time.
     #[inline]
@@ -150,7 +158,9 @@ impl Sequence {
 
     /// Constructs a new relative lock-time using block height.
     #[inline]
-    pub fn from_height(height: u16) -> Self { Self(u32::from(height)) }
+    pub fn from_height(height: u16) -> Self {
+        Self(u32::from(height))
+    }
 
     /// Constructs a new relative lock-time using time intervals where each interval is equivalent
     /// to 512 seconds.
@@ -193,17 +203,23 @@ impl Sequence {
 
     /// Constructs a new sequence from a u32 value.
     #[inline]
-    pub fn from_consensus(n: u32) -> Self { Self(n) }
+    pub fn from_consensus(n: u32) -> Self {
+        Self(n)
+    }
 
     /// Returns the inner 32bit integer value of Sequence.
     #[inline]
-    pub const fn to_consensus_u32(self) -> u32 { self.0 }
+    pub const fn to_consensus_u32(self) -> u32 {
+        self.0
+    }
 
     /// Gets the hex representation of this [`Sequence`].
     #[cfg(feature = "alloc")]
     #[inline]
     #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(self) -> alloc::string::String { alloc::format!("{:x}", self) }
+    pub fn to_hex(self) -> alloc::string::String {
+        alloc::format!("{:x}", self)
+    }
 
     /// Constructs a new [`relative::LockTime`] from this [`Sequence`] number.
     #[inline]
@@ -227,7 +243,9 @@ impl Sequence {
     ///
     /// BIP-0068 only uses the low 16 bits for relative lock value.
     #[inline]
-    const fn low_u16(self) -> u16 { self.0 as u16 }
+    const fn low_u16(self) -> u16 {
+        self.0 as u16
+    }
 }
 
 crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(Sequence);
@@ -235,17 +253,23 @@ crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(Sequence);
 impl Default for Sequence {
     /// The default value of sequence is 0xffffffff.
     #[inline]
-    fn default() -> Self { Self::MAX }
+    fn default() -> Self {
+        Self::MAX
+    }
 }
 
 impl From<Sequence> for u32 {
     #[inline]
-    fn from(sequence: Sequence) -> Self { sequence.0 }
+    fn from(sequence: Sequence) -> Self {
+        sequence.0
+    }
 }
 
 impl fmt::Display for Sequence {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 impl fmt::Debug for Sequence {
@@ -280,13 +304,17 @@ pub struct SequenceDecoder(encoding::ArrayDecoder<4>);
 
 #[cfg(feature = "encoding")]
 impl Default for SequenceDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl SequenceDecoder {
     /// Constructs a new [`Sequence`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -306,13 +334,17 @@ impl encoding::Decoder for SequenceDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl encoding::Decodable for Sequence {
     type Decoder = SequenceDecoder;
-    fn decoder() -> Self::Decoder { SequenceDecoder(encoding::ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        SequenceDecoder(encoding::ArrayDecoder::<4>::new())
+    }
 }
 
 /// Error types for input sequence numbers.
@@ -332,7 +364,9 @@ pub mod error {
 
     #[cfg(feature = "encoding")]
     impl From<Infallible> for SequenceDecoderError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     #[cfg(feature = "encoding")]
@@ -344,7 +378,9 @@ pub mod error {
 
     #[cfg(all(feature = "std", feature = "encoding"))]
     impl std::error::Error for SequenceDecoderError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
     }
 }
 

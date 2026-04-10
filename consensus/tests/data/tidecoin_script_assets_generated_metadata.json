@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source_node_commit": "bfb27340d25839895af473e5899d3b0f3d34039e",
+  "source_generation": "tidecoin_tx_pq_vectors_monotonicity",
+  "source_fixtures": {
+    "tx_valid_pq_sha256": "3933bcfe30291185a09a87163c1925e1342154cf48d4f4c717a3290750ca6658",
+    "tx_invalid_pq_sha256": "cb8dc7fa363fa502fa00948c85fcb8a99987989684b054c9eb35417a67f9bde0"
+  },
+  "generated_case_count": 30,
+  "generated_sha256": "9bfbfe565a9ec22a8be72cc577e877164251a2b2789451da705d4c1387d1f637"
+}

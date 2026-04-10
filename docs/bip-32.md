@@ -6,7 +6,7 @@ stylistically changed quite a bit.
 * Re-write the BIP-0032 API
 * Add support for BIP-0380
 
-See [BIP-0032 super issue](https://github.com/rust-bitcoin/rust-bitcoin/issues/4770).
+Track any remaining design work in Tidecoin-native issues or design documents.
 
 
 ## Notes

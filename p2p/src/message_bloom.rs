@@ -10,15 +10,11 @@ use core::fmt;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use bitcoin::consensus::{encode, Decodable, Encodable, ReadExt};
 use encoding::{
     ArrayDecoder, ArrayEncoder, ByteVecDecoder, BytesEncoder, CompactSizeEncoder, Decoder4,
     Encoder2, Encoder3,
 };
 use internals::write_err;
-use io::{BufRead, Write};
-
-use crate::consensus::impl_consensus_encoding;
 
 /// `filterload` message sets the current bloom filter
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -92,7 +88,9 @@ impl encoding::Decoder for FilterLoadDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for FilterLoad {
@@ -113,7 +111,9 @@ impl encoding::Decodable for FilterLoad {
 pub struct FilterLoadDecoderError(<FilterLoadInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for FilterLoadDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for FilterLoadDecoderError {
@@ -124,10 +124,10 @@ impl fmt::Display for FilterLoadDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for FilterLoadDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
-
-impl_consensus_encoding!(FilterLoad, filter, hash_funcs, tweak, flags);
 
 /// Bloom filter update flags
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -192,13 +192,17 @@ impl encoding::Decoder for BloomFlagsDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for BloomFlags {
     type Decoder = BloomFlagsDecoder;
 
-    fn decoder() -> Self::Decoder { BloomFlagsDecoder(ArrayDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        BloomFlagsDecoder(ArrayDecoder::new())
+    }
 }
 
 /// An error occurring when decoding a [`BloomFlags`].
@@ -211,7 +215,9 @@ pub enum BloomFlagsDecoderError {
 }
 
 impl From<Infallible> for BloomFlagsDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for BloomFlagsDecoderError {
@@ -230,28 +236,6 @@ impl std::error::Error for BloomFlagsDecoderError {
             Self::Decoder(d) => Some(d),
             Self::UnknownFlag(_f) => None,
         }
-    }
-}
-
-impl Encodable for BloomFlags {
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        w.write_all(&[match self {
-            Self::None => 0,
-            Self::All => 1,
-            Self::PubkeyOnly => 2,
-        }])?;
-        Ok(1)
-    }
-}
-
-impl Decodable for BloomFlags {
-    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
-        Ok(match r.read_u8()? {
-            0 => Self::None,
-            1 => Self::All,
-            2 => Self::PubkeyOnly,
-            _ => return Err(crate::consensus::parse_failed_error("unknown bloom flag")),
-        })
     }
 }
 
@@ -299,13 +283,17 @@ impl encoding::Decoder for FilterAddDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for FilterAdd {
     type Decoder = FilterAddDecoder;
 
-    fn decoder() -> Self::Decoder { FilterAddDecoder(FilterAddInnerDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        FilterAddDecoder(FilterAddInnerDecoder::new())
+    }
 }
 
 /// An error decoding a [`FilterAdd`] message.
@@ -313,7 +301,9 @@ impl encoding::Decodable for FilterAdd {
 pub struct FilterAddDecoderError(<FilterAddInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for FilterAddDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for FilterAddDecoderError {
@@ -324,10 +314,10 @@ impl fmt::Display for FilterAddDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for FilterAddDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
-
-impl_consensus_encoding!(FilterAdd, data);
 
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for BloomFlags {

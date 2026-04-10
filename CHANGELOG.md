@@ -1,12 +1,20 @@
+# Changelog
 
-A changelog is kept per crate, see:
+Tidecoin-specific changes are tracked per crate:
 
-- [`bitcoin` CHANGELOG](bitcoin/CHANGELOG.md)
-- [`addresses` CHANGELOG](addresses/CHANGELOG.md)
-- [`base58` CHANGELOG](base58/CHANGELOG.md)
-- [`hashes` CHANGELOG](hashes/CHANGELOG.md)
-- [`internals` CHANGELOG](internals/CHANGELOG.md)
-- [`io` CHANGELOG](io/CHANGELOG.md)
-- [`primitives` CHANGELOG](primitives/CHANGELOG.md)
-- [`units` CHANGELOG](units/CHANGELOG.md)
-
+- [`tidecoin`](tidecoin/CHANGELOG.md)
+- [`primitives`](primitives/CHANGELOG.md)
+- [`consensus-core`](consensus-core/CHANGELOG.md)
+- [`consensus`](consensus/CHANGELOG.md)
+- [`node-parity`](node-parity/CHANGELOG.md)
+- [`p2p`](p2p/CHANGELOG.md)
+- [`consensus_encoding`](consensus_encoding/CHANGELOG.md)
+- [`key_expression`](key_expression/CHANGELOG.md)
+- [`network`](network/CHANGELOG.md)
+- [`units`](units/CHANGELOG.md)
+- [`hashes`](hashes/CHANGELOG.md)
+- [`base58`](base58/CHANGELOG.md)
+- [`bip158`](bip158/CHANGELOG.md)
+- [`chacha20_poly1305`](chacha20_poly1305/CHANGELOG.md)
+- [`internals`](internals/CHANGELOG.md)
+- [`io`](io/CHANGELOG.md)

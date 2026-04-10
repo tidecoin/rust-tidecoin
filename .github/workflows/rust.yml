@@ -1,4 +1,4 @@
----   # rust-bitcoin CI: If you edit this file please update README.md
+---   # rust-tidecoin CI: If you edit this file please update README.md
 on:   # yamllint disable-line rule:truthy
   push:
     branches:
@@ -153,8 +153,6 @@ jobs:
           targets: thumbv7m-none-eabi
       - name: "Install rust-src"
         run: rustup component add rust-src
-      - name: "Run bitcoin/embedded"
-        run: cd bitcoin/embedded && cargo run --target thumbv7m-none-eabi
       - name: "Run hashes/embedded no alloc"
         run: cd hashes/embedded && cargo run --target thumbv7m-none-eabi
       - name: "Run hashes/embedded with alloc and no hex"
@@ -237,25 +235,6 @@ jobs:
         uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
       - name: "Run policy script"
         run: ./contrib/check-for-policy-violations.sh
-
-  Re-exports:
-    name: Check re-exports - stable toolchain
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-    steps:
-      - name: "Checkout repo"
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
-      - name: "Select toolchain"
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
-      - name: "Run primitives API checker script"
-        run: |
-          contrib/generate-primitives-re-export-test.sh && (cd ./primitives && cargo test --all-features)
-          contrib/generate-bitcoin-re-export-test.sh && (cd ./bitcoin && cargo test --all-features)
 
   DiffMutants:
     name: Check cargo mutants in diff - stable toolchain

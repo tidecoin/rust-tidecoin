@@ -233,7 +233,9 @@ struct TestArray([u8; 4]);
 
 impl Decodable for TestArray {
     type Decoder = TestArrayDecoder;
-    fn decoder() -> Self::Decoder { TestArrayDecoder { inner: ArrayDecoder::new() } }
+    fn decoder() -> Self::Decoder {
+        TestArrayDecoder { inner: ArrayDecoder::new() }
+    }
 }
 
 struct TestArrayDecoder {
@@ -248,9 +250,13 @@ impl Decoder for TestArrayDecoder {
         self.inner.push_bytes(bytes)
     }
 
-    fn end(self) -> Result<Self::Output, Self::Error> { self.inner.end().map(TestArray) }
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        self.inner.end().map(TestArray)
+    }
 
-    fn read_limit(&self) -> usize { self.inner.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.inner.read_limit()
+    }
 }
 
 #[test]
@@ -410,13 +416,17 @@ impl Decoder for InnerDecoder {
         Ok(Inner(n))
     }
 
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl Decodable for Inner {
     type Decoder = InnerDecoder;
-    fn decoder() -> Self::Decoder { InnerDecoder(ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        InnerDecoder(ArrayDecoder::<4>::new())
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -441,13 +451,17 @@ impl Decoder for TestDecoder {
         Ok(Test(v))
     }
 
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl Decodable for Test {
     type Decoder = TestDecoder;
-    fn decoder() -> Self::Decoder { TestDecoder(VecDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        TestDecoder(VecDecoder::new())
+    }
 }
 
 // Stress test the push_bytes impl by passing in a single byte slice repeatedly.
@@ -578,14 +592,14 @@ fn vec_decoder_clone_mid_decode() {
 
 #[cfg(feature = "alloc")]
 fn two_fifty_six_elements() -> Test {
-    Test(core::iter::repeat(Inner(0xDEAD_BEEF)).take(256).collect())
+    Test(core::iter::repeat_n(Inner(0xDEAD_BEEF), 256).collect())
 }
 
 #[cfg(feature = "alloc")]
 fn two_fifty_six_elements_encoded() -> Vec<u8> {
     [0xFD, 0x00, 0x01] // 256 encoded as a  compact size.
         .into_iter()
-        .chain(core::iter::repeat(0xDEAD_BEEF_u32.to_le_bytes()).take(256).flatten())
+        .chain(core::iter::repeat_n(0xDEAD_BEEF_u32.to_le_bytes(), 256).flatten())
         .collect()
 }
 

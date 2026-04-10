@@ -1,56 +1,25 @@
 # primitives 1.0.0
 
-Design considerations and TODOs for the `bitcoin-primitives 1.0.0` release.
+Design considerations and TODOs for the `tidecoin-primitives 1.0.0` release.
 
-## TODOs
+## Current ownership rule
 
-### consensus encoding
+`primitives` is the canonical home for:
 
-GitHub discussion: https://github.com/rust-bitcoin/rust-bitcoin/discussions/4856
+- Tidecoin transaction, block, and witness data structures
+- the canonical Tidecoin script representation
+- the canonical Tidecoin opcode definitions
+- reusable hash wrapper types used across higher layers
 
-Pull encoding done in: https://github.com/rust-bitcoin/rust-bitcoin/pull/4912
+Higher layers should consume or reexport this model, not keep parallel implementations.
 
-### Remove `hashes` from the public API.
+## Remaining public API consideration
 
-Required due to [C-STABLE](https://rust-lang.github.io/api-guidelines/necessities.html#c-stable).
+One continuing concern is keeping `hashes` from leaking too broadly through the public API. Hash
+wrapper types are useful, but their public shape should remain stable and intentional.
 
-Currently `hashes` shows up in the public API in all of our hash wrapper types. This can be seen by
-grepping the API text files introduced in
-[#4792](https://github.com/rust-bitcoin/rust-bitcoin/issues/4792) 
-
-The wrapper types are:
-
-```bash
-$ grep hashes api/primitives/all-features.txt | grep impl | awk '{print $NF}'
-
-bitcoin_primitives::block::BlockHash
-bitcoin_primitives::block::WitnessCommitment
-bitcoin_primitives::merkle_tree::TxMerkleNode
-bitcoin_primitives::merkle_tree::WitnessMerkleNode
-bitcoin_primitives::script::ScriptHash
-bitcoin_primitives::script::WScriptHash
-bitcoin_primitives::transaction::Ntxid
-bitcoin_primitives::transaction::Txid
-bitcoin_primitives::transaction::Wtxid
-```
-
-Using `Txid` as an example, `hashes` appears in the following places:
-
-```bash
-$ grep hashes api/primitives/all-features.txt | grep Txid
-
-impl bitcoin_hashes::Hash for bitcoin_primitives::transaction::Txid
-pub const fn bitcoin_primitives::transaction::Txid::as_byte_array(&self) -> &<bitcoin_hashes::sha256d::Hash as bitcoin_hashes::Hash>::Bytes
-pub const fn bitcoin_primitives::transaction::Txid::from_byte_array(bytes: <bitcoin_hashes::sha256d::Hash as bitcoin_hashes::Hash>::Bytes) -> Self
-pub const fn bitcoin_primitives::transaction::Txid::to_byte_array(self) -> <bitcoin_hashes::sha256d::Hash as bitcoin_hashes::Hash>::Bytes
-pub type bitcoin_primitives::transaction::Txid::Bytes = <bitcoin_hashes::sha256d::Hash as bitcoin_hashes::Hash>::Bytes
-```
-
-All these come from the `hash_newtype` macro.
-
-Usage of `hash_newtype` in `bitcoin` (i.e. other usage outside of `primitives`):
+Usage of `hash_newtype` outside of `primitives` should stay intentionally narrow:
 
 - `bip158::{FilterHash, FilterHeader}`
-- `bip32::XKeyIdentifier`
 - `crypto::key::{PubkeyHash, WPubkeyHash}`
 - `crypto::sighash::{LegacySighash, SegwitV0Sighash}`

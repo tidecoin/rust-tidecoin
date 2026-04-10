@@ -1,21 +1,10 @@
-# 0.4.0 - 2025-01-08
+# Changelog
 
-- Update to latest `hashes 0.20.0`
+All notable Tidecoin-specific changes for Base58Check encoding are documented here.
 
-# 0.3.0 - 2025-12-15
+## Unreleased
 
-- Bump MSRV from 1.63.0 to 1.74.0 for all crates in the repo [#4926](https://github.com/rust-bitcoin/rust-bitcoin/pull/4926)
-
-# 0.2.0 - 2024-12-10
-
-- Bump MSRV to `1.63` [#3100](https://github.com/rust-bitcoin/rust-bitcoin/pull/3100)
-- Optimize `base58` on small inputs [#3002](https://github.com/rust-bitcoin/rust-bitcoin/pull/3002)
-- Add `alloc` feature [#2996](https://github.com/rust-bitcoin/rust-bitcoin/pull/2996)
-- Remove zeroed vector by pushing front [#3227](https://github.com/rust-bitcoin/rust-bitcoin/pull/3227)
-- Close all errors [#3533](https://github.com/rust-bitcoin/rust-bitcoin/pull/3533)
-- Bump `hex-conservative` to `0.3.0` [#3543](https://github.com/rust-bitcoin/rust-bitcoin/pull/3543)
-
-# 0.1.0 - 2024-03-14
-
-Initial release of the `base58ck` crate. This crate was cut out of
-`rust-bitcoin` and cleaned up for release as a separate crate.
+- Kept this crate as the shared Base58Check utility for Tidecoin address and key encoding surfaces.
+- Aligned crate metadata and documentation with Tidecoin workspace ownership.
+- Preserved the lower-level dependency boundary so address encoding does not duplicate codec logic elsewhere.
+- Set the crate MSRV to Rust 1.94.1.

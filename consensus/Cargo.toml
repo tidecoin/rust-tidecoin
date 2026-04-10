@@ -1,0 +1,26 @@
+[package]
+name = "consensus"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94.1"
+description = "Pure Rust Tidecoin consensus verification crate"
+license = "MIT OR Apache-2.0"
+repository = ""
+homepage = ""
+keywords = ["tidecoin", "consensus", "verification"]
+categories = ["cryptography", "science::cryptography"]
+
+[features]
+default = ["std"]
+std = ["encoding/std", "hashes/std", "io/std", "primitives/std"]
+
+[dependencies]
+consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core" }
+encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", default-features = false, features = ["alloc"] }
+hashes = { package = "tidecoin_hashes", path = "../hashes", default-features = false, features = ["alloc"] }
+io = { package = "tidecoin-io", path = "../io", default-features = false, features = ["alloc", "hashes"] }
+primitives = { package = "tidecoin-primitives", path = "../primitives", default-features = false, features = ["alloc", "hex"] }
+
+[dev-dependencies]
+serde_json = "1.0.145"
+node_parity = { package = "tidecoin-node-parity", path = "../node-parity" }

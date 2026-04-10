@@ -11,13 +11,13 @@ use core::ops::{
 use arbitrary::{Arbitrary, Unstructured};
 use encoding::{BytesEncoder, CompactSizeEncoder, Encodable, Encoder2};
 
-use super::ScriptBuf;
+use super::{InstructionIndices, Instructions, ScriptBuf};
 use crate::prelude::{Box, ToOwned, Vec};
 
 internals::transparent_newtype! {
-    /// Bitcoin script slice.
+    /// Tidecoin script slice.
     ///
-    /// *[See also the `bitcoin::script` module](super).*
+    /// *[See also the `script` module](super).*
     ///
     /// `Script` is a script slice, the most primitive script type. It's usually seen in its borrowed
     /// form `&Script`. It is always encoded as a series of bytes representing the opcodes and data
@@ -61,10 +61,6 @@ internals::transparent_newtype! {
     /// of different APIs and trait implementations. Please see [`examples/script.rs`] for a
     /// thorough example of all the APIs.
     ///
-    /// # Bitcoin Core References
-    ///
-    /// * [CScript definition](https://github.com/bitcoin/bitcoin/blob/d492dc1cdaabdc52b0766bf4cba4bd73178325d0/src/script/script.h#L410)
-    ///
     #[derive(PartialOrd, Ord, PartialEq, Eq, Hash)]
     pub struct Script<T>(PhantomData<T>, [u8]);
 
@@ -83,43 +79,57 @@ internals::transparent_newtype! {
 
 impl<T: 'static> Default for &Script<T> {
     #[inline]
-    fn default() -> Self { Script::new() }
+    fn default() -> Self {
+        Script::new()
+    }
 }
 
 impl<T> ToOwned for Script<T> {
     type Owned = ScriptBuf<T>;
 
     #[inline]
-    fn to_owned(&self) -> Self::Owned { ScriptBuf::from_bytes(self.to_vec()) }
+    fn to_owned(&self) -> Self::Owned {
+        ScriptBuf::from_bytes(self.to_vec())
+    }
 }
 
 impl<T> Script<T> {
     /// Constructs a new empty script.
     #[inline]
-    pub const fn new() -> &'static Self { Self::from_bytes(&[]) }
+    pub const fn new() -> &'static Self {
+        Self::from_bytes(&[])
+    }
 
     /// Returns the script data as a byte slice.
     ///
     /// This is just the script bytes **not** consensus encoding (which includes a length prefix).
     #[inline]
-    pub const fn as_bytes(&self) -> &[u8] { &self.1 }
+    pub const fn as_bytes(&self) -> &[u8] {
+        &self.1
+    }
 
     /// Returns the script data as a mutable byte slice.
     ///
     /// This is just the script bytes **not** consensus encoding (which includes a length prefix).
     #[inline]
-    pub fn as_mut_bytes(&mut self) -> &mut [u8] { &mut self.1 }
+    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
+        &mut self.1
+    }
 
     /// Returns a copy of the script data.
     ///
     /// This is just the script bytes **not** consensus encoding (which includes a length prefix).
     #[inline]
-    pub fn to_vec(&self) -> Vec<u8> { self.as_bytes().to_owned() }
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.as_bytes().to_owned()
+    }
 
     /// Returns a copy of the script data.
     #[inline]
     #[deprecated(since = "0.101.0", note = "use to_vec instead")]
-    pub fn to_bytes(&self) -> Vec<u8> { self.to_vec() }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_vec()
+    }
 
     /// Consensus encodes the script as lower-case hex.
     ///
@@ -146,11 +156,15 @@ impl<T> Script<T> {
 
     /// Returns the length in bytes of the script.
     #[inline]
-    pub const fn len(&self) -> usize { self.as_bytes().len() }
+    pub const fn len(&self) -> usize {
+        self.as_bytes().len()
+    }
 
     /// Returns whether the script is the empty script.
     #[inline]
-    pub const fn is_empty(&self) -> bool { self.as_bytes().is_empty() }
+    pub const fn is_empty(&self) -> bool {
+        self.as_bytes().is_empty()
+    }
 
     /// Converts a [`Box<Script>`](Box) into a [`ScriptBuf`] without copying or allocating.
     #[must_use]
@@ -174,7 +188,49 @@ impl<T> Script<T> {
     #[cfg(feature = "hex")]
     #[inline]
     #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(&self) -> alloc::string::String { alloc::format!("{:x}", self) }
+    pub fn to_hex(&self) -> alloc::string::String {
+        alloc::format!("{:x}", self)
+    }
+
+    /// Iterates over decoded instructions.
+    #[inline]
+    pub fn instructions(&self) -> Instructions<'_> {
+        Instructions::new(self, false)
+    }
+
+    /// Iterates over decoded instructions while enforcing minimal pushes.
+    #[inline]
+    pub fn instructions_minimal(&self) -> Instructions<'_> {
+        Instructions::new(self, true)
+    }
+
+    /// Iterates over decoded instructions together with their byte indices.
+    #[inline]
+    pub fn instruction_indices(&self) -> InstructionIndices<'_> {
+        InstructionIndices::new(self, false)
+    }
+
+    /// Iterates over decoded instructions and indices while enforcing minimal pushes.
+    #[inline]
+    pub fn instruction_indices_minimal(&self) -> InstructionIndices<'_> {
+        InstructionIndices::new(self, true)
+    }
+
+    /// Returns the last opcode if the final instruction is an opcode.
+    pub fn last_opcode(&self) -> Option<crate::opcodes::Opcode> {
+        match self.instructions().last() {
+            Some(Ok(super::Instruction::Op(op))) => Some(op),
+            _ => None,
+        }
+    }
+
+    /// Returns the last pushed byte slice if the final instruction is a data push.
+    pub fn last_pushdata(&self) -> Option<&super::PushBytes> {
+        match self.instructions().last() {
+            Some(Ok(super::Instruction::PushBytes(bytes))) => Some(bytes),
+            _ => None,
+        }
+    }
 }
 
 encoding::encoder_newtype_exact! {

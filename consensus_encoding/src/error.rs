@@ -51,7 +51,9 @@ where
 
 #[cfg(feature = "std")]
 impl<D> From<std::io::Error> for ReadError<D> {
-    fn from(e: std::io::Error) -> Self { Self::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
 }
 
 /// An error that can occur when decoding from a byte slice.
@@ -64,7 +66,9 @@ pub enum DecodeError<Err> {
 }
 
 impl<Err> From<Infallible> for DecodeError<Err> {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl<Err> fmt::Display for DecodeError<Err>
@@ -99,7 +103,9 @@ where
 pub struct UnconsumedError();
 
 impl From<Infallible> for UnconsumedError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for UnconsumedError {
@@ -110,7 +116,9 @@ impl fmt::Display for UnconsumedError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for UnconsumedError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 /// An error consensus decoding a compact size encoded integer.
@@ -136,7 +144,9 @@ pub(crate) enum CompactSizeDecoderErrorInner {
 }
 
 impl From<Infallible> for CompactSizeDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl core::fmt::Display for CompactSizeDecoderError {
@@ -184,7 +194,9 @@ pub struct LengthPrefixExceedsMaxError {
 }
 
 impl From<Infallible> for LengthPrefixExceedsMaxError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl core::fmt::Display for LengthPrefixExceedsMaxError {
@@ -212,7 +224,9 @@ pub(crate) enum ByteVecDecoderErrorInner {
 
 #[cfg(feature = "alloc")]
 impl From<Infallible> for ByteVecDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -257,7 +271,9 @@ pub(crate) enum VecDecoderErrorInner<Err> {
 
 #[cfg(feature = "alloc")]
 impl<Err> From<Infallible> for VecDecoderError<Err> {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -300,7 +316,9 @@ pub struct UnexpectedEofError {
 }
 
 impl From<Infallible> for UnexpectedEofError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for UnexpectedEofError {

@@ -34,7 +34,9 @@ use crate::sha256d;
 #[allow(deprecated_in_future)]
 mod cpuid_sha256_aarch64 {
     cpufeatures::new!(inner, "sha2");
-    pub fn get() -> bool { inner::get() }
+    pub fn get() -> bool {
+        inner::get()
+    }
 }
 #[cfg(all(feature = "cpufeatures", any(target_arch = "x86", target_arch = "x86_64")))]
 // cpufeatures crate internally uses `u8::max_value()` which will be deprecated.
@@ -42,19 +44,33 @@ mod cpuid_sha256_aarch64 {
 #[allow(deprecated_in_future)]
 mod cpuid_sha256_x86 {
     cpufeatures::new!(inner, "sha", "sse2", "ssse3", "sse4.1");
-    pub fn get() -> bool { inner::get() }
+    pub fn get() -> bool {
+        inner::get()
+    }
 }
 
 #[allow(non_snake_case)]
-const fn Ch(x: u32, y: u32, z: u32) -> u32 { z ^ (x & (y ^ z)) }
+const fn Ch(x: u32, y: u32, z: u32) -> u32 {
+    z ^ (x & (y ^ z))
+}
 #[allow(non_snake_case)]
-const fn Maj(x: u32, y: u32, z: u32) -> u32 { (x & y) | (z & (x | y)) }
+const fn Maj(x: u32, y: u32, z: u32) -> u32 {
+    (x & y) | (z & (x | y))
+}
 #[allow(non_snake_case)]
-const fn Sigma0(x: u32) -> u32 { x.rotate_left(30) ^ x.rotate_left(19) ^ x.rotate_left(10) }
+const fn Sigma0(x: u32) -> u32 {
+    x.rotate_left(30) ^ x.rotate_left(19) ^ x.rotate_left(10)
+}
 #[allow(non_snake_case)]
-const fn Sigma1(x: u32) -> u32 { x.rotate_left(26) ^ x.rotate_left(21) ^ x.rotate_left(7) }
-const fn sigma0(x: u32) -> u32 { x.rotate_left(25) ^ x.rotate_left(14) ^ (x >> 3) }
-const fn sigma1(x: u32) -> u32 { x.rotate_left(15) ^ x.rotate_left(13) ^ (x >> 10) }
+const fn Sigma1(x: u32) -> u32 {
+    x.rotate_left(26) ^ x.rotate_left(21) ^ x.rotate_left(7)
+}
+const fn sigma0(x: u32) -> u32 {
+    x.rotate_left(25) ^ x.rotate_left(14) ^ (x >> 3)
+}
+const fn sigma1(x: u32) -> u32 {
+    x.rotate_left(15) ^ x.rotate_left(13) ^ (x >> 10)
+}
 
 #[cfg(feature = "small-hash")]
 #[macro_use]
@@ -1573,11 +1589,11 @@ impl HashEngine {
 
     // Algorithm copied from libsecp256k1
     fn software_process_block(state: &mut [u32; 8], blocks: &[u8]) {
-        debug_assert!(!blocks.is_empty() && blocks.len() % BLOCK_SIZE == 0);
+        debug_assert!(!blocks.is_empty() && blocks.len().is_multiple_of(BLOCK_SIZE));
 
         for block in blocks.chunks_exact(BLOCK_SIZE) {
             let mut w = [0u32; 16];
-            for (w_val, buff_bytes) in w.iter_mut().zip(block.bitcoin_as_chunks().0) {
+            for (w_val, buff_bytes) in w.iter_mut().zip(block.as_nonzero_chunks().0) {
                 *w_val = u32::from_be_bytes(*buff_bytes);
             }
 

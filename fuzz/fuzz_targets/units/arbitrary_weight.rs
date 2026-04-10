@@ -2,8 +2,8 @@
 #![cfg_attr(not(fuzzing), allow(unused))]
 
 use arbitrary::{Arbitrary, Unstructured};
-use bitcoin::Weight;
 use libfuzzer_sys::fuzz_target;
+use tidecoin::Weight;
 
 #[cfg(not(fuzzing))]
 fn main() {}

@@ -1,52 +1,27 @@
-# Tidecoin keys / Tidecoin crypto
+# Tidecoin keys
 
-The current direction is to keep key handling as a focused piece of the crate graph, with a
-possible `tidecoin-keys` split if we decide to separate it from the rest of crypto helpers.
+The active key surface is Tidecoin-native and PQ-focused.
 
-## On `secp256k1`
+## Current live API
 
-Any keys/crypto split would depend on `secp256k1`.
+`tidecoin::crypto::key` currently exposes:
 
-Other things that use secp directly or indirectly through keys/crypto:
-
-- `addresses` for key-backed address generation
-- `bip-32` for hierarchical derivation
-- `psbt` for key handling and signing
-- `sign_message` for Tidecoin message signatures
-
-## Related to keys
-
-Public and private keys.
-
-The reason for splitting this out is so that other crates can depend on keys without depending on
-`tidecoin` directly.
-
-(Plural crate name, singular module name, matching the existing `address` module and
-`addresses` crate.)
-
-Current public types in `tidecoin::crypto::key`:
-
-- `XOnlyPublicKey`
-- `PublicKey`
-- `SortKey`
 - `PubkeyHash`
 - `WPubkeyHash`
-- `CompressedPublicKey`
-- `PrivateKey`
-- `SerializedXOnlyPublicKey`
-- Various error types
+- `PqWifKey`
+- `PqWifFormat`
+- WIF parse/validation errors
 
-### Current obvious complications
+It is no longer the home of removed legacy key formats, extended keys, or transaction signing glue.
 
-Looking at `tidecoin::crypto::key` there are a few obvious things that need care.
+## Ownership rule
 
-#### `NetworkKind`
+Key wrappers needed by public Tidecoin APIs may live in the top-level crate, but reusable lower
+logic must not be duplicated:
 
-We currently use `tidecoin::network::NetworkKind` in `PrivateKey`.
+- canonical protocol/script/tx data: `primitives`
+- consensus verification helpers: `consensus-core`
+- public Tidecoin convenience layer: `tidecoin`
 
-- It is used to get the first byte of WIF format.
-- It is passed to functions that create addresses such as `Address::p2pkh(key, network)`.
-
-#### `ScriptBuf`
-
-Possibly fine if the split depends on `primitives`. It is only used for script code.
+If a future dedicated keys crate is created, it should depend only on lower shared crates and must
+not reintroduce a second key model parallel to `consensus-core` or `primitives`.

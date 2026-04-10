@@ -26,11 +26,15 @@ pub(crate) enum ParseErrorInner {
 }
 
 impl From<Infallible> for ParseError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl From<Infallible> for ParseErrorInner {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for ParseError {
@@ -39,8 +43,9 @@ impl fmt::Display for ParseError {
             ParseErrorInner::Amount(ref e) => write_err!(f, "invalid amount"; e),
             ParseErrorInner::Denomination(ref e) => write_err!(f, "invalid denomination"; e),
             // We consider this to not be a source because it currently doesn't contain useful info.
-            ParseErrorInner::MissingDenomination(_) =>
-                f.write_str("the input doesn't contain a denomination"),
+            ParseErrorInner::MissingDenomination(_) => {
+                f.write_str("the input doesn't contain a denomination")
+            }
         }
     }
 }
@@ -82,11 +87,15 @@ pub(crate) enum ParseAmountErrorInner {
 }
 
 impl From<Infallible> for ParseAmountError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl From<Infallible> for ParseAmountErrorInner {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for ParseAmountError {
@@ -134,7 +143,9 @@ pub struct OutOfRangeError {
 }
 
 impl From<Infallible> for OutOfRangeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl OutOfRangeError {
@@ -149,13 +160,19 @@ impl OutOfRangeError {
     }
 
     /// Returns true if the input value was larger than the maximum allowed value.
-    pub fn is_above_max(self) -> bool { self.is_greater_than_max }
+    pub fn is_above_max(self) -> bool {
+        self.is_greater_than_max
+    }
 
     /// Returns true if the input value was smaller than the minimum allowed value.
-    pub fn is_below_min(self) -> bool { !self.is_greater_than_max }
+    pub fn is_below_min(self) -> bool {
+        !self.is_greater_than_max
+    }
 
     #[cfg(test)]
-    pub(crate) fn too_big(is_signed: bool) -> Self { Self { is_signed, is_greater_than_max: true } }
+    pub(crate) fn too_big(is_signed: bool) -> Self {
+        Self { is_signed, is_greater_than_max: true }
+    }
 
     #[cfg(test)]
     pub(crate) fn too_small() -> Self {
@@ -195,7 +212,9 @@ pub struct TooPreciseError {
 }
 
 impl From<Infallible> for TooPreciseError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for TooPreciseError {
@@ -221,7 +240,9 @@ pub struct InputTooLargeError {
 }
 
 impl From<Infallible> for InputTooLargeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for InputTooLargeError {
@@ -253,15 +274,18 @@ pub struct MissingDigitsError {
 }
 
 impl From<Infallible> for MissingDigitsError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for MissingDigitsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.kind {
             MissingDigitsKind::Empty => f.write_str("the input is empty"),
-            MissingDigitsKind::OnlyMinusSign =>
-                f.write_str("there are no digits following the minus (-) sign"),
+            MissingDigitsKind::OnlyMinusSign => {
+                f.write_str("there are no digits following the minus (-) sign")
+            }
         }
     }
 }
@@ -283,7 +307,9 @@ pub struct InvalidCharacterError {
 }
 
 impl From<Infallible> for InvalidCharacterError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for InvalidCharacterError {
@@ -311,7 +337,9 @@ pub struct BadPositionError {
 }
 
 impl From<Infallible> for BadPositionError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for BadPositionError {
@@ -344,7 +372,9 @@ pub enum ParseDenominationError {
 }
 
 impl From<Infallible> for ParseDenominationError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for ParseDenominationError {
@@ -372,7 +402,9 @@ impl std::error::Error for ParseDenominationError {
 pub struct MissingDenominationError;
 
 impl From<Infallible> for MissingDenominationError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 /// Error returned when parsing an unknown denomination.
@@ -381,7 +413,9 @@ impl From<Infallible> for MissingDenominationError {
 pub struct UnknownDenominationError(pub(super) InputString);
 
 impl From<Infallible> for UnknownDenominationError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for UnknownDenominationError {
@@ -392,7 +426,9 @@ impl fmt::Display for UnknownDenominationError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for UnknownDenominationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 /// Error returned when parsing a possibly confusing denomination.
@@ -401,7 +437,9 @@ impl std::error::Error for UnknownDenominationError {
 pub struct PossiblyConfusingDenominationError(pub(super) InputString);
 
 impl From<Infallible> for PossiblyConfusingDenominationError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for PossiblyConfusingDenominationError {
@@ -412,7 +450,9 @@ impl fmt::Display for PossiblyConfusingDenominationError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for PossiblyConfusingDenominationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 /// An error consensus decoding an `Amount`.
@@ -444,7 +484,9 @@ pub(super) enum AmountDecoderErrorInner {
 
 #[cfg(feature = "encoding")]
 impl From<Infallible> for AmountDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "encoding")]

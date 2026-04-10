@@ -2,8 +2,8 @@
 
 //! Example of creating an encoder that encodes a slice of encodable objects.
 
-use tidecoin_consensus_encoding as encoding;
 use encoding::{ArrayEncoder, BytesEncoder, CompactSizeEncoder, Encodable, Encoder2, SliceEncoder};
+use tidecoin_consensus_encoding as encoding;
 
 fn main() {
     let v = vec![Inner::new(0xcafe_babe), Inner::new(0xdead_beef)];
@@ -24,7 +24,9 @@ struct Adt {
 
 impl Adt {
     /// Constructs a new `Adt`.
-    pub fn new(v: Vec<Inner>, b: Vec<u8>) -> Self { Self { v, b } }
+    pub fn new(v: Vec<Inner>, b: Vec<u8>) -> Self {
+        Self { v, b }
+    }
 }
 
 encoding::encoder_newtype! {
@@ -55,10 +57,14 @@ pub struct Inner(u32);
 
 impl Inner {
     /// Constructs a new `Inner`.
-    pub fn new(x: u32) -> Self { Self(x) }
+    pub fn new(x: u32) -> Self {
+        Self(x)
+    }
 
     /// Returns some meaningful 4 byte array for this type.
-    pub fn to_array(&self) -> [u8; 4] { self.0.to_be_bytes() }
+    pub fn to_array(&self) -> [u8; 4] {
+        self.0.to_be_bytes()
+    }
 }
 
 encoding::encoder_newtype_exact! {

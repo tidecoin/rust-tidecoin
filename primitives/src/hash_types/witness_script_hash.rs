@@ -13,11 +13,7 @@ use hashes::sha256;
 
 use crate::script::{WitnessScript, MAX_WITNESS_SCRIPT_SIZE};
 
-/// SegWit (256-bit) version of a Bitcoin Script bytecode hash.
-///
-/// Note: there is another "script hash" object in bitcoin ecosystem (Electrum protocol) that
-/// looks similar to this one also being SHA256, however, they hash semantically different
-/// scripts and have reversed representations, so this type cannot be used for both.
+/// SegWit (256-bit) version of a Tidecoin script bytecode hash.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WScriptHash(sha256::Hash);
 
@@ -30,8 +26,6 @@ impl WScriptHash {
     ///
     /// > The witnessScript (≤ 10,000 bytes) is popped off the initial witness stack. SHA256 of the
     /// > witnessScript must match the 32-byte witness program.
-    ///
-    /// ref: [BIP-0141](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki)
     ///
     /// # Errors
     ///
@@ -49,9 +43,7 @@ impl WScriptHash {
     /// Constructs a new `WScriptHash` from any script irrespective of script size.
     ///
     /// If you hash a script that exceeds 10,000 bytes in size and use it to create a Segwit
-    /// output then the output will be unspendable (see [BIP-0141]).
-    ///
-    /// ref: [BIP-0141](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki)
+    /// output then the output will be unspendable.
     #[inline]
     pub fn from_script_unchecked(script: &WitnessScript) -> Self {
         Self(sha256::Hash::hash(script.as_bytes()))
@@ -67,12 +59,16 @@ pub struct WitnessScriptSizeError {
 
 impl WitnessScriptSizeError {
     /// Returns the invalid witness script size.
-    pub fn invalid_size(&self) -> usize { self.size }
+    pub fn invalid_size(&self) -> usize {
+        self.size
+    }
 }
 
 impl From<Infallible> for WitnessScriptSizeError {
     #[inline]
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for WitnessScriptSizeError {

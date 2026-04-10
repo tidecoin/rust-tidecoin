@@ -63,7 +63,9 @@ where
     T: Tag,
 {
     /// Constructs a new hash from the underlying byte array.
-    pub const fn from_byte_array(bytes: [u8; 32]) -> Self { Self(PhantomData, bytes) }
+    pub const fn from_byte_array(bytes: [u8; 32]) -> Self {
+        Self(PhantomData, bytes)
+    }
 
     /// Produces a hash from the current state of a given engine.
     pub fn from_engine(e: HashEngine<T>) -> Self {
@@ -71,7 +73,9 @@ where
     }
 
     /// Constructs a new engine.
-    pub fn engine() -> HashEngine<T> { HashEngine::default() }
+    pub fn engine() -> HashEngine<T> {
+        HashEngine::default()
+    }
 
     /// Hashes some bytes.
     #[allow(clippy::self_named_constructors)] // Hash is a noun and a verb.
@@ -97,18 +101,26 @@ where
     }
 
     /// Returns the underlying byte array.
-    pub const fn to_byte_array(self) -> [u8; 32] { self.1 }
+    pub const fn to_byte_array(self) -> [u8; 32] {
+        self.1
+    }
 
     /// Returns a reference to the underlying byte array.
-    pub const fn as_byte_array(&self) -> &[u8; 32] { &self.1 }
+    pub const fn as_byte_array(&self) -> &[u8; 32] {
+        &self.1
+    }
 }
 
 impl<T: Tag> Copy for Hash<T> {}
 impl<T: Tag> Clone for Hash<T> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 impl<T: Tag> PartialEq for Hash<T> {
-    fn eq(&self, other: &Self) -> bool { self.as_byte_array() == other.as_byte_array() }
+    fn eq(&self, other: &Self) -> bool {
+        self.as_byte_array() == other.as_byte_array()
+    }
 }
 impl<T: Tag> Eq for Hash<T> {}
 impl<T: Tag> PartialOrd for Hash<T> {
@@ -122,7 +134,9 @@ impl<T: Tag> Ord for Hash<T> {
     }
 }
 impl<T: Tag> core::hash::Hash for Hash<T> {
-    fn hash<H: core::hash::Hasher>(&self, h: &mut H) { self.as_byte_array().hash(h) }
+    fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
+        self.as_byte_array().hash(h);
+    }
 }
 
 crate::internal_macros::hash_trait_impls!(256, false, T: Tag);
@@ -139,7 +153,9 @@ impl<T: Tag> Default for HashEngine<T> {
 }
 
 impl<T: Tag> Clone for HashEngine<T> {
-    fn clone(&self) -> Self { Self(self.0.clone(), PhantomData) }
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), PhantomData)
+    }
 }
 
 impl<T: Tag> crate::HashEngine for HashEngine<T> {
@@ -147,9 +163,15 @@ impl<T: Tag> crate::HashEngine for HashEngine<T> {
     type Bytes = [u8; 32];
     const BLOCK_SIZE: usize = 64; // Same as sha256::HashEngine::BLOCK_SIZE;
 
-    fn input(&mut self, data: &[u8]) { self.0.input(data) }
-    fn n_bytes_hashed(&self) -> u64 { self.0.n_bytes_hashed() }
-    fn finalize(self) -> Self::Hash { Hash::from_engine(self) }
+    fn input(&mut self, data: &[u8]) {
+        self.0.input(data);
+    }
+    fn n_bytes_hashed(&self) -> u64 {
+        self.0.n_bytes_hashed()
+    }
+    fn finalize(self) -> Self::Hash {
+        Hash::from_engine(self)
+    }
 }
 
 crate::internal_macros::impl_write!(

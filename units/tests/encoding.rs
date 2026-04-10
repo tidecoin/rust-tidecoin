@@ -5,13 +5,13 @@
 #![cfg(feature = "alloc")]
 #![cfg(feature = "encoding")]
 
+use encoding::{encode_to_vec, Decodable as _, Decoder as _};
 use tidecoin_units::absolute::{LockTime, LockTimeDecoder};
 use tidecoin_units::amount::AmountDecoder;
 use tidecoin_units::block::BlockHeightDecoder;
 use tidecoin_units::sequence::SequenceDecoder;
 use tidecoin_units::time::BlockTimeDecoder;
 use tidecoin_units::{Amount, BlockHeight, BlockTime, Sequence};
-use encoding::{encode_to_vec, Decodable as _, Decoder as _};
 
 /// Tests round-trip encoding/decoding for a list of values.
 ///

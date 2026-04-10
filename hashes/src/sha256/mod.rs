@@ -60,7 +60,9 @@ impl Hash {
 
     /// Iterate the sha256 algorithm to turn a sha256 hash into a sha256d hash
     #[must_use]
-    pub fn hash_again(&self) -> sha256d::Hash { sha256d::Hash::from_byte_array(hash(&self.0).0) }
+    pub fn hash_again(&self) -> sha256d::Hash {
+        sha256d::Hash::from_byte_array(hash(&self.0).0)
+    }
 
     /// Computes hash from `bytes` in `const` context.
     ///
@@ -96,7 +98,9 @@ impl HashEngine {
     /// Constructs a new [`HashEngine`] from a [`Midstate`].
     ///
     /// Please see docs on [`Midstate`] before using this function.
-    pub fn from_midstate(midstate: Midstate) -> Self { midstate.to_engine() }
+    pub fn from_midstate(midstate: Midstate) -> Self {
+        midstate.to_engine()
+    }
 
     /// Returns `true` if the midstate can be extracted from this engine.
     ///
@@ -104,7 +108,9 @@ impl HashEngine {
     /// the hash engine is a multiple of 64. See caveat on [`Self::midstate`].
     ///
     /// Please see docs on [`Midstate`] before using this function.
-    pub const fn can_extract_midstate(&self) -> bool { self.bytes_hashed % 64 == 0 }
+    pub const fn can_extract_midstate(&self) -> bool {
+        self.bytes_hashed.is_multiple_of(64)
+    }
 
     /// Outputs the midstate of the hash engine.
     ///
@@ -119,7 +125,7 @@ impl HashEngine {
             let aligned_bytes = self.bytes_hashed - unprocessed_len as u64;
 
             let mut midstate_bytes = [0; 32];
-            for (val, ret_bytes) in self.h.iter().zip(midstate_bytes.bitcoin_as_chunks_mut::<4>().0)
+            for (val, ret_bytes) in self.h.iter().zip(midstate_bytes.as_nonzero_chunks_mut::<4>().0)
             {
                 *ret_bytes = val.to_be_bytes();
             }
@@ -141,7 +147,7 @@ impl HashEngine {
     #[cfg(not(hashes_fuzz))]
     fn midstate_unchecked(&self) -> Midstate {
         let mut ret = [0; 32];
-        for (val, ret_bytes) in self.h.iter().zip(ret.bitcoin_as_chunks_mut::<4>().0) {
+        for (val, ret_bytes) in self.h.iter().zip(ret.as_nonzero_chunks_mut::<4>().0) {
             *ret_bytes = val.to_be_bytes();
         }
         Midstate { bytes: ret, bytes_hashed: self.bytes_hashed }
@@ -157,7 +163,9 @@ impl HashEngine {
 }
 
 impl Default for HashEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl crate::HashEngine for HashEngine {
@@ -165,9 +173,13 @@ impl crate::HashEngine for HashEngine {
     type Bytes = [u8; 32];
     const BLOCK_SIZE: usize = 64;
 
-    fn n_bytes_hashed(&self) -> u64 { self.bytes_hashed }
+    fn n_bytes_hashed(&self) -> u64 {
+        self.bytes_hashed
+    }
     crate::internal_macros::engine_input_impl!();
-    fn finalize(self) -> Self::Hash { Hash::from_engine(self) }
+    fn finalize(self) -> Self::Hash {
+        Hash::from_engine(self)
+    }
 }
 
 /// Unfinalized output of the SHA256 hash function.
@@ -201,21 +213,25 @@ impl Midstate {
     /// Panics if `bytes_hashed` is not a multiple of 64.
     #[track_caller]
     pub const fn new(state: [u8; 32], bytes_hashed: u64) -> Self {
-        assert!(bytes_hashed % 64 == 0, "bytes hashed is not a multiple of 64");
+        assert!(bytes_hashed.is_multiple_of(64), "bytes hashed is not a multiple of 64");
 
         Self { bytes: state, bytes_hashed }
     }
 
     /// Deconstructs the [`Midstate`], returning the underlying byte array and number of bytes hashed.
-    pub const fn as_parts(&self) -> (&[u8; 32], u64) { (&self.bytes, self.bytes_hashed) }
+    pub const fn as_parts(&self) -> (&[u8; 32], u64) {
+        (&self.bytes, self.bytes_hashed)
+    }
 
     /// Deconstructs the [`Midstate`], returning the underlying byte array and number of bytes hashed.
-    pub const fn to_parts(self) -> ([u8; 32], u64) { (self.bytes, self.bytes_hashed) }
+    pub const fn to_parts(self) -> ([u8; 32], u64) {
+        (self.bytes, self.bytes_hashed)
+    }
 
     /// Constructs a new [`HashEngine`] from this [`Midstate`].
     pub fn to_engine(self) -> HashEngine {
         let mut ret = [0; 8];
-        for (ret_val, midstate_bytes) in ret.iter_mut().zip(self.as_ref().bitcoin_as_chunks().0) {
+        for (ret_val, midstate_bytes) in ret.iter_mut().zip(self.as_ref().as_nonzero_chunks().0) {
             *ret_val = u32::from_be_bytes(*midstate_bytes);
         }
 
@@ -247,7 +263,9 @@ impl fmt::Debug for Midstate {
             bytes: &'a [u8; 32],
         }
         impl fmt::Debug for Encoder<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { crate::debug_hex(self.bytes, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                crate::debug_hex(self.bytes, f)
+            }
         }
 
         f.debug_struct("Midstate")
@@ -258,7 +276,9 @@ impl fmt::Debug for Midstate {
 }
 
 impl convert::AsRef<[u8]> for Midstate {
-    fn as_ref(&self) -> &[u8] { &self.bytes }
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 /// [`Midstate`] invariant violated (not a multiple of 64).
@@ -273,7 +293,9 @@ pub struct MidstateError {
 
 impl MidstateError {
     /// Returns block-aligned midstate
-    pub const fn midstate(&self) -> &Midstate { &self.block_aligned_midstate }
+    pub const fn midstate(&self) -> &Midstate {
+        &self.block_aligned_midstate
+    }
 
     /// returns the unprocessed bytes remaining in the buffer.
     pub fn unprocessed_bytes(&self) -> &[u8] {

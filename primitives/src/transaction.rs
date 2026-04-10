@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Bitcoin transactions.
+//! Tidecoin transactions.
 //!
 //! A transaction describes a transfer of money. It consumes previously-unspent
 //! transaction outputs and produces new ones, satisfying the condition to spend
@@ -55,17 +55,9 @@ pub use crate::hash_types::{Ntxid, Txid, Wtxid, BlockHashDecoder};
 #[doc(no_inline)]
 pub use crate::hash_types::BlockHashDecoderError;
 
-/// Bitcoin transaction.
+/// Tidecoin transaction.
 ///
 /// An authenticated movement of coins.
-///
-/// See [Bitcoin Wiki: Transaction][wiki-transaction] for more information.
-///
-/// [wiki-transaction]: https://en.bitcoin.it/wiki/Transaction
-///
-/// # Bitcoin Core References
-///
-/// * [CTransaction definition](https://github.com/bitcoin/bitcoin/blob/345457b542b6a980ccfbc868af0970a6f91d1b82/src/primitives/transaction.h#L279)
 ///
 /// # Serialization notes
 ///
@@ -93,7 +85,7 @@ pub use crate::hash_types::BlockHashDecoderError;
 /// in the original transaction format (since it has no inputs and therefore
 /// no input witnesses), a traditionally encoded transaction may have the `0001`
 /// SegWit flag in it, which confuses most SegWit parsers including the one in
-/// Bitcoin Core.
+/// Tidecoin node behavior.
 ///
 /// We therefore deviate from the spec by always using the SegWit witness encoding
 /// for 0-input transactions, which results in unambiguously parseable transactions.
@@ -117,10 +109,7 @@ pub struct Transaction {
     pub version: Version,
     /// Block height or timestamp. Transaction cannot be included in a block until this height/time.
     ///
-    /// # Relevant BIPs
-    ///
-    /// * [BIP-0065 OP_CHECKLOCKTIMEVERIFY](https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki)
-    /// * [BIP-0113 Median time-past as endpoint for lock-time calculations](https://github.com/bitcoin/bips/blob/master/bip-0113.mediawiki)
+    /// Uses the lock-time semantics active on the Tidecoin network.
     pub lock_time: absolute::LockTime,
     /// List of transaction inputs.
     pub inputs: Vec<TxIn>,
@@ -130,8 +119,7 @@ pub struct Transaction {
 
 #[cfg(feature = "alloc")]
 impl Transaction {
-    // https://github.com/bitcoin/bitcoin/blob/44b05bf3fef2468783dcebf651654fdd30717e7e/src/policy/policy.h#L27
-    /// Maximum transaction weight for Bitcoin Core 25.0.
+    /// Maximum standard transaction weight on the Tidecoin network.
     pub const MAX_STANDARD_WEIGHT: Weight = Weight::from_wu(400_000);
 
     /// Computes a "normalized TXID" which does not include any signatures.
@@ -187,7 +175,6 @@ impl Transaction {
     }
 
     /// Returns whether or not to serialize transaction as specified in BIP-0144.
-    // This is duplicated in `bitcoin`, if you change it please do so in both places.
     #[inline]
     fn uses_segwit_serialization(&self) -> bool {
         if self.inputs.iter().any(|input| !input.witness.is_empty()) {
@@ -213,7 +200,9 @@ impl Transaction {
 #[cfg(feature = "alloc")]
 impl cmp::PartialOrd for Transaction {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -230,25 +219,33 @@ impl cmp::Ord for Transaction {
 #[cfg(feature = "alloc")]
 impl From<Transaction> for Txid {
     #[inline]
-    fn from(tx: Transaction) -> Self { tx.compute_txid() }
+    fn from(tx: Transaction) -> Self {
+        tx.compute_txid()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl From<&Transaction> for Txid {
     #[inline]
-    fn from(tx: &Transaction) -> Self { tx.compute_txid() }
+    fn from(tx: &Transaction) -> Self {
+        tx.compute_txid()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl From<Transaction> for Wtxid {
     #[inline]
-    fn from(tx: Transaction) -> Self { tx.compute_wtxid() }
+    fn from(tx: Transaction) -> Self {
+        tx.compute_wtxid()
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl From<&Transaction> for Wtxid {
     #[inline]
-    fn from(tx: &Transaction) -> Self { tx.compute_wtxid() }
+    fn from(tx: &Transaction) -> Self {
+        tx.compute_wtxid()
+    }
 }
 
 /// Trait that abstracts over a transaction identifier i.e., `Txid` and `Wtxid`.
@@ -257,7 +254,6 @@ pub(crate) trait TxIdentifier: AsRef<[u8]> {}
 impl TxIdentifier for Txid {}
 impl TxIdentifier for Wtxid {}
 
-// Duplicated in `bitcoin`.
 /// The marker MUST be a 1-byte zero value: 0x00. (BIP-0141)
 #[cfg(feature = "alloc")]
 const SEGWIT_MARKER: u8 = 0x00;
@@ -413,7 +409,9 @@ pub struct ParseTransactionError(ParsePrimitiveError<Transaction>);
 
 #[cfg(all(feature = "hex", feature = "alloc"))]
 impl From<Infallible> for ParseTransactionError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(all(feature = "hex", feature = "alloc"))]
@@ -425,7 +423,9 @@ impl fmt::Display for ParseTransactionError {
 
 #[cfg(all(feature = "hex", feature = "alloc", feature = "std"))]
 impl std::error::Error for ParseTransactionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 /// The decoder for the [`Transaction`] type.
@@ -444,7 +444,9 @@ impl TransactionDecoder {
 
 #[cfg(feature = "alloc")]
 impl Default for TransactionDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -468,26 +470,31 @@ impl encoding::Decoder for TransactionDecoder {
                         return Ok(true);
                     }
                 }
-                State::Inputs(_, _, decoder) =>
+                State::Inputs(_, _, decoder) => {
                     if decoder.push_bytes(bytes).map_err(|e| E(Inner::Inputs(e)))? {
                         return Ok(true);
-                    },
-                State::SegwitFlag(_) =>
+                    }
+                }
+                State::SegwitFlag(_) => {
                     if bytes.is_empty() {
                         return Ok(true);
-                    },
-                State::Outputs(_, _, _, decoder) =>
+                    }
+                }
+                State::Outputs(_, _, _, decoder) => {
                     if decoder.push_bytes(bytes).map_err(|e| E(Inner::Outputs(e)))? {
                         return Ok(true);
-                    },
-                State::Witnesses(_, _, _, _, decoder) =>
+                    }
+                }
+                State::Witnesses(_, _, _, _, decoder) => {
                     if decoder.push_bytes(bytes).map_err(|e| E(Inner::Witness(e)))? {
                         return Ok(true);
-                    },
-                State::LockTime(_, _, _, decoder) =>
+                    }
+                }
+                State::LockTime(_, _, _, decoder) => {
                     if decoder.push_bytes(bytes).map_err(|e| E(Inner::LockTime(e)))? {
                         return Ok(true);
-                    },
+                    }
+                }
                 State::Done(..) => return Ok(false),
                 State::Errored => panic!("call to push_bytes() after decoder errored"),
             }
@@ -660,7 +667,9 @@ impl encoding::Decoder for TransactionDecoder {
 #[cfg(feature = "alloc")]
 impl encoding::Decodable for Transaction {
     type Decoder = TransactionDecoder;
-    fn decoder() -> Self::Decoder { TransactionDecoder::new() }
+    fn decoder() -> Self::Decoder {
+        TransactionDecoder::new()
+    }
 }
 
 /// The state of the transiting decoder.
@@ -751,7 +760,9 @@ enum TransactionDecoderErrorInner {
 
 #[cfg(feature = "alloc")]
 impl From<Infallible> for TransactionDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -770,16 +781,21 @@ impl fmt::Display for TransactionDecoderError {
             E::NoWitnesses => write!(f, "non-empty Segwit transaction with no witnesses"),
             E::LockTime(ref e) => write_err!(f, "transaction decoder error"; e),
             E::EarlyEnd(s) => write!(f, "early end of transaction (still decoding {})", s),
-            E::NullPrevoutInNonCoinbase(index) =>
-                write!(f, "null prevout in non-coinbase transaction at input {}", index),
-            E::CoinbaseScriptSigTooSmall(len) =>
-                write!(f, "coinbase scriptSig too small: {} bytes (min 2)", len),
-            E::CoinbaseScriptSigTooLarge(len) =>
-                write!(f, "coinbase scriptSig too large: {} bytes (max 100)", len),
-            E::DuplicateInput(ref outpoint) =>
-                write!(f, "duplicate input: {:?}:{}", outpoint.txid, outpoint.vout),
-            E::OutputValueSumTooLarge(val) =>
-                write!(f, "sum of output values {} satoshis exceeds MAX_MONEY", val),
+            E::NullPrevoutInNonCoinbase(index) => {
+                write!(f, "null prevout in non-coinbase transaction at input {}", index)
+            }
+            E::CoinbaseScriptSigTooSmall(len) => {
+                write!(f, "coinbase scriptSig too small: {} bytes (min 2)", len)
+            }
+            E::CoinbaseScriptSigTooLarge(len) => {
+                write!(f, "coinbase scriptSig too large: {} bytes (max 100)", len)
+            }
+            E::DuplicateInput(ref outpoint) => {
+                write!(f, "duplicate input: {:?}:{}", outpoint.txid, outpoint.vout)
+            }
+            E::OutputValueSumTooLarge(val) => {
+                write!(f, "sum of output values {} satoshis exceeds MAX_MONEY", val)
+            }
             E::NoOutputs => write!(f, "transaction has no outputs"),
         }
     }
@@ -810,15 +826,12 @@ impl std::error::Error for TransactionDecoderError {
     }
 }
 
-/// Bitcoin transaction input.
+/// Tidecoin transaction input.
 ///
 /// It contains the location of the previous transaction's output,
 /// that it spends and set of scripts that satisfy its spending
 /// conditions.
 ///
-/// # Bitcoin Core References
-///
-/// * [CTxIn definition](https://github.com/bitcoin/bitcoin/blob/345457b542b6a980ccfbc868af0970a6f91d1b82/src/primitives/transaction.h#L65)
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[cfg(feature = "alloc")]
 pub struct TxIn {
@@ -952,7 +965,9 @@ impl TxInDecoder {
 
 #[cfg(feature = "alloc")]
 impl Default for TxInDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -972,7 +987,9 @@ impl encoding::Decoder for TxInDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -994,7 +1011,9 @@ pub struct TxInDecoderError(<TxInInnerDecoder as encoding::Decoder>::Error);
 
 #[cfg(feature = "alloc")]
 impl From<Infallible> for TxInDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -1007,10 +1026,12 @@ impl fmt::Display for TxInDecoderError {
 #[cfg(feature = "alloc")]
 #[cfg(feature = "std")]
 impl std::error::Error for TxInDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
-/// Bitcoin transaction output.
+/// Tidecoin transaction output.
 ///
 /// Defines new coins to be created as a result of the transaction,
 /// along with spending conditions ("script", aka "output script"),
@@ -1018,9 +1039,6 @@ impl std::error::Error for TxInDecoderError {
 ///
 /// An output that is not yet spent by an input is called Unspent Transaction Output ("UTXO").
 ///
-/// # Bitcoin Core References
-///
-/// * [CTxOut definition](https://github.com/bitcoin/bitcoin/blob/345457b542b6a980ccfbc868af0970a6f91d1b82/src/primitives/transaction.h#L148)
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[cfg(feature = "alloc")]
 pub struct TxOut {
@@ -1065,7 +1083,9 @@ impl TxOutDecoder {
 
 #[cfg(feature = "alloc")]
 impl Default for TxOutDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -1085,7 +1105,9 @@ impl encoding::Decoder for TxOutDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -1103,7 +1125,9 @@ pub struct TxOutDecoderError(<TxOutInnerDecoder as encoding::Decoder>::Error);
 
 #[cfg(feature = "alloc")]
 impl From<Infallible> for TxOutDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -1115,14 +1139,12 @@ impl fmt::Display for TxOutDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for TxOutDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 /// A reference to a transaction output.
-///
-/// # Bitcoin Core References
-///
-/// * [COutPoint definition](https://github.com/bitcoin/bitcoin/blob/345457b542b6a980ccfbc868af0970a6f91d1b82/src/primitives/transaction.h#L26)
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub struct OutPoint {
     /// The referenced transaction's txid.
@@ -1215,11 +1237,15 @@ pub struct OutPointDecoder(encoding::ArrayDecoder<36>);
 
 impl OutPointDecoder {
     /// Constructs a new [`OutPoint`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 impl Default for OutPointDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl encoding::Decoder for OutPointDecoder {
@@ -1243,12 +1269,16 @@ impl encoding::Decoder for OutPointDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for OutPoint {
     type Decoder = OutPointDecoder;
-    fn decoder() -> Self::Decoder { OutPointDecoder::default() }
+    fn decoder() -> Self::Decoder {
+        OutPointDecoder::default()
+    }
 }
 
 /// Error while decoding an `OutPoint`.
@@ -1256,7 +1286,9 @@ impl encoding::Decodable for OutPoint {
 pub struct OutPointDecoderError(UnexpectedEofError);
 
 impl From<Infallible> for OutPointDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl core::fmt::Display for OutPointDecoderError {
@@ -1267,7 +1299,9 @@ impl core::fmt::Display for OutPointDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for OutPointDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -1406,7 +1440,9 @@ pub enum ParseOutPointError {
 #[cfg(feature = "hex")]
 impl From<Infallible> for ParseOutPointError {
     #[inline]
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -1441,39 +1477,38 @@ impl std::error::Error for ParseOutPointError {
 ///
 /// Standardness of the inner `u32` is not an invariant because you are free to create transactions
 /// of any version, transactions with non-standard version numbers will not be relayed by the
-/// Bitcoin network.
-///
-/// [BIP-0068]: https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki
-/// [BIP-0431]: https://github.com/bitcoin/bips/blob/master/bip-0431.mediawiki
+/// Tidecoin network.
 #[derive(Copy, PartialEq, Eq, Clone, Debug, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Version(u32);
 
 impl Version {
-    /// The original Bitcoin transaction version (pre-BIP-0068).
+    /// Tidecoin transaction version 1.
     pub const ONE: Self = Self(1);
 
-    /// The second Bitcoin transaction version (post-BIP-0068).
+    /// Tidecoin transaction version 2.
     pub const TWO: Self = Self(2);
 
-    /// The third Bitcoin transaction version (post-BIP-0431).
+    /// Tidecoin transaction version 3.
     pub const THREE: Self = Self(3);
 
     /// Constructs a potentially non-standard transaction version.
     ///
     /// This can accept both standard and non-standard versions.
     #[inline]
-    pub const fn maybe_non_standard(version: u32) -> Self { Self(version) }
+    pub const fn maybe_non_standard(version: u32) -> Self {
+        Self(version)
+    }
 
     /// Returns the inner `u32` value of this `Version`.
     #[inline]
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Returns true if this transaction version number is considered standard.
     ///
-    /// The behavior of this method matches whatever Bitcoin Core considers standard at the time
-    /// of the release and may change in future versions to accommodate new standard versions.
-    /// As of Bitcoin Core 28.0 ([release notes](https://bitcoincore.org/en/releases/28.0/)),
+    /// The behavior of this method follows the Tidecoin standardness policy for this release:
     /// versions 1, 2, and 3 are considered standard.
     #[inline]
     pub const fn is_standard(self) -> bool {
@@ -1483,32 +1518,44 @@ impl Version {
 
 impl fmt::Display for Version {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 impl fmt::LowerHex for Version {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(&self.0, f)
+    }
 }
 
 impl fmt::UpperHex for Version {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::UpperHex::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
 }
 
 impl fmt::Octal for Version {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Octal::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Octal::fmt(&self.0, f)
+    }
 }
 
 impl fmt::Binary for Version {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Binary::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Binary::fmt(&self.0, f)
+    }
 }
 
 impl From<Version> for u32 {
     #[inline]
-    fn from(version: Version) -> Self { version.0 }
+    fn from(version: Version) -> Self {
+        version.0
+    }
 }
 
 encoding::encoder_newtype_exact! {
@@ -1530,11 +1577,15 @@ pub struct VersionDecoder(encoding::ArrayDecoder<4>);
 
 impl VersionDecoder {
     /// Constructs a new [`Version`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 impl Default for VersionDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl encoding::Decoder for VersionDecoder {
@@ -1554,12 +1605,16 @@ impl encoding::Decoder for VersionDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for Version {
     type Decoder = VersionDecoder;
-    fn decoder() -> Self::Decoder { VersionDecoder(encoding::ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        VersionDecoder(encoding::ArrayDecoder::<4>::new())
+    }
 }
 
 /// An error consensus decoding an `Version`.
@@ -1567,7 +1622,9 @@ impl encoding::Decodable for Version {
 pub struct VersionDecoderError(encoding::UnexpectedEofError);
 
 impl From<Infallible> for VersionDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for VersionDecoderError {
@@ -1578,7 +1635,9 @@ impl fmt::Display for VersionDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for VersionDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -1970,7 +2029,9 @@ mod tests {
     }
 
     #[cfg(feature = "alloc")]
-    fn tx_out() -> TxOut { TxOut { amount: Amount::ONE_SAT, script_pubkey: tc_script_pubkey() } }
+    fn tx_out() -> TxOut {
+        TxOut { amount: Amount::ONE_SAT, script_pubkey: tc_script_pubkey() }
+    }
 
     #[cfg(any(feature = "hex", feature = "serde"))]
     fn segwit_tx_in() -> TxIn {
@@ -1991,7 +2052,9 @@ mod tests {
     }
 
     #[cfg(any(feature = "hex", feature = "serde"))]
-    fn tc_script_sig() -> ScriptSigBuf { ScriptSigBuf::from_bytes(TC_SCRIPT_BYTES.to_vec()) }
+    fn tc_script_sig() -> ScriptSigBuf {
+        ScriptSigBuf::from_bytes(TC_SCRIPT_BYTES.to_vec())
+    }
 
     #[test]
     #[cfg(feature = "alloc")]
@@ -2316,7 +2379,7 @@ mod tests {
         // will also fail. But these will show you where the failure is so I'll leave them in.
         assert_eq!(tx.version, Version::TWO);
         assert_eq!(tx.inputs.len(), 1);
-        // In particular this one is easy to get backward -- in bitcoin hashes are encoded
+        // In particular this one is easy to get backward: transaction hashes are encoded
         // as little-endian 256-bit numbers rather than as data strings.
         assert_eq!(
             format!("{:x}", tx.inputs[0].previous_output.txid),
@@ -2350,7 +2413,7 @@ mod tests {
         // will also fail. But these will show you where the failure is so I'll leave them in.
         assert_eq!(tx.version, Version::ONE);
         assert_eq!(tx.inputs.len(), 1);
-        // In particular this one is easy to get backward -- in bitcoin hashes are encoded
+        // In particular this one is easy to get backward: transaction hashes are encoded
         // as little-endian 256-bit numbers rather than as data strings.
         assert_eq!(
             format!("{:x}", tx.inputs[0].previous_output.txid),
@@ -2418,8 +2481,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_null_prevout_in_non_coinbase_transaction() {
-        // Test vector taken from Bitcoin Core tx_invalid.json
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L64
+        // Invalid transaction fixture.
         // "Null txin, but without being a coinbase (because there are two inputs)"
         let tx_bytes = hex!("01000000020000000000000000000000000000000000000000000000000000000000000000ffffffff00ffffffff00010000000000000000000000000000000000000000000000000000000000000000000000ffffffff010000000000000000015100000000");
 
@@ -2437,8 +2499,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_coinbase_scriptsig_too_small() {
-        // Test vector taken from Bitcoin Core tx_invalid.json
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L57
+        // Invalid transaction fixture.
         // "Coinbase of size 1"
         let tx_bytes = hex!("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000015100000000");
 
@@ -2456,8 +2517,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_coinbase_scriptsig_too_large() {
-        // Test vector taken from Bitcoin Core tx_invalid.json:
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L62
+        // Invalid transaction fixture.
         // "Coinbase of size 101"
         let tx_bytes = hex!("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff655151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151ffffffff010000000000000000015100000000");
 
@@ -2503,8 +2563,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_duplicate_inputs() {
-        // Test vector from Bitcoin Core tx_invalid.json:
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L50
+        // Invalid transaction fixture.
         // Transaction has two inputs both spending the same outpoint
         let tx_bytes = hex!("01000000020001000000000000000000000000000000000000000000000000000000000000000000006c47304402204bb1197053d0d7799bf1b30cd503c44b58d6240cccbdc85b6fe76d087980208f02204beeed78200178ffc6c74237bb74b3f276bbb4098b5605d814304fe128bf1431012321039e8815e15952a7c3fada1905f8cf55419837133bd7756c0ef14fc8dfe50c0deaacffffffff0001000000000000000000000000000000000000000000000000000000000000000000006c47304402202306489afef52a6f62e90bf750bbcdf40c06f5c6b138286e6b6b86176bb9341802200dba98486ea68380f47ebb19a7df173b99e6bc9c681d6ccf3bde31465d1f16b3012321039e8815e15952a7c3fada1905f8cf55419837133bd7756c0ef14fc8dfe50c0deaacffffffff010000000000000000015100000000");
 
@@ -2532,8 +2591,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_output_value_sum_too_large() {
-        // Test vector taken from Bitcoin Core tx_invalid.json
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L48
+        // Invalid transaction fixture.
         // "MAX_MONEY output + 1 output" (sum exceeds MAX_MONEY)
         let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006d483045022027deccc14aa6668e78a8c9da3484fbcd4f9dcc9bb7d1b85146314b21b9ae4d86022100d0b43dece8cfb07348de0ca8bc5b86276fa88f7f2138381128b7c36ab2e42264012321029bb13463ddd5d2cc05da6e84e37536cb9525703cfd8f43afdb414988987a92f6acffffffff020040075af075070001510001000000000000015100000000");
 
@@ -2562,8 +2620,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_output_value_greater_than_max_money() {
-        // Test vector taken from Bitcoin Core tx_invalid.json
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L44
+        // Invalid transaction fixture.
         // "MAX_MONEY + 1 output"
         let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006e493046022100e1eadba00d9296c743cb6ecc703fd9ddc9b3cd12906176a226ae4c18d6b00796022100a71aef7d2874deff681ba6080f1b278bac7bb99c61b08a85f4311970ffe7f63f012321030c0588dc44d92bdcbf8e72093466766fdc265ead8db64517b0c542275b70fffbacffffffff010140075af0750700015100000000");
 
@@ -2576,8 +2633,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_transaction_with_no_outputs() {
-        // Test vector taken from Bitcoin Core tx_invalid.json
-        // https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json#L36
+        // Invalid transaction fixture.
         // "No outputs"
         let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006d483045022100f16703104aab4e4088317c862daec83440242411b039d14280e03dd33b487ab802201318a7be236672c5c56083eb7a5a195bc57a40af7923ff8545016cd3b571e2a601232103c40e5d339df3f30bf753e7e04450ae4ef76c9e45587d1d993bdc4cd06f0651c7acffffffff0000000000");
 

@@ -139,10 +139,14 @@ impl BlockHeight {
     pub const MAX: Self = Self(u32::MAX);
 
     /// Constructs a new block height from a `u32`.
-    pub const fn from_u32(inner: u32) -> Self { Self(inner) }
+    pub const fn from_u32(inner: u32) -> Self {
+        Self(inner)
+    }
 
     /// Returns block height as a `u32`.
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Attempt to subtract two [`BlockHeight`]s, returning `None` if overflow occurred.
     #[must_use]
@@ -182,7 +186,9 @@ impl From<absolute::Height> for BlockHeight {
     ///
     /// An absolute locktime block height has a maximum value of [`absolute::LOCK_TIME_THRESHOLD`]
     /// minus one, while [`BlockHeight`] may take the full range of `u32`.
-    fn from(h: absolute::Height) -> Self { Self::from_u32(h.to_u32()) }
+    fn from(h: absolute::Height) -> Self {
+        Self::from_u32(h.to_u32())
+    }
 }
 
 impl TryFrom<BlockHeight> for absolute::Height {
@@ -192,7 +198,9 @@ impl TryFrom<BlockHeight> for absolute::Height {
     ///
     /// An absolute locktime block height has a maximum value of [`absolute::LOCK_TIME_THRESHOLD`]
     /// minus one, while [`BlockHeight`] may take the full range of `u32`.
-    fn try_from(h: BlockHeight) -> Result<Self, Self::Error> { Self::from_u32(h.to_u32()) }
+    fn try_from(h: BlockHeight) -> Result<Self, Self::Error> {
+        Self::from_u32(h.to_u32())
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -217,13 +225,17 @@ pub struct BlockHeightDecoder(encoding::ArrayDecoder<4>);
 
 #[cfg(feature = "encoding")]
 impl Default for BlockHeightDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl BlockHeightDecoder {
     /// Constructs a new [`BlockHeight`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -243,13 +255,17 @@ impl encoding::Decoder for BlockHeightDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl encoding::Decodable for BlockHeight {
     type Decoder = BlockHeightDecoder;
-    fn decoder() -> Self::Decoder { BlockHeightDecoder(encoding::ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        BlockHeightDecoder(encoding::ArrayDecoder::<4>::new())
+    }
 }
 
 impl_u32_wrapper! {
@@ -274,10 +290,14 @@ impl BlockHeightInterval {
     pub const MAX: Self = Self(u32::MAX);
 
     /// Constructs a new block interval from a `u32`.
-    pub const fn from_u32(inner: u32) -> Self { Self(inner) }
+    pub const fn from_u32(inner: u32) -> Self {
+        Self(inner)
+    }
 
     /// Returns block interval as a `u32`.
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Attempt to subtract two [`BlockHeightInterval`]s, returning `None` if overflow occurred.
     #[must_use]
@@ -299,7 +319,9 @@ impl From<relative::NumberOfBlocks> for BlockHeightInterval {
     ///
     /// A relative locktime block height has a maximum value of `u16::MAX` where as a
     /// [`BlockHeightInterval`] is a thin wrapper around a `u32`, the two types are not interchangeable.
-    fn from(h: relative::NumberOfBlocks) -> Self { Self::from_u32(h.to_height().into()) }
+    fn from(h: relative::NumberOfBlocks) -> Self {
+        Self::from_u32(h.to_height().into())
+    }
 }
 
 impl TryFrom<BlockHeightInterval> for relative::NumberOfBlocks {
@@ -341,10 +363,14 @@ impl BlockMtp {
     pub const MAX: Self = Self(u32::MAX);
 
     /// Constructs a new block MTP from a `u32`.
-    pub const fn from_u32(inner: u32) -> Self { Self(inner) }
+    pub const fn from_u32(inner: u32) -> Self {
+        Self(inner)
+    }
 
     /// Returns block MTP as a `u32`.
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Constructs a [`BlockMtp`] by computing the median‐time‐past from the last 11 block timestamps
     ///
@@ -376,7 +402,9 @@ impl From<absolute::MedianTimePast> for BlockMtp {
     ///
     /// An absolute locktime MTP has a minimum value of [`absolute::LOCK_TIME_THRESHOLD`],
     /// while [`BlockMtp`] may take the full range of `u32`.
-    fn from(h: absolute::MedianTimePast) -> Self { Self::from_u32(h.to_u32()) }
+    fn from(h: absolute::MedianTimePast) -> Self {
+        Self::from_u32(h.to_u32())
+    }
 }
 
 impl TryFrom<BlockMtp> for absolute::MedianTimePast {
@@ -386,7 +414,9 @@ impl TryFrom<BlockMtp> for absolute::MedianTimePast {
     ///
     /// An absolute locktime MTP has a minimum value of [`absolute::LOCK_TIME_THRESHOLD`],
     /// while [`BlockMtp`] may take the full range of `u32`.
-    fn try_from(h: BlockMtp) -> Result<Self, Self::Error> { Self::from_u32(h.to_u32()) }
+    fn try_from(h: BlockMtp) -> Result<Self, Self::Error> {
+        Self::from_u32(h.to_u32())
+    }
 }
 
 impl_u32_wrapper! {
@@ -411,10 +441,14 @@ impl BlockMtpInterval {
     pub const MAX: Self = Self(u32::MAX);
 
     /// Constructs a new block MTP interval from a `u32`.
-    pub const fn from_u32(inner: u32) -> Self { Self(inner) }
+    pub const fn from_u32(inner: u32) -> Self {
+        Self(inner)
+    }
 
     /// Returns block MTP interval as a `u32`.
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Converts a [`BlockMtpInterval`] to a [`locktime::relative::NumberOf512Seconds`], rounding down.
     ///
@@ -469,7 +503,9 @@ impl From<relative::NumberOf512Seconds> for BlockMtpInterval {
     /// A relative locktime MTP interval has a resolution of 512 seconds, and a maximum value
     /// of `u16::MAX` 512-second intervals. [`BlockMtpInterval`] may take the full range of
     /// `u32`.
-    fn from(h: relative::NumberOf512Seconds) -> Self { Self::from_u32(h.to_seconds()) }
+    fn from(h: relative::NumberOf512Seconds) -> Self {
+        Self::from_u32(h.to_seconds())
+    }
 }
 
 crate::internal_macros::impl_op_for_references! {
@@ -628,7 +664,9 @@ pub mod error {
     pub struct TooBigForRelativeHeightError(pub(super) u32);
 
     impl From<Infallible> for TooBigForRelativeHeightError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl fmt::Display for TooBigForRelativeHeightError {
@@ -652,7 +690,9 @@ pub mod error {
 
     #[cfg(feature = "encoding")]
     impl From<Infallible> for BlockHeightDecoderError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     #[cfg(feature = "encoding")]
@@ -664,7 +704,9 @@ pub mod error {
 
     #[cfg(all(feature = "std", feature = "encoding"))]
     impl std::error::Error for BlockHeightDecoderError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
     }
 }
 

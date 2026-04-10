@@ -60,7 +60,9 @@ impl CompactSizeEncoder {
     /// A small number of fields in the Bitcoin protocol are compact-size-encoded integers that are
     /// not collection lengths (e.g. service flags). Use this constructor for those cases, where the
     /// natural type of the value is `u64` rather than `usize`.
-    pub fn new_u64(value: u64) -> Self { Self { buf: Some(Self::encode(value)) } }
+    pub fn new_u64(value: u64) -> Self {
+        Self { buf: Some(Self::encode(value)) }
+    }
 
     /// Returns the number of bytes used to encode this `CompactSize` value.
     ///
@@ -109,7 +111,9 @@ impl CompactSizeEncoder {
 
 impl Encoder for CompactSizeEncoder {
     #[inline]
-    fn current_chunk(&self) -> &[u8] { self.buf.as_ref().map(|b| &b[..]).unwrap_or_default() }
+    fn current_chunk(&self) -> &[u8] {
+        self.buf.as_ref().map(|b| &b[..]).unwrap_or_default()
+    }
 
     #[inline]
     fn advance(&mut self) -> bool {
@@ -120,7 +124,9 @@ impl Encoder for CompactSizeEncoder {
 
 impl ExactSizeEncoder for CompactSizeEncoder {
     #[inline]
-    fn len(&self) -> usize { self.buf.map_or(0, |buf| buf.len()) }
+    fn len(&self) -> usize {
+        self.buf.map_or(0, |buf| buf.len())
+    }
 }
 
 /// Decodes a compact size encoded integer as a length prefix.
@@ -147,18 +153,24 @@ impl CompactSizeDecoder {
     /// The decoded value must not exceed 4,000,000 and must fit in a `usize`, otherwise
     /// [`end`](Self::end) will return an error. This default limit reflects the maximum sensible
     /// vector length under the 4 MB block weight limit.
-    pub const fn new() -> Self { Self { buf: ArrayVec::new(), limit: MAX_VEC_SIZE } }
+    pub const fn new() -> Self {
+        Self { buf: ArrayVec::new(), limit: MAX_VEC_SIZE }
+    }
 
     /// Constructs a new compact size decoder with a custom length limit.
     ///
     /// The decoded value must not exceed `limit`, otherwise [`end`](Self::end) will return an
     /// error. Use this when you know the field you are decoding has a tighter bound than the
     /// default limit of 4,000,000.
-    pub const fn new_with_limit(limit: usize) -> Self { Self { buf: ArrayVec::new(), limit } }
+    pub const fn new_with_limit(limit: usize) -> Self {
+        Self { buf: ArrayVec::new(), limit }
+    }
 }
 
 impl Default for CompactSizeDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Decoder for CompactSizeDecoder {
@@ -192,7 +204,9 @@ impl Decoder for CompactSizeDecoder {
         })
     }
 
-    fn read_limit(&self) -> usize { compact_size_read_limit(&self.buf) }
+    fn read_limit(&self) -> usize {
+        compact_size_read_limit(&self.buf)
+    }
 }
 
 /// Decodes a compact size encoded integer as a raw `u64`.
@@ -223,11 +237,15 @@ impl CompactSizeU64Decoder {
     ///
     /// See the [struct-level documentation](Self) for guidance on when to use this decoder versus
     /// [`CompactSizeDecoder`].
-    pub const fn new() -> Self { Self { buf: ArrayVec::new() } }
+    pub const fn new() -> Self {
+        Self { buf: ArrayVec::new() }
+    }
 }
 
 impl Default for CompactSizeU64Decoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Decoder for CompactSizeU64Decoder {
@@ -238,9 +256,13 @@ impl Decoder for CompactSizeU64Decoder {
         Ok(compact_size_push_bytes(&mut self.buf, bytes))
     }
 
-    fn end(self) -> Result<Self::Output, Self::Error> { compact_size_decode_u64(&self.buf) }
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        compact_size_decode_u64(&self.buf)
+    }
 
-    fn read_limit(&self) -> usize { compact_size_read_limit(&self.buf) }
+    fn read_limit(&self) -> usize {
+        compact_size_read_limit(&self.buf)
+    }
 }
 
 /// Pushes bytes into a compact size buffer, returning true if more bytes are needed.

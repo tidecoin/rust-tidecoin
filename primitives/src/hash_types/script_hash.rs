@@ -13,11 +13,7 @@ use hashes::hash160;
 
 use crate::script::{Script, ScriptHashableTag, MAX_REDEEM_SCRIPT_SIZE};
 
-/// A 160-bit hash of Bitcoin Script bytecode.
-///
-/// Note: there is another "script hash" object in bitcoin ecosystem (Electrum protocol) that
-/// uses 256-bit hash and hashes a semantically different script. Thus, this type cannot
-/// represent it.
+/// A 160-bit hash of Tidecoin script bytecode.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ScriptHash(hash160::Hash);
 
@@ -32,8 +28,6 @@ impl ScriptHash {
     /// > itself subject to the same rules as any other PUSHDATA operation, including the rule that
     /// > no data greater than 520 bytes may be pushed to the stack. Thus it is not possible to
     /// > spend a P2SH output if the redemption script it refers to is >520 bytes in length.
-    ///
-    /// ref: [BIP-0016](https://github.com/bitcoin/bips/blob/master/bip-0016.mediawiki#user-content-520byte_limitation_on_serialized_script_size)
     ///
     /// # Errors
     ///
@@ -54,9 +48,7 @@ impl ScriptHash {
     /// Constructs a new `ScriptHash` from any script irrespective of script size.
     ///
     /// If you hash a script that exceeds 520 bytes in size and use it to create a P2SH output
-    /// then the output will be unspendable (see [BIP-0016]).
-    ///
-    /// [BIP-0016]: <https://github.com/bitcoin/bips/blob/master/bip-0016.mediawiki#user-content-520byte_limitation_on_serialized_script_size>
+    /// then the output will be unspendable.
     #[inline]
     pub fn from_script_unchecked<T>(script: &Script<T>) -> Self {
         Self(hash160::Hash::hash(script.as_bytes()))
@@ -72,12 +64,16 @@ pub struct RedeemScriptSizeError {
 
 impl RedeemScriptSizeError {
     /// Returns the invalid redeem script size.
-    pub fn invalid_size(&self) -> usize { self.size }
+    pub fn invalid_size(&self) -> usize {
+        self.size
+    }
 }
 
 impl From<Infallible> for RedeemScriptSizeError {
     #[inline]
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for RedeemScriptSizeError {

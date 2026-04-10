@@ -17,7 +17,9 @@ pub trait ArrayExt {
     /// Returns an item at given statically-known index.
     ///
     /// This is just like normal indexing except the check happens at compile time.
-    fn get_static<const INDEX: usize>(&self) -> &Self::Item { &self.sub_array::<INDEX, 1>()[0] }
+    fn get_static<const INDEX: usize>(&self) -> &Self::Item {
+        &self.sub_array::<INDEX, 1>()[0]
+    }
 
     /// Returns the first item in an array.
     ///
@@ -28,7 +30,9 @@ pub trait ArrayExt {
     /// that this will not return `None` so trying to keep the `std` method around is pointless.
     /// Importing the trait will also cause compile failures - that's also intentional to expose
     /// the places where useless checks are made.
-    fn first(&self) -> &Self::Item { self.get_static::<0>() }
+    fn first(&self) -> &Self::Item {
+        self.get_static::<0>()
+    }
 
     /// Splits the array into two, non-overlapping smaller arrays covering the entire range.
     ///

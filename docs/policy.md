@@ -8,8 +8,7 @@ the various PRs over the last few years.
 
 ## Import statements
 
-We use the following style for import statements, see
-(https://github.com/rust-bitcoin/rust-bitcoin/discussions/2088) for the discussion that led to this.
+We use the following style for import statements.
 
 ```rust
 // Modules first, as they are part of the project's structure.
@@ -67,12 +66,13 @@ pub extern crate hex;
 
 Note, can use this exact doc format.
 
-### Special treatment of `bitcoin`, `primitives`, `units`
+### Special treatment of `tidecoin`, `primitives`, `units`
 
-`bitcoin`, `primitives`, and `units` should each be a superset of the crates below.
+`tidecoin`, `primitives`, and `units` should each be a superset of the crates below.
 
-E.g for any `units::Foo`, there will be a `primitives::Foo`, and `bitcoin::Foo`. This goes for all
-types and modules.
+For any `units::Foo`, there may be a `primitives::Foo` and a `tidecoin::Foo` re-export where that
+improves the public API. Shared protocol data structures should live in lower crates first, and
+the top-level `tidecoin` crate should add convenience rather than duplicate ownership.
 
 For these three crates:
 
@@ -108,7 +108,7 @@ pub mod foo {
 }
 ```
 
-Then in `primitives` (and in `bitcoin`) in `lib.rs`:
+Then in `primitives` (and in `tidecoin`) in `lib.rs`:
 
 ```rust
 #[doc(inline)]
@@ -119,8 +119,8 @@ pub use units::foo::SomeError;
 
 ### Usage of re-exports
 
-As part of the attempt to mirror the `units` and `primitives`, and `bitcoin` APIs, in this codebase,
-policy is to use types from the highest crate available i.e `use crate::Foo` not `units::Foo`.
+As part of keeping the `units`, `primitives`, and `tidecoin` layers coherent, policy is to use
+types from the highest crate available i.e `use crate::Foo` not `units::Foo`.
 
 This is enforced by CI.
 
@@ -238,36 +238,33 @@ operation should succeed.
 This may be better for communicating with developers, since they are the target
 audience for the error message and `rust-tidecoin`.
 
-If you want to know more about the decision error messages and expect messages,
-please check:
-
-- https://github.com/rust-bitcoin/rust-bitcoin/issues/2913
-- https://github.com/rust-bitcoin/rust-bitcoin/issues/3053
-- https://github.com/rust-bitcoin/rust-bitcoin/pull/3019
+If you want to know more about the decision, keep the discussion in this repository so the policy
+remains discoverable by Tidecoin contributors.
 </details>
 
 ## Rustdocs
 
-Be liberal with references to BIPs or other documentation; the aim is that devs can learn about
-Bitcoin by hacking on this codebase as opposed to having to learn about Bitcoin first and then start
-hacking on this codebase. Consider the following format, not all sections will be required for all types.
+Document Tidecoin active semantics directly. External standards can be named when they are still
+part of the active Tidecoin surface, but live rustdocs should not describe Tidecoin behavior as a
+proxy for another network. Consider the following format; not all sections are required for all
+types.
 
 
 ```rust
-/// The Bitcoin foobar.
+/// The Tidecoin foobar.
 ///
-/// Contains all the data used when passing a foobar around the Bitcoin network.
+/// Contains all the data used when passing a foobar around the Tidecoin network.
 ///
 /// <details>
 /// <summary>FooBar Original Design</summary>
 ///
-/// The foobar was introduced in Bitcoin x.y.z to increase the amount of foo in bar.
+/// The foobar was introduced to increase the amount of foo in bar.
 ///
 /// </details>
 ///
 /// ### Relevant BIPs
 ///
-/// * [BIP-XXXX - FooBar in Bitcoin](https://github.com/bitcoin/bips/blob/master/bip-xxxx.mediawiki)
+/// * BIP-XXXX-style FooBar encoding, if that standard is still part of Tidecoin semantics.
 pub struct FooBar {
     /// The version in use.
     pub version: Version
@@ -344,13 +341,14 @@ See [Errors](#errors) section.
   (see https://rustc-dev-guide.rust-lang.org/backend/implicit-caller-location.html)
 
 - `#[cfg(rust_v_1_60)]`: Used to guard code that should only be built in if the toolchain is
-  compatible. These configuration conditionals are set at build time in `bitcoin/build.rs`. New
+  compatible. These configuration conditionals are set at build time in `tidecoin/build.rs`. New
   version attributes may be added as needed.
 
 
 ## BIP References
 
-When referring to Bitcoin Improvement Proposals (BIPs) in documentation, comments, and error messages, use the standardized notation `BIP-XXXX` where `XXXX` is the 4-digit BIP number with leading zeros.
+When referring to BIP-derived rules in documentation, comments, and error messages, use the
+standardized notation `BIP-XXXX` where `XXXX` is the 4-digit BIP number with leading zeros.
 
 ### Examples
 
@@ -359,9 +357,13 @@ When referring to Bitcoin Improvement Proposals (BIPs) in documentation, comment
 
 ### Exceptions
 
-Module names, function names, variable names, and file names must keep their existing lowercase/underscore format. Do not rename them to match the formal BIP style:
-- Module names: `bip32`, `bip152` (keep lowercase)
-- Function names: `bip32_derivation`, `bip_341_tests` (keep existing format)
+Module names, function names, variable names, and file names must keep their existing
+lowercase/underscore format. Do not rename them to match the formal BIP style when the item still
+exists in the codebase.
+
+Examples:
+- Module names: `bip152`
+- Function names: `bip_341_tests`
 
 ## Licensing
 

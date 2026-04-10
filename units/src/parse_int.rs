@@ -50,7 +50,9 @@ mod sealed {
 /// # Errors
 ///
 /// On error this function allocates to copy the input string into the error return.
-pub fn int_from_str<T: Integer>(s: &str) -> Result<T, ParseIntError> { int(s) }
+pub fn int_from_str<T: Integer>(s: &str) -> Result<T, ParseIntError> {
+    int(s)
+}
 
 /// Parses the input string as an integer returning an error carrying rich context.
 ///
@@ -58,7 +60,9 @@ pub fn int_from_str<T: Integer>(s: &str) -> Result<T, ParseIntError> { int(s) }
 ///
 /// On error the input string is moved into the error return without allocating.
 #[cfg(feature = "alloc")]
-pub fn int_from_string<T: Integer>(s: alloc::string::String) -> Result<T, ParseIntError> { int(s) }
+pub fn int_from_string<T: Integer>(s: alloc::string::String) -> Result<T, ParseIntError> {
+    int(s)
+}
 
 /// Parses the input string as an integer returning an error carrying rich context.
 ///
@@ -66,7 +70,9 @@ pub fn int_from_string<T: Integer>(s: alloc::string::String) -> Result<T, ParseI
 ///
 /// On error the input string is converted into the error return without allocating.
 #[cfg(feature = "alloc")]
-pub fn int_from_box<T: Integer>(s: alloc::boxed::Box<str>) -> Result<T, ParseIntError> { int(s) }
+pub fn int_from_box<T: Integer>(s: alloc::boxed::Box<str>) -> Result<T, ParseIntError> {
+    int(s)
+}
 
 // This must be private because we do not want `InputString` to appear in the public API.
 fn int<T: Integer, S: AsRef<str> + Into<InputString>>(s: S) -> Result<T, ParseIntError> {
@@ -369,7 +375,9 @@ pub mod error {
     }
 
     impl From<Infallible> for ParseIntError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl fmt::Display for ParseIntError {
@@ -381,15 +389,21 @@ pub mod error {
 
     #[cfg(feature = "std")]
     impl std::error::Error for ParseIntError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.source) }
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.source)
+        }
     }
 
     impl From<ParseIntError> for core::num::ParseIntError {
-        fn from(value: ParseIntError) -> Self { value.source }
+        fn from(value: ParseIntError) -> Self {
+            value.source
+        }
     }
 
     impl AsRef<core::num::ParseIntError> for ParseIntError {
-        fn as_ref(&self) -> &core::num::ParseIntError { &self.source }
+        fn as_ref(&self) -> &core::num::ParseIntError {
+            &self.source
+        }
     }
 
     /// Error returned when parsing an integer from a hex string that is supposed to contain a prefix.
@@ -406,11 +420,15 @@ pub mod error {
     }
 
     impl From<Infallible> for PrefixedHexError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl From<Infallible> for PrefixedHexErrorInner {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl fmt::Display for PrefixedHexError {
@@ -437,11 +455,15 @@ pub mod error {
     }
 
     impl From<MissingPrefixError> for PrefixedHexError {
-        fn from(e: MissingPrefixError) -> Self { Self(PrefixedHexErrorInner::MissingPrefix(e)) }
+        fn from(e: MissingPrefixError) -> Self {
+            Self(PrefixedHexErrorInner::MissingPrefix(e))
+        }
     }
 
     impl From<ParseIntError> for PrefixedHexError {
-        fn from(e: ParseIntError) -> Self { Self(PrefixedHexErrorInner::ParseInt(e)) }
+        fn from(e: ParseIntError) -> Self {
+            Self(PrefixedHexErrorInner::ParseInt(e))
+        }
     }
 
     /// Error returned when parsing an integer from a hex string that is not supposed to contain a prefix.
@@ -457,11 +479,15 @@ pub mod error {
     }
 
     impl From<Infallible> for UnprefixedHexError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl From<Infallible> for UnprefixedHexErrorInner {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     impl fmt::Display for UnprefixedHexError {
@@ -488,11 +514,15 @@ pub mod error {
     }
 
     impl From<ContainsPrefixError> for UnprefixedHexError {
-        fn from(e: ContainsPrefixError) -> Self { Self(UnprefixedHexErrorInner::ContainsPrefix(e)) }
+        fn from(e: ContainsPrefixError) -> Self {
+            Self(UnprefixedHexErrorInner::ContainsPrefix(e))
+        }
     }
 
     impl From<ParseIntError> for UnprefixedHexError {
-        fn from(e: ParseIntError) -> Self { Self(UnprefixedHexErrorInner::ParseInt(e)) }
+        fn from(e: ParseIntError) -> Self {
+            Self(UnprefixedHexErrorInner::ParseInt(e))
+        }
     }
 
     /// Error returned when a hex string is missing a prefix (e.g. `0x`).
@@ -503,7 +533,9 @@ pub mod error {
 
     impl MissingPrefixError {
         /// Constructs a new error from the string with the missing prefix.
-        pub(crate) fn new(hex: &str) -> Self { Self { hex: hex.into() } }
+        pub(crate) fn new(hex: &str) -> Self {
+            Self { hex: hex.into() }
+        }
     }
 
     impl fmt::Display for MissingPrefixError {
@@ -527,7 +559,9 @@ pub mod error {
 
     impl ContainsPrefixError {
         /// Constructs a new error from the string that contains the prefix.
-        pub(crate) fn new(hex: &str) -> Self { Self { hex: hex.into() } }
+        pub(crate) fn new(hex: &str) -> Self {
+            Self { hex: hex.into() }
+        }
     }
 
     impl fmt::Display for ContainsPrefixError {
@@ -575,7 +609,9 @@ mod tests {
             }
         }
         impl From<i8> for TestTypeLargerThanU128 {
-            fn from(_: i8) -> Self { Self(0, 0) }
+            fn from(_: i8) -> Self {
+                Self(0, 0)
+            }
         }
 
         let result = panic::catch_unwind(|| int_from_str::<TestTypeLargerThanU128>("not a number"));

@@ -2,13 +2,13 @@
 #![cfg_attr(not(fuzzing), allow(unused))]
 
 use libfuzzer_sys::fuzz_target;
+use tidecoin_consensus_encoding::decode_from_slice;
 
 #[cfg(not(fuzzing))]
 fn main() {}
 
 fn do_test(data: &[u8]) {
-    let _: Result<p2p::message::V1NetworkMessage, _> =
-        bitcoin::consensus::encode::deserialize(data);
+    let _: Result<p2p::message::V1NetworkMessage, _> = decode_from_slice(data);
 }
 
 fuzz_target!(|data| {

@@ -3,7 +3,7 @@
 //! Script tags.
 //!
 //! Tags are used to differentiate the different kinds of scripts that appear
-//! in Bitcoin transactions.
+//! in Tidecoin transactions.
 
 /// Sealed trait representing a type of script.
 pub trait Tag {}

@@ -11,18 +11,15 @@ use core::fmt;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use bitcoin::consensus::encode::{self, Decodable, Encodable};
 use encoding::{
     ArrayDecoder, ArrayEncoder, CompactSizeEncoder, Decoder2, Decoder3, Encoder2, Encoder3,
     SliceEncoder, VecDecoder,
 };
 use internals::write_err;
-use io::{BufRead, Write};
 use primitives::block::{BlockHashDecoder, BlockHashEncoder};
 use primitives::transaction::{Txid, Wtxid};
 use primitives::BlockHash;
 
-use crate::consensus::impl_consensus_encoding;
 use crate::{ProtocolVersion, ProtocolVersionDecoder, ProtocolVersionEncoder};
 
 /// An inventory item.
@@ -67,44 +64,6 @@ impl Inventory {
             Self::WitnessBlock(b) => Some(b.to_byte_array()),
             Self::Unknown { hash, .. } => Some(*hash),
         }
-    }
-}
-
-impl Encodable for Inventory {
-    #[inline]
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        macro_rules! encode_inv {
-            ($code:expr, $item:expr) => {
-                u32::consensus_encode(&$code, w)? + $item.consensus_encode(w)?
-            };
-        }
-        Ok(match *self {
-            Self::Error(ref e) => encode_inv!(0, e),
-            Self::Transaction(ref t) => encode_inv!(1, t),
-            Self::Block(ref b) => encode_inv!(2, b),
-            Self::CompactBlock(ref b) => encode_inv!(4, b),
-            Self::WTx(ref w) => encode_inv!(5, w),
-            Self::WitnessTransaction(ref t) => encode_inv!(0x4000_0001, t),
-            Self::WitnessBlock(ref b) => encode_inv!(0x4000_0002, b),
-            Self::Unknown { inv_type: t, hash: ref d } => encode_inv!(t, d),
-        })
-    }
-}
-
-impl Decodable for Inventory {
-    #[inline]
-    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
-        let inv_type: u32 = Decodable::consensus_decode(r)?;
-        Ok(match inv_type {
-            0 => Self::Error(Decodable::consensus_decode(r)?),
-            1 => Self::Transaction(Decodable::consensus_decode(r)?),
-            2 => Self::Block(Decodable::consensus_decode(r)?),
-            4 => Self::CompactBlock(Decodable::consensus_decode(r)?),
-            5 => Self::WTx(Decodable::consensus_decode(r)?),
-            0x4000_0001 => Self::WitnessTransaction(Decodable::consensus_decode(r)?),
-            0x4000_0002 => Self::WitnessBlock(Decodable::consensus_decode(r)?),
-            tp => Self::Unknown { inv_type: tp, hash: Decodable::consensus_decode(r)? },
-        })
     }
 }
 
@@ -165,7 +124,9 @@ impl encoding::Decoder for InventoryDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for Inventory {
@@ -180,7 +141,9 @@ impl encoding::Decodable for Inventory {
 pub struct InventoryDecoderError(<InventoryInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for InventoryDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for InventoryDecoderError {
@@ -191,7 +154,9 @@ impl fmt::Display for InventoryDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for InventoryDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 // Some simple messages
@@ -300,7 +265,9 @@ impl encoding::Decoder for GetHeadersMessageDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decoder for GetBlocksMessageDecoder {
@@ -320,7 +287,9 @@ impl encoding::Decoder for GetBlocksMessageDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for GetBlocksMessage {
@@ -352,7 +321,9 @@ pub struct GetBlocksMessageDecoderError(
 );
 
 impl From<Infallible> for GetBlocksMessageDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for GetBlocksMessageDecoderError {
@@ -363,7 +334,9 @@ impl fmt::Display for GetBlocksMessageDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for GetBlocksMessageDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 /// An error consensus decoding a [`GetHeadersMessage`].
@@ -373,7 +346,9 @@ pub struct GetHeadersMessageDecoderError(
 );
 
 impl From<Infallible> for GetHeadersMessageDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for GetHeadersMessageDecoderError {
@@ -384,12 +359,10 @@ impl fmt::Display for GetHeadersMessageDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for GetHeadersMessageDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
-
-impl_consensus_encoding!(GetBlocksMessage, version, locator_hashes, stop_hash);
-
-impl_consensus_encoding!(GetHeadersMessage, version, locator_hashes, stop_hash);
 
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for GetHeadersMessage {
@@ -431,7 +404,6 @@ impl<'a> Arbitrary<'a> for Inventory {
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::consensus::encode::{deserialize, serialize};
     use hex_unstable::hex;
 
     use super::*;
@@ -441,15 +413,15 @@ mod tests {
         let from_sat = hex!("72110100014a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b0000000000000000000000000000000000000000000000000000000000000000");
         let genhash = hex!("4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
 
-        let decode: Result<GetBlocksMessage, _> = deserialize(&from_sat);
+        let decode: Result<GetBlocksMessage, _> = encoding::decode_from_slice(&from_sat);
         assert!(decode.is_ok());
         let real_decode = decode.unwrap();
         assert_eq!(real_decode.version.0, 70002);
         assert_eq!(real_decode.locator_hashes.len(), 1);
-        assert_eq!(serialize(&real_decode.locator_hashes[0]), genhash);
+        assert_eq!(encoding::encode_to_vec(&real_decode.locator_hashes[0]), genhash);
         assert_eq!(real_decode.stop_hash, BlockHash::GENESIS_PREVIOUS_BLOCK_HASH);
 
-        assert_eq!(serialize(&real_decode), from_sat);
+        assert_eq!(encoding::encode_to_vec(&real_decode), from_sat);
     }
 
     #[test]
@@ -457,14 +429,14 @@ mod tests {
         let from_sat = hex!("72110100014a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b0000000000000000000000000000000000000000000000000000000000000000");
         let genhash = hex!("4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
 
-        let decode: Result<GetHeadersMessage, _> = deserialize(&from_sat);
+        let decode: Result<GetHeadersMessage, _> = encoding::decode_from_slice(&from_sat);
         assert!(decode.is_ok());
         let real_decode = decode.unwrap();
         assert_eq!(real_decode.version.0, 70002);
         assert_eq!(real_decode.locator_hashes.len(), 1);
-        assert_eq!(serialize(&real_decode.locator_hashes[0]), genhash);
+        assert_eq!(encoding::encode_to_vec(&real_decode.locator_hashes[0]), genhash);
         assert_eq!(real_decode.stop_hash, BlockHash::GENESIS_PREVIOUS_BLOCK_HASH);
 
-        assert_eq!(serialize(&real_decode), from_sat);
+        assert_eq!(encoding::encode_to_vec(&real_decode), from_sat);
     }
 }

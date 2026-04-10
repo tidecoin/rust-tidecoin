@@ -19,7 +19,9 @@ pub struct Key(pub(super) [u8; 32]);
 
 impl Key {
     /// Constructs a new key.
-    pub const fn new(key: [u8; 32]) -> Self { Self(key) }
+    pub const fn new(key: [u8; 32]) -> Self {
+        Self(key)
+    }
 }
 
 /// A 96-bit initialization vector (IV), or nonce.
@@ -28,7 +30,9 @@ pub struct Nonce([u8; 12]);
 
 impl Nonce {
     /// Constructs a new nonce.
-    pub const fn new(nonce: [u8; 12]) -> Self { Self(nonce) }
+    pub const fn new(nonce: [u8; 12]) -> Self {
+        Self(nonce)
+    }
 }
 
 // Const validation trait for compile time check with max of 3.
@@ -288,7 +292,9 @@ impl ChaCha20 {
 
     /// Gets the keystream for a specific block.
     #[cfg(chacha20_poly1305_fuzz)]
-    fn keystream_at_block(&self, _block: u32) -> [u8; 64] { [0u8; 64] }
+    fn keystream_at_block(&self, _block: u32) -> [u8; 64] {
+        [0u8; 64]
+    }
 
     /// Apply the keystream to a buffer updating the cipher block state as necessary.
     #[cfg(not(chacha20_poly1305_fuzz))]
@@ -343,7 +349,9 @@ impl ChaCha20 {
     pub fn apply_keystream(&mut self, _buffer: &mut [u8]) {}
 
     /// Gets the keystream for specified block.
-    pub fn get_keystream(&self, block: u32) -> [u8; 64] { self.keystream_at_block(block) }
+    pub fn get_keystream(&self, block: u32) -> [u8; 64] {
+        self.keystream_at_block(block)
+    }
 
     /// Updates the index of the keystream to the given byte.
     pub fn seek(&mut self, seek: u32) {

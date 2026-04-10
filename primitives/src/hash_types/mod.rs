@@ -52,20 +52,28 @@ macro_rules! impl_bytelike_traits {
     ($ty:ident, $len:expr $(, $gen:ident: $gent:ident)*) => {
         impl $crate::_export::_core::convert::AsRef<[u8; { $len }]> for $ty {
             #[inline]
-            fn as_ref(&self) -> &[u8; { $len }] { self.as_byte_array() }
+            fn as_ref(&self) -> &[u8; { $len }] {
+                self.as_byte_array()
+            }
         }
 
         impl $crate::_export::_core::convert::AsRef<[u8]> for $ty {
             #[inline]
-            fn as_ref(&self) -> &[u8] { self.as_byte_array() }
+            fn as_ref(&self) -> &[u8] {
+                self.as_byte_array()
+            }
         }
 
         impl $crate::_export::_core::borrow::Borrow<[u8; { $len }]> for $ty {
-            fn borrow(&self) -> &[u8; { $len }] { self.as_byte_array() }
+            fn borrow(&self) -> &[u8; { $len }] {
+                self.as_byte_array()
+            }
         }
 
         impl $crate::_export::_core::borrow::Borrow<[u8]> for $ty {
-            fn borrow(&self) -> &[u8] { self.as_byte_array() }
+            fn borrow(&self) -> &[u8] {
+                self.as_byte_array()
+            }
         }
     };
 }
@@ -135,7 +143,9 @@ pub mod serde_details {
     pub struct HexVisitor<ValueT>(PhantomData<ValueT>);
 
     impl<ValueT> Default for HexVisitor<ValueT> {
-        fn default() -> Self { Self(PhantomData) }
+        fn default() -> Self {
+            Self(PhantomData)
+        }
     }
 
     impl<ValueT> de::Visitor<'_> for HexVisitor<ValueT>
@@ -172,7 +182,9 @@ pub mod serde_details {
     pub struct BytesVisitor<const N: usize>();
 
     impl<const N: usize> Default for BytesVisitor<N> {
-        fn default() -> Self { Self() }
+        fn default() -> Self {
+            Self()
+        }
     }
 
     impl<const N: usize> de::Visitor<'_> for BytesVisitor<N> {
@@ -207,7 +219,9 @@ mod tests {
 
     // Creates an arbitrary dummy hash type object.
     #[cfg(feature = "serde")]
-    fn dummy_test_case() -> Txid { DUMMY_TXID_HEX_STR.parse::<Txid>().unwrap() }
+    fn dummy_test_case() -> Txid {
+        DUMMY_TXID_HEX_STR.parse::<Txid>().unwrap()
+    }
 
     #[cfg(feature = "alloc")]
     fn ab_test_case() -> (Txid, &'static str) {

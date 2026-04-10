@@ -1,6 +1,6 @@
 # Fuzzing
 
-`rust-bitcoin` has fuzzing harnesses setup for use with
+`rust-tidecoin` has fuzzing harnesses set up for use with
 `cargo-fuzz`.
 
 To run the fuzz-tests as in CI -- briefly fuzzing every target -- simply
@@ -28,11 +28,10 @@ Meanwhile, to use the broken crypto, simply compile (and run the fuzzing
 scripts) with
 
 ```bash
-RUSTFLAGS="--cfg=hashes_fuzz --cfg=secp256k1_fuzz"
+RUSTFLAGS="--cfg=hashes_fuzz"
 ```
 
-which will replace the hashing library with broken hashes, and the
-`secp256k1` library with broken cryptography.
+which will replace the hashing library with broken hashes.
 
 Needless to say, NEVER COMPILE REAL CODE WITH THESE FLAGS because if a
 fuzzer can break your crypto, so can anybody.
@@ -93,7 +92,7 @@ INFO: Running with entropic power schedule (0xFF, 100).
 INFO: Seed: 2953319389
 INFO: Loaded 1 modules   (9121 inline 8-bit counters): 9121 [0x104132ea0, 0x104135241),
 INFO: Loaded 1 PC tables (9121 PCs): 9121 [0x104135248,0x104158c58),
-INFO:        0 files found in /some/path/to/rust-bitcoin/fuzz/corpus/units_arbitrary_weight
+INFO:        0 files found in /some/path/to/rust-tidecoin/fuzz/corpus/units_arbitrary_weight
 INFO: -max_len is not provided; libFuzzer will not generate inputs larger than 4096 bytes
 INFO: A corpus is not provided, starting from an empty corpus
 #2	INITED cov: 42 ft: 42 corp: 1/1b exec/s: 0 rss: 36Mb
@@ -130,7 +129,7 @@ SUMMARY: libFuzzer: deadly signal
 MS: 2 ChangeByte-CopyPart-; base unit: 25058c6b0d02cd1d71a030ad61c46b7396ddcdb9
 0x5e,0x5e,0x5e,0x5e,0x5e,0x44,0x0,0x0,0x0,0x0,0x0,0x5d,0x1,0x0,0x0,0x0,0x0,0x0,0x0,0x5e,0xa,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0x1,0xa5,0x1,0x1,0x1,
 ^^^^^D\000\000\000\000\000]\001\000\000\000\000\000\000^\012\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\245\001\001\001
-artifact_prefix='/some/path/to/rust-bitcoin/fuzz/artifacts/units_arbitrary_weight/'; Test unit written to /some/path/to/rust-bitcoin/fuzz/artifacts/units_arbitrary_weight/crash-1b454523d38a6c3f45d453dfea4099f3cb574822
+artifact_prefix='/some/path/to/rust-tidecoin/fuzz/artifacts/units_arbitrary_weight/'; Test unit written to /some/path/to/rust-tidecoin/fuzz/artifacts/units_arbitrary_weight/crash-1b454523d38a6c3f45d453dfea4099f3cb574822
 Base64: Xl5eXl5EAAAAAABdAQAAAAAAAF4KAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBpQEBAQ==
 ────────────────────────────────────────────────────────────────────────────────
 

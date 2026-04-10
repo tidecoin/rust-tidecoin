@@ -4,9 +4,10 @@ version = "0.1.0"
 license = "CC0-1.0"
 description = "Criterion benchmarks for rust-tidecoin"
 edition = "2021"
+rust-version = "1.94.1"
 
 [dependencies]
-bitcoin = { path = "../bitcoin", package = "tidecoin", default-features = false, features = ["std"] }
+tidecoin = { path = "../tidecoin", default-features = false, features = ["std"] }
 tidecoin_hashes = { path = "../hashes" }
 chacha20-poly1305 = { path = "../chacha20_poly1305" }
 encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding" }
@@ -19,22 +20,22 @@ use_self = "warn"
 
 [[bench]]
 name = "block"
-path = "bitcoin/block.rs"
+path = "tidecoin/block.rs"
 harness = false
 
 [[bench]]
 name = "transaction"
-path = "bitcoin/transaction.rs"
+path = "tidecoin/transaction.rs"
 harness = false
 
 [[bench]]
 name = "witness"
-path = "bitcoin/witness.rs"
+path = "tidecoin/witness.rs"
 harness = false
 
 [[bench]]
 name = "duplicate_inputs"
-path = "bitcoin/duplicate_inputs.rs"
+path = "tidecoin/duplicate_inputs.rs"
 harness = false
 
 

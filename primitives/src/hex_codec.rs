@@ -26,7 +26,9 @@ impl<'a, T: Encodable + Decodable> IntoIterator for &HexPrimitive<'a, T> {
     type Item = u8;
     type IntoIter = EncodableByteIter<'a, T>;
 
-    fn into_iter(self) -> Self::IntoIter { EncodableByteIter::new(self.0) }
+    fn into_iter(self) -> Self::IntoIter {
+        EncodableByteIter::new(self.0)
+    }
 }
 
 impl<T: Decodable> HexPrimitive<'_, T> {
@@ -130,22 +132,30 @@ impl<T: Encodable> HexPrimitive<'_, T> {
 
 impl<T: Encodable> fmt::Display for HexPrimitive<'_, T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(self, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(self, f)
+    }
 }
 
 impl<T: Encodable> fmt::Debug for HexPrimitive<'_, T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(self, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(self, f)
+    }
 }
 
 impl<T: Encodable> fmt::LowerHex for HexPrimitive<'_, T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.fmt_hex(f, Case::Lower) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.fmt_hex(f, Case::Lower)
+    }
 }
 
 impl<T: Encodable> fmt::UpperHex for HexPrimitive<'_, T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.fmt_hex(f, Case::Upper) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.fmt_hex(f, Case::Upper)
+    }
 }
 
 /// An error type for errors that can occur during parsing of a `Decodable` type from hex.
@@ -159,7 +169,9 @@ pub(crate) enum ParsePrimitiveError<T: Decodable> {
 }
 
 impl<T: Decodable> From<Infallible> for ParsePrimitiveError<T> {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 // Manual impls for Debug, Clone, PartialEq and Eq so that errors which wrap
@@ -169,8 +181,9 @@ impl<T: Decodable> fmt::Debug for ParsePrimitiveError<T> {
         match self {
             Self::OddLengthString(ref e) => write_err!(f, "odd length string"; e),
             Self::InvalidChar(ref e) => write_err!(f, "invalid character"; e),
-            Self::Decode(_) =>
-                write!(f, "failure decoding hex string into {}", core::any::type_name::<T>()),
+            Self::Decode(_) => {
+                write!(f, "failure decoding hex string into {}", core::any::type_name::<T>())
+            }
         }
     }
 }
@@ -208,15 +221,21 @@ impl<T: Decodable> Eq for ParsePrimitiveError<T> where
 }
 
 impl<T: Decodable> fmt::Display for ParsePrimitiveError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::Debug::fmt(&self, f) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self, f)
+    }
 }
 
 impl<T: Decodable> From<hex_unstable::OddLengthStringError> for ParsePrimitiveError<T> {
-    fn from(err: hex_unstable::OddLengthStringError) -> Self { Self::OddLengthString(err) }
+    fn from(err: hex_unstable::OddLengthStringError) -> Self {
+        Self::OddLengthString(err)
+    }
 }
 
 impl<T: Decodable> From<hex_unstable::InvalidCharError> for ParsePrimitiveError<T> {
-    fn from(err: hex_unstable::InvalidCharError) -> Self { Self::InvalidChar(err) }
+    fn from(err: hex_unstable::InvalidCharError) -> Self {
+        Self::InvalidChar(err)
+    }
 }
 
 #[cfg(feature = "std")]

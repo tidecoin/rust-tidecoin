@@ -67,7 +67,9 @@ impl ByteVecDecoder {
 
 #[cfg(feature = "alloc")]
 impl Default for ByteVecDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -212,7 +214,9 @@ impl<T: Decodable> VecDecoder<T> {
 
 #[cfg(feature = "alloc")]
 impl<T: Decodable> Default for VecDecoder<T> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -308,11 +312,15 @@ pub struct ArrayDecoder<const N: usize> {
 
 impl<const N: usize> ArrayDecoder<N> {
     /// Constructs a new array decoder that expects exactly N bytes.
-    pub const fn new() -> Self { Self { buffer: [0; N], bytes_written: 0 } }
+    pub const fn new() -> Self {
+        Self { buffer: [0; N], bytes_written: 0 }
+    }
 }
 
 impl<const N: usize> Default for ArrayDecoder<N> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<const N: usize> Decoder for ArrayDecoder<N> {
@@ -345,7 +353,9 @@ impl<const N: usize> Decoder for ArrayDecoder<N> {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { N - self.bytes_written }
+    fn read_limit(&self) -> usize {
+        N - self.bytes_written
+    }
 }
 
 /// A decoder which wraps two inner decoders and returns the output of both.
@@ -457,8 +467,9 @@ where
     #[inline]
     fn read_limit(&self) -> usize {
         match &self.state {
-            Decoder2State::First(first_decoder, second_decoder) =>
-                first_decoder.read_limit() + second_decoder.read_limit(),
+            Decoder2State::First(first_decoder, second_decoder) => {
+                first_decoder.read_limit() + second_decoder.read_limit()
+            }
             Decoder2State::Second(_, second_decoder) => second_decoder.read_limit(),
             Decoder2State::Errored => 0,
         }
@@ -495,7 +506,9 @@ where
     A::Output: fmt::Debug,
     B::Output: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.inner.fmt(f) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
 }
 
 impl<A, B, C> Decoder for Decoder3<A, B, C>
@@ -529,7 +542,9 @@ where
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.inner.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.inner.read_limit()
+    }
 }
 
 /// A decoder which decodes four objects, one after the other.
@@ -566,7 +581,9 @@ where
     B::Output: fmt::Debug,
     C::Output: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.inner.fmt(f) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
 }
 
 impl<A, B, C, D> Decoder for Decoder4<A, B, C, D>
@@ -603,7 +620,9 @@ where
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.inner.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.inner.read_limit()
+    }
 }
 
 /// A decoder which decodes six objects, one after the other.
@@ -680,7 +699,9 @@ where
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.inner.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.inner.read_limit()
+    }
 }
 
 #[cfg(test)]
@@ -822,13 +843,17 @@ mod tests {
             Ok(Inner(n))
         }
 
-        fn read_limit(&self) -> usize { self.0.read_limit() }
+        fn read_limit(&self) -> usize {
+            self.0.read_limit()
+        }
     }
 
     #[cfg(feature = "alloc")]
     impl Decodable for Inner {
         type Decoder = InnerDecoder;
-        fn decoder() -> Self::Decoder { InnerDecoder(ArrayDecoder::<4>::new()) }
+        fn decoder() -> Self::Decoder {
+            InnerDecoder(ArrayDecoder::<4>::new())
+        }
     }
 
     #[cfg(feature = "alloc")]
@@ -854,13 +879,17 @@ mod tests {
             Ok(Test(v))
         }
 
-        fn read_limit(&self) -> usize { self.0.read_limit() }
+        fn read_limit(&self) -> usize {
+            self.0.read_limit()
+        }
     }
 
     #[cfg(feature = "alloc")]
     impl Decodable for Test {
         type Decoder = TestDecoder;
-        fn decoder() -> Self::Decoder { TestDecoder(VecDecoder::new()) }
+        fn decoder() -> Self::Decoder {
+            TestDecoder(VecDecoder::new())
+        }
     }
 
     #[test]

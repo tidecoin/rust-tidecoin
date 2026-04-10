@@ -14,17 +14,14 @@ use core::fmt;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use bitcoin::consensus::{encode, Decodable, Encodable, ReadExt, WriteExt};
 use encoding::{
     ArrayDecoder, ArrayEncoder, ByteVecDecoder, BytesEncoder, CompactSizeEncoder, Decoder4,
     Encoder2, Encoder4,
 };
 use hashes::sha256d;
 use internals::write_err;
-use io::{BufRead, Write};
 
 use crate::address::{Address, AddressDecoder};
-use crate::consensus::{impl_consensus_encoding, impl_vec_wrapper};
 use crate::{ProtocolVersion, ServiceFlags};
 
 // Some simple messages
@@ -188,7 +185,9 @@ impl encoding::Decoder for VersionMessageDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 type VersionMessageInnerDecoder = encoding::Decoder2<
@@ -215,7 +214,9 @@ pub struct VersionMessageDecoder(VersionMessageInnerDecoder);
 pub struct VersionMessageDecoderError(<VersionMessageInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for VersionMessageDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for VersionMessageDecoderError {
@@ -226,27 +227,16 @@ impl fmt::Display for VersionMessageDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for VersionMessageDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
-impl_consensus_encoding!(
-    VersionMessage,
-    version,
-    services,
-    timestamp,
-    receiver,
-    sender,
-    nonce,
-    user_agent,
-    start_height,
-    relay
-);
-
-/// A user agent defined by BIP-0014. The user agent is sent in the version message when a
-/// connection between two peers is established. It is intended to advertise client software in a
-/// well-defined format.
+/// A Tidecoin peer user agent string.
 ///
-/// ref: <https://github.com/bitcoin/bips/blob/master/bip-0014.mediawiki>
+/// The user agent is sent in the version message when a connection between two peers is
+/// established. It advertises client software in the slash-delimited form used by the Tidecoin P2P
+/// protocol.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserAgent {
     user_agent: String,
@@ -291,13 +281,17 @@ impl encoding::Decoder for UserAgentDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for UserAgent {
     type Decoder = UserAgentDecoder;
 
-    fn decoder() -> Self::Decoder { UserAgentDecoder(UserAgentInnerDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        UserAgentDecoder(UserAgentInnerDecoder::new())
+    }
 }
 
 /// An error decoding a [`UserAgent`] message.
@@ -310,7 +304,9 @@ pub enum UserAgentDecoderError {
 }
 
 impl From<Infallible> for UserAgentDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for UserAgentDecoderError {
@@ -332,8 +328,6 @@ impl std::error::Error for UserAgentDecoderError {
     }
 }
 
-impl_consensus_encoding!(UserAgent, user_agent);
-
 impl UserAgent {
     const MAX_USER_AGENT_LEN: usize = 256;
 
@@ -350,8 +344,7 @@ impl UserAgent {
             "user agent cannot exceed 256 characters."
         );
     }
-    /// Builds a new user agent from the lowest level client software. For example: `Satoshi` is
-    /// used by Tidecoin Core.
+    /// Builds a new user agent from the lowest level client software.
     ///
     /// # Panics
     ///
@@ -364,7 +357,7 @@ impl UserAgent {
         Self { user_agent: agent }
     }
 
-    /// Builds a user agent, ignoring BIP-0014 recommendations.
+    /// Builds a user agent without applying the structured Tidecoin user-agent checks.
     pub fn from_nonstandard<S: ToString>(agent: &S) -> Self {
         Self { user_agent: agent.to_string() }
     }
@@ -390,14 +383,18 @@ impl UserAgent {
 }
 
 impl std::fmt::Display for UserAgent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.user_agent.fmt(f) }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.user_agent.fmt(f)
+    }
 }
 
 impl From<UserAgent> for String {
-    fn from(agent: UserAgent) -> Self { agent.user_agent }
+    fn from(agent: UserAgent) -> Self {
+        agent.user_agent
+    }
 }
 
-/// A software version field for inclusion in a user agent specified by BIP-0014.
+/// A software version field for inclusion in a Tidecoin user agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserAgentVersion {
     version: ClientSoftwareVersion,
@@ -541,13 +538,17 @@ impl encoding::Decoder for RejectReasonDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for RejectReason {
     type Decoder = RejectReasonDecoder;
 
-    fn decoder() -> Self::Decoder { RejectReasonDecoder(ArrayDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        RejectReasonDecoder(ArrayDecoder::new())
+    }
 }
 
 /// Errors occuring when decoding a [`RejectReason`].
@@ -560,7 +561,9 @@ pub enum RejectReasonDecoderError {
 }
 
 impl From<Infallible> for RejectReasonDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for RejectReasonDecoderError {
@@ -579,29 +582,6 @@ impl std::error::Error for RejectReasonDecoderError {
             Self::Decoder(e) => Some(e),
             Self::UnknownRejectCode(_) => None,
         }
-    }
-}
-
-impl Encodable for RejectReason {
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        w.write_all(&[*self as u8])?;
-        Ok(1)
-    }
-}
-
-impl Decodable for RejectReason {
-    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
-        Ok(match r.read_u8()? {
-            0x01 => Self::Malformed,
-            0x10 => Self::Invalid,
-            0x11 => Self::Obsolete,
-            0x12 => Self::Duplicate,
-            0x40 => Self::NonStandard,
-            0x41 => Self::Dust,
-            0x42 => Self::Fee,
-            0x43 => Self::Checkpoint,
-            _ => return Err(crate::consensus::parse_failed_error("unknown reject code")),
-        })
     }
 }
 
@@ -678,7 +658,9 @@ impl encoding::Decoder for RejectDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for Reject {
@@ -704,7 +686,9 @@ pub enum RejectDecoderError {
 }
 
 impl From<Infallible> for RejectDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for RejectDecoderError {
@@ -726,8 +710,6 @@ impl std::error::Error for RejectDecoderError {
     }
 }
 
-impl_consensus_encoding!(Reject, message, ccode, reason, hash);
-
 /// A deprecated message type that was used to notify users of system changes. Due to a number of
 /// vulnerabilities, alerts are no longer used. A final alert was sent as of Tidecoin Core 0.14.0,
 /// and is sent to any node that is advertising a potentially vulnerable protocol version.
@@ -744,11 +726,15 @@ impl Alert {
     ];
 
     /// Builds the final alert to send to a potentially vulnerable peer.
-    pub fn final_alert() -> Self { Self(Self::FINAL_ALERT.into()) }
+    pub fn final_alert() -> Self {
+        Self(Self::FINAL_ALERT.into())
+    }
 
     /// The final alert advertised by Tidecoin Core. This alert is sent if the advertised protocol
     /// version is vulnerable to the alert-system vulnerabilities.
-    pub fn is_final_alert(&self) -> bool { self.0.eq(&Self::FINAL_ALERT) }
+    pub fn is_final_alert(&self) -> bool {
+        self.0.eq(&Self::FINAL_ALERT)
+    }
 }
 
 encoding::encoder_newtype_exact! {
@@ -787,13 +773,17 @@ impl encoding::Decoder for AlertDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 impl encoding::Decodable for Alert {
     type Decoder = AlertDecoder;
 
-    fn decoder() -> Self::Decoder { AlertDecoder(AlertInnerDecoder::new()) }
+    fn decoder() -> Self::Decoder {
+        AlertDecoder(AlertInnerDecoder::new())
+    }
 }
 
 /// An error decoding a [`Alert`] message.
@@ -801,7 +791,9 @@ impl encoding::Decodable for Alert {
 pub struct AlertDecoderError(<AlertInnerDecoder as encoding::Decoder>::Error);
 
 impl From<Infallible> for AlertDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for AlertDecoderError {
@@ -812,10 +804,10 @@ impl fmt::Display for AlertDecoderError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for AlertDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
-
-impl_vec_wrapper!(Alert, Vec<u8>);
 
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for ClientSoftwareVersion {
@@ -900,7 +892,6 @@ impl<'a> Arbitrary<'a> for Alert {
 mod tests {
     use alloc::string::ToString;
 
-    use bitcoin::consensus::encode::{deserialize, serialize};
     use hex_unstable::hex;
 
     use super::*;
@@ -940,8 +931,10 @@ mod tests {
         let reject_tx_conflict = hex!("027478121474786e2d6d656d706f6f6c2d636f6e666c69637405df54d3860b3c41806a3546ab48279300affacf4b88591b229141dcf2f47004");
         let reject_tx_nonfinal = hex!("02747840096e6f6e2d66696e616c259bbe6c83db8bbdfca7ca303b19413dc245d9f2371b344ede5f8b1339a5460b");
 
-        let decode_result_conflict: Result<Reject, _> = deserialize(&reject_tx_conflict);
-        let decode_result_nonfinal: Result<Reject, _> = deserialize(&reject_tx_nonfinal);
+        let decode_result_conflict: Result<Reject, _> =
+            encoding::decode_from_slice(&reject_tx_conflict);
+        let decode_result_nonfinal: Result<Reject, _> =
+            encoding::decode_from_slice(&reject_tx_nonfinal);
 
         assert!(decode_result_conflict.is_ok());
         assert!(decode_result_nonfinal.is_ok());
@@ -968,14 +961,14 @@ mod tests {
             nonfinal.hash
         );
 
-        assert_eq!(serialize(&conflict), reject_tx_conflict);
-        assert_eq!(serialize(&nonfinal), reject_tx_nonfinal);
+        assert_eq!(encoding::encode_to_vec(&conflict), reject_tx_conflict);
+        assert_eq!(encoding::encode_to_vec(&nonfinal), reject_tx_nonfinal);
     }
 
     #[test]
     fn alert_message_test() {
         let alert_hex = hex!("60010000000000000000000000ffffff7f00000000ffffff7ffeffff7f01ffffff7f00000000ffffff7f00ffffff7f002f555247454e543a20416c657274206b657920636f6d70726f6d697365642c207570677261646520726571756972656400");
-        let alert: Alert = deserialize(&alert_hex).unwrap();
+        let alert: Alert = encoding::decode_from_slice(&alert_hex).unwrap();
         assert!(alert.is_final_alert());
     }
 
@@ -989,19 +982,19 @@ mod tests {
         });
         let user_agent = UserAgent::new(client_name, &client_version);
         assert_eq!("/Satoshi:5.12.0/", user_agent.to_string());
-        let wallet_name = "bitcoin-qt";
+        let wallet_name = "tidecoin-wallet";
         let wallet_version = UserAgentVersion::new(ClientSoftwareVersion::SemVer {
             major: 0,
             minor: 8,
             revision: 0,
         });
         let user_agent = user_agent.add_client(wallet_name, &wallet_version);
-        assert_eq!("/Satoshi:5.12.0/bitcoin-qt:0.8.0/", user_agent.to_string());
-        let client_name = "BitcoinJ";
+        assert_eq!("/Satoshi:5.12.0/tidecoin-wallet:0.8.0/", user_agent.to_string());
+        let client_name = "TidecoinJ";
         let client_version =
             UserAgentVersion::new(ClientSoftwareVersion::Date { yyyy: 2011, mm: 1, dd: 28 });
         let user_agent = UserAgent::new(client_name, &client_version);
-        assert_eq!("/BitcoinJ:20110128/", user_agent.to_string());
+        assert_eq!("/TidecoinJ:20110128/", user_agent.to_string());
         let wallet_name = "Electrum";
         let wallet_version = UserAgentVersion::new(ClientSoftwareVersion::SemVer {
             major: 0,
@@ -1011,7 +1004,7 @@ mod tests {
         let wallet_version = wallet_version.push_comment("Ubuntu");
         let wallet_version = wallet_version.push_comment("24");
         let user_agent = user_agent.add_client(wallet_name, &wallet_version);
-        assert_eq!("/BitcoinJ:20110128/Electrum:0.9.0(Ubuntu; 24)/", user_agent.to_string());
+        assert_eq!("/TidecoinJ:20110128/Electrum:0.9.0(Ubuntu; 24)/", user_agent.to_string());
     }
 
     #[test]

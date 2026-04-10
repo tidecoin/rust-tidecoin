@@ -210,7 +210,9 @@ impl LockTime {
     #[inline]
     #[deprecated(since = "1.0.0-rc.0", note = "use `from_mtp` instead")]
     #[doc(hidden)]
-    pub fn from_time(n: u32) -> Result<Self, ConversionError> { Self::from_mtp(n) }
+    pub fn from_time(n: u32) -> Result<Self, ConversionError> {
+        Self::from_mtp(n)
+    }
 
     /// Constructs a new `LockTime` from `n`, expecting `n` to be a median-time-past (MTP)
     /// which is in range for a locktime.
@@ -254,11 +256,15 @@ impl LockTime {
 
     /// Returns true if this lock time value is a block height.
     #[inline]
-    pub const fn is_block_height(self) -> bool { matches!(self, Self::Blocks(_)) }
+    pub const fn is_block_height(self) -> bool {
+        matches!(self, Self::Blocks(_))
+    }
 
     /// Returns true if this lock time value is a block time (UNIX timestamp).
     #[inline]
-    pub const fn is_block_time(self) -> bool { !self.is_block_height() }
+    pub const fn is_block_time(self) -> bool {
+        !self.is_block_height()
+    }
 
     /// Returns true if this timelock constraint is satisfied by the respective `height`/`time`.
     ///
@@ -309,8 +315,9 @@ impl LockTime {
     pub fn is_satisfied_by_height(self, height: Height) -> Result<bool, IncompatibleHeightError> {
         match self {
             Self::Blocks(blocks) => Ok(blocks.is_satisfied_by(height)),
-            Self::Seconds(time) =>
-                Err(IncompatibleHeightError { lock: time, incompatible: height }),
+            Self::Seconds(time) => {
+                Err(IncompatibleHeightError { lock: time, incompatible: height })
+            }
         }
     }
 
@@ -420,12 +427,16 @@ pub struct LockTimeDecoder(encoding::ArrayDecoder<4>);
 #[cfg(feature = "encoding")]
 impl LockTimeDecoder {
     /// Constructs a new [`LockTime`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl Default for LockTimeDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -435,7 +446,7 @@ impl encoding::Decoder for LockTimeDecoder {
 
     #[inline]
     fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, Self::Error> {
-        Ok(self.0.push_bytes(bytes).map_err(LockTimeDecoderError)?)
+        self.0.push_bytes(bytes).map_err(LockTimeDecoderError)
     }
 
     #[inline]
@@ -445,23 +456,31 @@ impl encoding::Decoder for LockTimeDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl encoding::Decodable for LockTime {
     type Decoder = LockTimeDecoder;
-    fn decoder() -> Self::Decoder { LockTimeDecoder(encoding::ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        LockTimeDecoder(encoding::ArrayDecoder::<4>::new())
+    }
 }
 
 impl From<Height> for LockTime {
     #[inline]
-    fn from(h: Height) -> Self { Self::Blocks(h) }
+    fn from(h: Height) -> Self {
+        Self::Blocks(h)
+    }
 }
 
 impl From<MedianTimePast> for LockTime {
     #[inline]
-    fn from(t: MedianTimePast) -> Self { Self::Seconds(t) }
+    fn from(t: MedianTimePast) -> Self {
+        Self::Seconds(t)
+    }
 }
 
 impl fmt::Debug for LockTime {
@@ -550,11 +569,15 @@ impl Height {
 
     #[deprecated(since = "1.0.0-rc.0", note = "use `from_u32` instead")]
     #[doc(hidden)]
-    pub const fn from_consensus(n: u32) -> Result<Self, ConversionError> { Self::from_u32(n) }
+    pub const fn from_consensus(n: u32) -> Result<Self, ConversionError> {
+        Self::from_u32(n)
+    }
 
     #[deprecated(since = "1.0.0-rc.0", note = "use `to_u32` instead")]
     #[doc(hidden)]
-    pub const fn to_consensus_u32(self) -> u32 { self.to_u32() }
+    pub const fn to_consensus_u32(self) -> u32 {
+        self.to_u32()
+    }
 
     /// Constructs a new block height directly from a `u32` value.
     ///
@@ -592,7 +615,9 @@ impl Height {
     /// assert_eq!(absolute::Height::MAX.to_u32(), 499_999_999);
     /// ```
     #[inline]
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Returns true if a transaction with this locktime can be included in the next block.
     ///
@@ -609,7 +634,9 @@ impl Height {
 crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(Height);
 
 impl fmt::Display for Height {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 parse_int::impl_parse_str!(Height, ParseHeightError, parser(Height::from_u32));
@@ -679,11 +706,15 @@ impl MedianTimePast {
 
     #[deprecated(since = "1.0.0-rc.0", note = "use `from_u32` instead")]
     #[doc(hidden)]
-    pub const fn from_consensus(n: u32) -> Result<Self, ConversionError> { Self::from_u32(n) }
+    pub const fn from_consensus(n: u32) -> Result<Self, ConversionError> {
+        Self::from_u32(n)
+    }
 
     #[deprecated(since = "1.0.0-rc.0", note = "use `to_u32` instead")]
     #[doc(hidden)]
-    pub const fn to_consensus_u32(self) -> u32 { self.to_u32() }
+    pub const fn to_consensus_u32(self) -> u32 {
+        self.to_u32()
+    }
 
     /// Constructs a new MTP directly from a `u32` value.
     ///
@@ -723,7 +754,9 @@ impl MedianTimePast {
     /// assert_eq!(absolute::MedianTimePast::MIN.to_u32(), 500_000_000);
     /// ```
     #[inline]
-    pub const fn to_u32(self) -> u32 { self.0 }
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 
     /// Returns true if a transaction with this locktime can be included in the next block.
     ///
@@ -741,7 +774,9 @@ impl MedianTimePast {
 crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(MedianTimePast);
 
 impl fmt::Display for MedianTimePast {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 parse_int::impl_parse_str!(MedianTimePast, ParseTimeError, parser(MedianTimePast::from_u32));
@@ -760,10 +795,14 @@ where
 }
 
 /// Returns true if `n` is a block height i.e., less than 500,000,000.
-pub const fn is_block_height(n: u32) -> bool { n < LOCK_TIME_THRESHOLD }
+pub const fn is_block_height(n: u32) -> bool {
+    n < LOCK_TIME_THRESHOLD
+}
 
 /// Returns true if `n` is a UNIX timestamp i.e., greater than or equal to 500,000,000.
-pub const fn is_block_time(n: u32) -> bool { n >= LOCK_TIME_THRESHOLD }
+pub const fn is_block_time(n: u32) -> bool {
+    n >= LOCK_TIME_THRESHOLD
+}
 
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for LockTime {

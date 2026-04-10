@@ -22,11 +22,15 @@ pub(super) enum ErrorInner {
 }
 
 impl From<Infallible> for Error {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl From<Infallible> for ErrorInner {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl Error {
@@ -81,15 +85,21 @@ impl std::error::Error for Error {
 }
 
 impl From<InvalidCharacterError> for Error {
-    fn from(e: InvalidCharacterError) -> Self { Self(ErrorInner::Decode(e)) }
+    fn from(e: InvalidCharacterError) -> Self {
+        Self(ErrorInner::Decode(e))
+    }
 }
 
 impl From<IncorrectChecksumError> for Error {
-    fn from(e: IncorrectChecksumError) -> Self { Self(ErrorInner::IncorrectChecksum(e)) }
+    fn from(e: IncorrectChecksumError) -> Self {
+        Self(ErrorInner::IncorrectChecksum(e))
+    }
 }
 
 impl From<TooShortError> for Error {
-    fn from(e: TooShortError) -> Self { Self(ErrorInner::TooShort(e)) }
+    fn from(e: TooShortError) -> Self {
+        Self(ErrorInner::TooShort(e))
+    }
 }
 
 /// Checksum was not correct.
@@ -102,7 +112,9 @@ pub(super) struct IncorrectChecksumError {
 }
 
 impl From<Infallible> for IncorrectChecksumError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for IncorrectChecksumError {
@@ -125,7 +137,9 @@ pub(super) struct TooShortError {
     pub(super) length: usize,
 }
 impl From<Infallible> for TooShortError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for TooShortError {
@@ -151,18 +165,26 @@ pub(super) struct InvalidCharacterErrorInner {
 }
 
 impl From<Infallible> for InvalidCharacterError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl From<Infallible> for InvalidCharacterErrorInner {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl InvalidCharacterError {
-    pub(super) fn new(invalid: u8) -> Self { Self(InvalidCharacterErrorInner { invalid }) }
+    pub(super) fn new(invalid: u8) -> Self {
+        Self(InvalidCharacterErrorInner { invalid })
+    }
 
     /// Returns the invalid base58 character.
-    pub fn invalid_character(&self) -> u8 { self.0.invalid }
+    pub fn invalid_character(&self) -> u8 {
+        self.0.invalid
+    }
 }
 
 impl fmt::Display for InvalidCharacterError {

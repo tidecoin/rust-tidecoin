@@ -30,7 +30,7 @@ use crate::TxIn;
 #[cfg(feature = "alloc")]
 const MAX_VECTOR_ALLOCATE: usize = 1_000_000;
 
-/// The Witness is the data used to unlock bitcoin since the [SegWit upgrade].
+/// The Witness is the data used by Tidecoin witness spends.
 ///
 /// Can be logically seen as an array of bytestrings, i.e. `Vec<Vec<u8>>`, and it is serialized on the wire
 /// in that format. You can convert between this type and `Vec<Vec<u8>>` by using [`Witness::from_slice`]
@@ -38,20 +38,17 @@ const MAX_VECTOR_ALLOCATE: usize = 1_000_000;
 ///
 /// For serialization and deserialization performance it is stored internally as a single `Vec`,
 /// saving some allocations.
-///
-/// [SegWit upgrade]: <https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki>
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Witness {
     /// Contains the witness `Vec<Vec<u8>>` serialization.
     ///
     /// Does not include the initial length prefix indicating the number of elements. Each element
-    /// however, does include a [`CompactSize`] indicating the element length. The number of
+    /// however, does include a compact-size encoding indicating the element length. The number of
     /// elements is stored in `witness_elements`.
     ///
     /// Concatenated onto the end of `content` is the index area. This is a `4 * witness_elements`
     /// bytes area which stores the index of the start of each witness item.
     ///
-    /// [`CompactSize`]: <https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer>
     content: Vec<u8>,
 
     /// The number of elements in the witness.
@@ -100,11 +97,15 @@ impl Witness {
 
     /// Convenience method to create an array of byte-arrays from this witness.
     #[inline]
-    pub fn to_vec(&self) -> Vec<Vec<u8>> { self.iter().map(<[u8]>::to_vec).collect() }
+    pub fn to_vec(&self) -> Vec<Vec<u8>> {
+        self.iter().map(<[u8]>::to_vec).collect()
+    }
 
     /// Returns `true` if the witness contains no element.
     #[inline]
-    pub fn is_empty(&self) -> bool { self.witness_elements == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.witness_elements == 0
+    }
 
     /// Returns a struct implementing [`Iterator`].
     #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -115,7 +116,9 @@ impl Witness {
 
     /// Returns the number of elements this witness holds.
     #[inline]
-    pub const fn len(&self) -> usize { self.witness_elements }
+    pub const fn len(&self) -> usize {
+        self.witness_elements
+    }
 
     /// Returns the number of bytes this witness contributes to a transactions total size.
     ///
@@ -178,7 +181,9 @@ impl Witness {
 
     /// Returns the last element in the witness, if any.
     #[inline]
-    pub fn last(&self) -> Option<&[u8]> { self.get_back(0) }
+    pub fn last(&self) -> Option<&[u8]> {
+        self.get_back(0)
+    }
 
     /// Retrieves an element from the end of the witness by its reverse index.
     ///
@@ -242,7 +247,6 @@ impl Witness {
 }
 
 /// Correctness Requirements: value must always fit within u32
-// This is duplicated in `bitcoin::blockdata::witness`, if you change it please do so over there also.
 #[inline]
 fn encode_cursor(bytes: &mut [u8], start_of_indices: usize, index: usize, value: usize) {
     let start = start_of_indices + index * 4;
@@ -278,10 +282,14 @@ impl encoding::Encodable for Witness {
 
 impl encoding::Encoder for WitnessEncoder<'_> {
     #[inline]
-    fn current_chunk(&self) -> &[u8] { self.0.current_chunk() }
+    fn current_chunk(&self) -> &[u8] {
+        self.0.current_chunk()
+    }
 
     #[inline]
-    fn advance(&mut self) -> bool { self.0.advance() }
+    fn advance(&mut self) -> bool {
+        self.0.advance()
+    }
 }
 
 /// The decoder for the [`Witness`] type.
@@ -344,7 +352,9 @@ impl WitnessDecoder {
 }
 
 impl Default for WitnessDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl encoding::Decoder for WitnessDecoder {
@@ -507,7 +517,9 @@ impl encoding::Decoder for WitnessDecoder {
 
 impl encoding::Decodable for Witness {
     type Decoder = WitnessDecoder;
-    fn decoder() -> Self::Decoder { WitnessDecoder::default() }
+    fn decoder() -> Self::Decoder {
+        WitnessDecoder::default()
+    }
 }
 
 // Note: we use `Borrow` in the following `PartialEq` impls specifically because of its additional
@@ -522,65 +534,95 @@ impl<T: core::borrow::Borrow<[u8]>> PartialEq<[T]> for Witness {
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<&[T]> for Witness {
-    fn eq(&self, rhs: &&[T]) -> bool { *self == **rhs }
+    fn eq(&self, rhs: &&[T]) -> bool {
+        *self == **rhs
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for [T] {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == *self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == *self
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for &[T] {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == **self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == **self
+    }
 }
 
 impl<const N: usize, T: core::borrow::Borrow<[u8]>> PartialEq<[T; N]> for Witness {
-    fn eq(&self, rhs: &[T; N]) -> bool { *self == *rhs.as_slice() }
+    fn eq(&self, rhs: &[T; N]) -> bool {
+        *self == *rhs.as_slice()
+    }
 }
 
 impl<const N: usize, T: core::borrow::Borrow<[u8]>> PartialEq<&[T; N]> for Witness {
-    fn eq(&self, rhs: &&[T; N]) -> bool { *self == *rhs.as_slice() }
+    fn eq(&self, rhs: &&[T; N]) -> bool {
+        *self == *rhs.as_slice()
+    }
 }
 
 impl<const N: usize, T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for [T; N] {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == *self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == *self
+    }
 }
 
 impl<const N: usize, T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for &[T; N] {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == **self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == **self
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Vec<T>> for Witness {
-    fn eq(&self, rhs: &Vec<T>) -> bool { *self == **rhs }
+    fn eq(&self, rhs: &Vec<T>) -> bool {
+        *self == **rhs
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for Vec<T> {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == *self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == *self
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Box<[T]>> for Witness {
-    fn eq(&self, rhs: &Box<[T]>) -> bool { *self == **rhs }
+    fn eq(&self, rhs: &Box<[T]>) -> bool {
+        *self == **rhs
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for Box<[T]> {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == *self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == *self
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<alloc::rc::Rc<[T]>> for Witness {
-    fn eq(&self, rhs: &alloc::rc::Rc<[T]>) -> bool { *self == **rhs }
+    fn eq(&self, rhs: &alloc::rc::Rc<[T]>) -> bool {
+        *self == **rhs
+    }
 }
 
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for alloc::rc::Rc<[T]> {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == *self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == *self
+    }
 }
 
 #[cfg(target_has_atomic = "ptr")]
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<alloc::sync::Arc<[T]>> for Witness {
-    fn eq(&self, rhs: &alloc::sync::Arc<[T]>) -> bool { *self == **rhs }
+    fn eq(&self, rhs: &alloc::sync::Arc<[T]>) -> bool {
+        *self == **rhs
+    }
 }
 
 #[cfg(target_has_atomic = "ptr")]
 impl<T: core::borrow::Borrow<[u8]>> PartialEq<Witness> for alloc::sync::Arc<[T]> {
-    fn eq(&self, rhs: &Witness) -> bool { *rhs == *self }
+    fn eq(&self, rhs: &Witness) -> bool {
+        *rhs == *self
+    }
 }
 
 /// Debug implementation that displays the witness as a structured output containing:
@@ -627,7 +669,9 @@ impl Index<usize> for Witness {
 
     #[track_caller]
     #[inline]
-    fn index(&self, index: usize) -> &Self::Output { self.get(index).expect("out of bounds") }
+    fn index(&self, index: usize) -> &Self::Output {
+        self.get(index).expect("out of bounds")
+    }
 }
 
 impl<'a> Iterator for Iter<'a> {
@@ -657,7 +701,9 @@ impl<'a> IntoIterator for &'a Witness {
     type Item = &'a [u8];
 
     #[inline]
-    fn into_iter(self) -> Self::IntoIter { self.iter() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
 
 impl<T: AsRef<[u8]>> FromIterator<T> for Witness {
@@ -757,67 +803,93 @@ impl<'de> serde::Deserialize<'de> for Witness {
 
 impl From<Vec<Vec<u8>>> for Witness {
     #[inline]
-    fn from(vec: Vec<Vec<u8>>) -> Self { Self::from_slice(&vec) }
+    fn from(vec: Vec<Vec<u8>>) -> Self {
+        Self::from_slice(&vec)
+    }
 }
 
 impl From<&[&[u8]]> for Witness {
     #[inline]
-    fn from(slice: &[&[u8]]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[&[u8]]) -> Self {
+        Self::from_slice(slice)
+    }
 }
 
 impl From<&[Vec<u8>]> for Witness {
     #[inline]
-    fn from(slice: &[Vec<u8>]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[Vec<u8>]) -> Self {
+        Self::from_slice(slice)
+    }
 }
 
 impl From<Vec<&[u8]>> for Witness {
     #[inline]
-    fn from(vec: Vec<&[u8]>) -> Self { Self::from_slice(&vec) }
+    fn from(vec: Vec<&[u8]>) -> Self {
+        Self::from_slice(&vec)
+    }
 }
 
 impl<const N: usize> From<[&[u8]; N]> for Witness {
     #[inline]
-    fn from(arr: [&[u8]; N]) -> Self { Self::from_slice(&arr) }
+    fn from(arr: [&[u8]; N]) -> Self {
+        Self::from_slice(&arr)
+    }
 }
 
 impl<const N: usize> From<&[&[u8]; N]> for Witness {
     #[inline]
-    fn from(arr: &[&[u8]; N]) -> Self { Self::from_slice(arr) }
+    fn from(arr: &[&[u8]; N]) -> Self {
+        Self::from_slice(arr)
+    }
 }
 
 impl<const N: usize> From<&[[u8; N]]> for Witness {
     #[inline]
-    fn from(slice: &[[u8; N]]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[[u8; N]]) -> Self {
+        Self::from_slice(slice)
+    }
 }
 
 impl<const N: usize> From<&[&[u8; N]]> for Witness {
     #[inline]
-    fn from(slice: &[&[u8; N]]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[&[u8; N]]) -> Self {
+        Self::from_slice(slice)
+    }
 }
 
 impl<const N: usize, const M: usize> From<[[u8; M]; N]> for Witness {
     #[inline]
-    fn from(slice: [[u8; M]; N]) -> Self { Self::from_slice(&slice) }
+    fn from(slice: [[u8; M]; N]) -> Self {
+        Self::from_slice(&slice)
+    }
 }
 
 impl<const N: usize, const M: usize> From<&[[u8; M]; N]> for Witness {
     #[inline]
-    fn from(slice: &[[u8; M]; N]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[[u8; M]; N]) -> Self {
+        Self::from_slice(slice)
+    }
 }
 
 impl<const N: usize, const M: usize> From<[&[u8; M]; N]> for Witness {
     #[inline]
-    fn from(slice: [&[u8; M]; N]) -> Self { Self::from_slice(&slice) }
+    fn from(slice: [&[u8; M]; N]) -> Self {
+        Self::from_slice(&slice)
+    }
 }
 
 impl<const N: usize, const M: usize> From<&[&[u8; M]; N]> for Witness {
     #[inline]
-    fn from(slice: &[&[u8; M]; N]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[&[u8; M]; N]) -> Self {
+        Self::from_slice(slice)
+    }
 }
 
 impl Default for Witness {
     #[inline]
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// An error when consensus decoding a [`Witness`].
@@ -833,7 +905,9 @@ enum WitnessDecoderErrorInner {
 }
 
 impl From<Infallible> for WitnessDecoderError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for WitnessDecoderError {
@@ -867,7 +941,9 @@ pub struct UnexpectedEofError {
 }
 
 impl From<Infallible> for UnexpectedEofError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl core::fmt::Display for UnexpectedEofError {
@@ -984,7 +1060,9 @@ mod test {
     use super::*;
 
     // A witness with a single element that is empty (zero length).
-    fn single_empty_element() -> Witness { Witness::from([[0u8; 0]]) }
+    fn single_empty_element() -> Witness {
+        Witness::from([[0u8; 0]])
+    }
 
     #[test]
     fn witness_single_empty_element() {
@@ -1764,7 +1842,7 @@ mod test {
 
     #[test]
     #[should_panic(expected = "slice too short, expected at least 5 bytes")]
-    // Non-minimal is referred to as non-canonical in Core (`bitcoin/src/serialize.h`).
+    // Non-minimal encodings are invalid.
     fn decode_non_minimal_panics() {
         let mut slice = [0xFE, 0xCD, 0xAB].as_slice();
         let _ = decode_unchecked(&mut slice);
@@ -1784,6 +1862,6 @@ mod test {
 
         let allocated = dec.content.len();
 
-        assert!(allocated >= 16_000_000 && allocated < 17_500_000);
+        assert!((16_000_000..17_500_000).contains(&allocated));
     }
 }

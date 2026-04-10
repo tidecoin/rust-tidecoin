@@ -1,9 +1,9 @@
 #![cfg_attr(fuzzing, no_main)]
 #![cfg_attr(not(fuzzing), allow(unused))]
 
-use bitcoin::hashes::{ripemd160, sha1, sha256d, sha512, Hmac};
 use libfuzzer_sys::fuzz_target;
 use serde::{Deserialize, Serialize};
+use tidecoin::hashes::{ripemd160, sha1, sha256d, sha512, Hmac};
 
 #[derive(Deserialize, Serialize)]
 struct Hmacs {

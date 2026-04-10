@@ -145,8 +145,8 @@ impl Denomination {
             "mTDC" | "mtdc" => Some(Self::MilliTidecoin),
             "uTDC" | "utdc" | "µTDC" | "µtdc" => Some(Self::MicroTidecoin),
             "bit" | "bits" | "BIT" | "BITS" => Some(Self::Bit),
-            "TIDOSHI" | "tidoshi" | "TIDOSHIS" | "tidoshis" | "TIDO" | "tido" | "TIDOS" | "tidos" =>
-                Some(Self::Tidoshi),
+            "TIDOSHI" | "tidoshi" | "TIDOSHIS" | "tidoshis" | "TIDO" | "tido" | "TIDOS"
+            | "tidos" => Some(Self::Tidoshi),
             _ => None,
         }
     }
@@ -157,7 +157,9 @@ impl Denomination {
 const CONFUSING_FORMS: [&str; 6] = ["CTDC", "Ctdc", "MTDC", "Mtdc", "UTDC", "Utdc"];
 
 impl fmt::Display for Denomination {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { f.write_str(self.as_str()) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 impl FromStr for Denomination {
@@ -246,10 +248,11 @@ fn parse_signed_to_satoshi(
             if let Some(position) = is_too_precise(s, last_n) {
                 match s.parse::<i64>() {
                     Ok(0) => return Ok((is_negative, SignedAmount::ZERO)),
-                    _ =>
+                    _ => {
                         return Err(InnerParseError::TooPrecise(TooPreciseError {
                             position: position + usize::from(is_negative),
-                        })),
+                        }))
+                    }
                 }
             }
             s = &s[0..s.find('.').unwrap_or(s.len()) - last_n];
@@ -278,27 +281,31 @@ fn parse_signed_to_satoshi(
                 decimals = match decimals {
                     None => None,
                     Some(d) if d < max_decimals => Some(d + 1),
-                    _ =>
+                    _ => {
                         return Err(InnerParseError::TooPrecise(TooPreciseError {
                             position: i + usize::from(is_negative),
-                        })),
+                        }))
+                    }
                 };
                 underscores = None;
             }
             '_' if i == 0 =>
             // Leading underscore
+            {
                 return Err(InnerParseError::BadPosition(BadPositionError {
                     char: '_',
                     position: i + usize::from(is_negative),
-                })),
+                }))
+            }
             '_' => match underscores {
                 None => underscores = Some(1),
                 // Consecutive underscores
-                _ =>
+                _ => {
                     return Err(InnerParseError::BadPosition(BadPositionError {
                         char: '_',
                         position: i + usize::from(is_negative),
-                    })),
+                    }))
+                }
             },
             '.' => match decimals {
                 None if max_decimals <= 0 => break,
@@ -307,17 +314,19 @@ fn parse_signed_to_satoshi(
                     underscores = None;
                 }
                 // Double decimal dot.
-                _ =>
+                _ => {
                     return Err(InnerParseError::InvalidCharacter(InvalidCharacterError {
                         invalid_char: '.',
                         position: i + usize::from(is_negative),
-                    })),
+                    }))
+                }
             },
-            c =>
+            c => {
                 return Err(InnerParseError::InvalidCharacter(InvalidCharacterError {
                     invalid_char: c,
                     position: i + usize::from(is_negative),
-                })),
+                }))
+            }
         }
     }
 
@@ -349,23 +358,28 @@ enum InnerParseError {
 }
 
 impl From<Infallible> for InnerParseError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl InnerParseError {
     fn convert(self, is_signed: bool) -> ParseAmountError {
         match self {
-            Self::Overflow { is_negative } =>
+            Self::Overflow { is_negative } => {
                 ParseAmountError(ParseAmountErrorInner::OutOfRange(OutOfRangeError {
                     is_signed,
                     is_greater_than_max: !is_negative,
-                })),
+                }))
+            }
             Self::TooPrecise(e) => ParseAmountError(ParseAmountErrorInner::TooPrecise(e)),
             Self::MissingDigits(e) => ParseAmountError(ParseAmountErrorInner::MissingDigits(e)),
-            Self::InputTooLarge(len) =>
-                ParseAmountError(ParseAmountErrorInner::InputTooLarge(InputTooLargeError { len })),
-            Self::InvalidCharacter(e) =>
-                ParseAmountError(ParseAmountErrorInner::InvalidCharacter(e)),
+            Self::InputTooLarge(len) => {
+                ParseAmountError(ParseAmountErrorInner::InputTooLarge(InputTooLargeError { len }))
+            }
+            Self::InvalidCharacter(e) => {
+                ParseAmountError(ParseAmountErrorInner::InvalidCharacter(e))
+            }
             Self::BadPosition(e) => ParseAmountError(ParseAmountErrorInner::BadPosition(e)),
         }
     }
@@ -525,8 +539,9 @@ fn fmt_satoshi_in(
         (true, true, _) | (true, false, fmt::Alignment::Right) => (width - num_width, 0),
         (true, false, fmt::Alignment::Left) => (0, width - num_width),
         // If the required padding is odd it needs to be skewed to the left
-        (true, false, fmt::Alignment::Center) =>
-            ((width - num_width) / 2, (width - num_width).div_ceil(2)),
+        (true, false, fmt::Alignment::Center) => {
+            ((width - num_width) / 2, (width - num_width).div_ceil(2))
+        }
     };
 
     if !options.sign_aware_zero_pad {

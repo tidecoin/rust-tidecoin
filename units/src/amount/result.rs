@@ -14,17 +14,25 @@ use crate::internal_macros::{
 use crate::result::{MathOp, NumOpError, NumOpResult, OptionExt};
 
 impl From<Amount> for NumOpResult<Amount> {
-    fn from(a: Amount) -> Self { Self::Valid(a) }
+    fn from(a: Amount) -> Self {
+        Self::Valid(a)
+    }
 }
 impl From<&Amount> for NumOpResult<Amount> {
-    fn from(a: &Amount) -> Self { Self::Valid(*a) }
+    fn from(a: &Amount) -> Self {
+        Self::Valid(*a)
+    }
 }
 
 impl From<SignedAmount> for NumOpResult<SignedAmount> {
-    fn from(a: SignedAmount) -> Self { Self::Valid(a) }
+    fn from(a: SignedAmount) -> Self {
+        Self::Valid(a)
+    }
 }
 impl From<&SignedAmount> for NumOpResult<SignedAmount> {
-    fn from(a: &SignedAmount) -> Self { Self::Valid(*a) }
+    fn from(a: &SignedAmount) -> Self {
+        Self::Valid(*a)
+    }
 }
 
 crate::internal_macros::impl_op_for_references! {

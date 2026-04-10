@@ -37,17 +37,23 @@ pub struct CompactTarget(u32);
 impl CompactTarget {
     /// Constructs a new [`CompactTarget`] from a consensus encoded `u32`.
     #[inline]
-    pub fn from_consensus(bits: u32) -> Self { Self(bits) }
+    pub fn from_consensus(bits: u32) -> Self {
+        Self(bits)
+    }
 
     /// Returns the consensus encoded `u32` representation of this [`CompactTarget`].
     #[inline]
-    pub const fn to_consensus(self) -> u32 { self.0 }
+    pub const fn to_consensus(self) -> u32 {
+        self.0
+    }
 
     /// Gets the hex representation of this [`CompactTarget`].
     #[cfg(feature = "alloc")]
     #[inline]
     #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(self) -> alloc::string::String { alloc::format!("{:x}", self) }
+    pub fn to_hex(self) -> alloc::string::String {
+        alloc::format!("{:x}", self)
+    }
 
     /// Constructs a new `CompactTarget` from a prefixed hex string.
     ///
@@ -82,7 +88,9 @@ crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(CompactTarget);
 
 impl fmt::Display for CompactTarget {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
 }
 
 parse_int::impl_parse_str_from_int_infallible!(CompactTarget, u32, from_consensus);
@@ -110,12 +118,16 @@ pub struct CompactTargetDecoder(encoding::ArrayDecoder<4>);
 #[cfg(feature = "encoding")]
 impl CompactTargetDecoder {
     /// Constructs a new [`CompactTarget`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl Default for CompactTargetDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -135,13 +147,17 @@ impl encoding::Decoder for CompactTargetDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl encoding::Decodable for CompactTarget {
     type Decoder = CompactTargetDecoder;
-    fn decoder() -> Self::Decoder { CompactTargetDecoder(encoding::ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        CompactTargetDecoder(encoding::ArrayDecoder::<4>::new())
+    }
 }
 
 /// Error types for proof-of-work related integer types.
@@ -161,7 +177,9 @@ pub mod error {
 
     #[cfg(feature = "encoding")]
     impl From<Infallible> for CompactTargetDecoderError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     #[cfg(feature = "encoding")]
@@ -174,7 +192,9 @@ pub mod error {
     #[cfg(feature = "std")]
     #[cfg(feature = "encoding")]
     impl std::error::Error for CompactTargetDecoderError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
     }
 }
 
@@ -189,10 +209,6 @@ impl<'a> Arbitrary<'a> for CompactTarget {
 mod tests {
     #[cfg(feature = "alloc")]
     use alloc::format;
-    #[cfg(feature = "alloc")]
-    use alloc::string::ToString;
-    #[cfg(feature = "std")]
-    use std::error::Error as _;
 
     #[cfg(feature = "encoding")]
     use encoding::Decoder as _;
@@ -234,9 +250,9 @@ mod tests {
         assert!(decoder.push_bytes(&mut slice).unwrap());
 
         let err = decoder.end().unwrap_err();
-        assert!(!err.to_string().is_empty());
+        assert!(!format!("{}", err).is_empty());
         #[cfg(feature = "std")]
-        assert!(err.source().is_some());
+        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[test]

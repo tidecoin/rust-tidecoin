@@ -34,7 +34,9 @@ enum CompositeError {
 }
 
 impl From<UnexpectedEofError> for CompositeError {
-    fn from(eof: UnexpectedEofError) -> Self { Self::Eof(eof) }
+    fn from(eof: UnexpectedEofError) -> Self {
+        Self::Eof(eof)
+    }
 }
 
 impl core::fmt::Display for CompositeError {
@@ -73,13 +75,17 @@ impl Decoder for CompositeDataDecoder {
         Ok(CompositeData { first, second })
     }
 
-    fn read_limit(&self) -> usize { self.inner.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.inner.read_limit()
+    }
 }
 
 impl Decodable for CompositeData {
     type Decoder = CompositeDataDecoder;
 
-    fn decoder() -> Self::Decoder { CompositeDataDecoder::new() }
+    fn decoder() -> Self::Decoder {
+        CompositeDataDecoder::new()
+    }
 }
 
 #[test]
@@ -181,7 +187,9 @@ fn composition_error_unification() {
     }
 
     impl From<UnexpectedEofError> for NestedError {
-        fn from(eof: UnexpectedEofError) -> Self { Self::UnexpectedEof(eof) }
+        fn from(eof: UnexpectedEofError) -> Self {
+            Self::UnexpectedEof(eof)
+        }
     }
 
     /// Error for top level encoder.
@@ -192,7 +200,9 @@ fn composition_error_unification() {
     }
 
     impl From<UnexpectedEofError> for TopLevelError {
-        fn from(eof: UnexpectedEofError) -> Self { Self::UnexpectedEof(eof) }
+        fn from(eof: UnexpectedEofError) -> Self {
+            Self::UnexpectedEof(eof)
+        }
     }
 
     impl From<NestedError> for TopLevelError {
@@ -232,7 +242,9 @@ fn composition_error_unification() {
             Ok((first, second))
         }
 
-        fn read_limit(&self) -> usize { self.inner.read_limit() }
+        fn read_limit(&self) -> usize {
+            self.inner.read_limit()
+        }
     }
 
     /// Another test composite decoder.
@@ -241,7 +253,9 @@ fn composition_error_unification() {
     }
 
     impl PayloadDecoder {
-        fn new() -> Self { Self { inner: ArrayDecoder::<4>::new() } }
+        fn new() -> Self {
+            Self { inner: ArrayDecoder::<4>::new() }
+        }
     }
 
     impl Decoder for PayloadDecoder {
@@ -257,7 +271,9 @@ fn composition_error_unification() {
             Ok(result)
         }
 
-        fn read_limit(&self) -> usize { self.inner.read_limit() }
+        fn read_limit(&self) -> usize {
+            self.inner.read_limit()
+        }
     }
 
     /// A decoder which can fail.
@@ -267,7 +283,9 @@ fn composition_error_unification() {
     }
 
     impl FailingDecoder {
-        fn new(should_fail: bool) -> Self { Self { inner: ArrayDecoder::<1>::new(), should_fail } }
+        fn new(should_fail: bool) -> Self {
+            Self { inner: ArrayDecoder::<1>::new(), should_fail }
+        }
     }
 
     impl Decoder for FailingDecoder {
@@ -286,7 +304,9 @@ fn composition_error_unification() {
             }
         }
 
-        fn read_limit(&self) -> usize { self.inner.read_limit() }
+        fn read_limit(&self) -> usize {
+            self.inner.read_limit()
+        }
     }
 
     // A multi-layer, nested, decoder structure with a unified top level error type.

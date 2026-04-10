@@ -101,7 +101,7 @@ impl Poly1305 {
         }
 
         // Save any leftovers.
-        if remaining_message.len() % 16 > 0 {
+        if !remaining_message.len().is_multiple_of(16) {
             let message_index = remaining_message.len() - (remaining_message.len() % 16);
             let new_len = self.leftovers_len + remaining_message.len() % 16;
             self.leftovers[self.leftovers_len..new_len]
@@ -181,7 +181,9 @@ impl Poly1305 {
 
     /// Generates authentication tag.
     #[cfg(chacha20_poly1305_fuzz)]
-    pub fn tag(self) -> [u8; 16] { self.leftovers }
+    pub fn tag(self) -> [u8; 16] {
+        self.leftovers
+    }
 
     fn r_times_a(&mut self) {
         // Multiply and reduce.

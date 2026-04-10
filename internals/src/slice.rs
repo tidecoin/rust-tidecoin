@@ -12,9 +12,9 @@ pub trait SliceExt {
     /// ```compile_fail
     /// # use tidecoin_internals::slice::SliceExt;
     /// let slice = [1, 2, 3];
-    /// let _fail = slice.bitcoin_as_chunks::<0>(); // Fails to compile
+    /// let _fail = slice.as_nonzero_chunks::<0>(); // Fails to compile
     /// ```
-    fn bitcoin_as_chunks<const N: usize>(&self) -> (&[[Self::Item; N]], &[Self::Item]);
+    fn as_nonzero_chunks<const N: usize>(&self) -> (&[[Self::Item; N]], &[Self::Item]);
 
     /// Splits up the slice into a slice of arrays and a remainder.
     ///
@@ -23,9 +23,9 @@ pub trait SliceExt {
     /// ```compile_fail
     /// # use tidecoin_internals::slice::SliceExt;
     /// let mut slice = [1, 2, 3];
-    /// let _fail = slice.bitcoin_as_chunks_mut::<0>(); // Fails to compile
+    /// let _fail = slice.as_nonzero_chunks_mut::<0>(); // Fails to compile
     /// ```
-    fn bitcoin_as_chunks_mut<const N: usize>(
+    fn as_nonzero_chunks_mut<const N: usize>(
         &mut self,
     ) -> (&mut [[Self::Item; N]], &mut [Self::Item]);
 
@@ -56,7 +56,7 @@ pub trait SliceExt {
 impl<T> SliceExt for [T] {
     type Item = T;
 
-    fn bitcoin_as_chunks<const N: usize>(&self) -> (&[[Self::Item; N]], &[Self::Item]) {
+    fn as_nonzero_chunks<const N: usize>(&self) -> (&[[Self::Item; N]], &[Self::Item]) {
         #[allow(clippy::let_unit_value)]
         let () = Hack::<N>::IS_NONZERO;
 
@@ -73,7 +73,7 @@ impl<T> SliceExt for [T] {
         (left, right)
     }
 
-    fn bitcoin_as_chunks_mut<const N: usize>(
+    fn as_nonzero_chunks_mut<const N: usize>(
         &mut self,
     ) -> (&mut [[Self::Item; N]], &mut [Self::Item]) {
         #[allow(clippy::let_unit_value)]
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn one_to_one() {
         let slice = [1];
-        let (left, right) = slice.bitcoin_as_chunks::<1>();
+        let (left, right) = slice.as_nonzero_chunks::<1>();
         assert_eq!(left, &[[1]]);
         assert_eq!(right, EMPTY);
     }
@@ -155,7 +155,7 @@ mod tests {
         const EMPTY_LEFT: &[[i32; 2]] = &[];
 
         let slice = [1i32];
-        let (left, right) = slice.bitcoin_as_chunks::<2>();
+        let (left, right) = slice.as_nonzero_chunks::<2>();
         assert_eq!(left, EMPTY_LEFT);
         assert_eq!(right, &[1]);
     }
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn two_to_one() {
         let slice = [1, 2];
-        let (left, right) = slice.bitcoin_as_chunks::<1>();
+        let (left, right) = slice.as_nonzero_chunks::<1>();
         assert_eq!(left, &[[1], [2]]);
         assert_eq!(right, EMPTY);
     }
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn two_to_two() {
         let slice = [1, 2];
-        let (left, right) = slice.bitcoin_as_chunks::<2>();
+        let (left, right) = slice.as_nonzero_chunks::<2>();
         assert_eq!(left, &[[1, 2]]);
         assert_eq!(right, EMPTY);
     }
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn three_to_two() {
         let slice = [1, 2, 3];
-        let (left, right) = slice.bitcoin_as_chunks::<2>();
+        let (left, right) = slice.as_nonzero_chunks::<2>();
         assert_eq!(left, &[[1, 2]]);
         assert_eq!(right, &[3]);
     }

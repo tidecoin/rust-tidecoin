@@ -15,14 +15,18 @@ use super::{NumberOf512Seconds, NumberOfBlocks};
 pub struct DisabledLockTimeError(pub(super) u32);
 
 impl From<Infallible> for DisabledLockTimeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl DisabledLockTimeError {
     /// Accessor for the `u32` whose "disable" flag was set, preventing
     /// it from being parsed as a relative locktime.
     #[inline]
-    pub fn disabled_locktime_value(&self) -> u32 { self.0 }
+    pub fn disabled_locktime_value(&self) -> u32 {
+        self.0
+    }
 }
 
 impl fmt::Display for DisabledLockTimeError {
@@ -45,7 +49,9 @@ pub enum IsSatisfiedByError {
 }
 
 impl From<Infallible> for IsSatisfiedByError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for IsSatisfiedByError {
@@ -79,7 +85,9 @@ pub enum IsSatisfiedByHeightError {
 }
 
 impl From<Infallible> for IsSatisfiedByHeightError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for IsSatisfiedByHeightError {
@@ -87,8 +95,9 @@ impl fmt::Display for IsSatisfiedByHeightError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Self::Satisfaction(ref e) => write_err!(f, "satisfaction"; e),
-            Self::Incompatible(time) =>
-                write!(f, "tried to satisfy a lock-by-height locktime using seconds {}", time),
+            Self::Incompatible(time) => {
+                write!(f, "tried to satisfy a lock-by-height locktime using seconds {}", time)
+            }
         }
     }
 }
@@ -114,7 +123,9 @@ pub enum IsSatisfiedByTimeError {
 }
 
 impl From<Infallible> for IsSatisfiedByTimeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for IsSatisfiedByTimeError {
@@ -122,8 +133,9 @@ impl fmt::Display for IsSatisfiedByTimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Self::Satisfaction(ref e) => write_err!(f, "satisfaction"; e),
-            Self::Incompatible(blocks) =>
-                write!(f, "tried to satisfy a lock-by-time locktime using blocks {}", blocks),
+            Self::Incompatible(blocks) => {
+                write!(f, "tried to satisfy a lock-by-time locktime using blocks {}", blocks)
+            }
         }
     }
 }
@@ -147,7 +159,9 @@ pub struct TimeOverflowError {
 }
 
 impl From<Infallible> for TimeOverflowError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for TimeOverflowError {
@@ -173,7 +187,9 @@ pub struct InvalidHeightError {
 }
 
 impl From<Infallible> for InvalidHeightError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for InvalidHeightError {
@@ -196,7 +212,9 @@ pub struct InvalidTimeError {
 }
 
 impl From<Infallible> for InvalidTimeError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for InvalidTimeError {

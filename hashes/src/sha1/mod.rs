@@ -62,7 +62,7 @@ impl HashEngine {
     #[cfg(not(hashes_fuzz))]
     pub(crate) fn midstate(&self) -> [u8; 20] {
         let mut ret = [0; 20];
-        for (val, ret_bytes) in self.h.iter().zip(ret.bitcoin_as_chunks_mut().0) {
+        for (val, ret_bytes) in self.h.iter().zip(ret.as_nonzero_chunks_mut().0) {
             *ret_bytes = val.to_be_bytes();
         }
         ret
@@ -77,7 +77,9 @@ impl HashEngine {
 }
 
 impl Default for HashEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl crate::HashEngine for HashEngine {
@@ -85,9 +87,13 @@ impl crate::HashEngine for HashEngine {
     type Bytes = [u8; 20];
     const BLOCK_SIZE: usize = 64;
 
-    fn n_bytes_hashed(&self) -> u64 { self.bytes_hashed }
+    fn n_bytes_hashed(&self) -> u64 {
+        self.bytes_hashed
+    }
 
     crate::internal_macros::engine_input_impl!();
 
-    fn finalize(self) -> Self::Hash { Hash::from_engine(self) }
+    fn finalize(self) -> Self::Hash {
+        Hash::from_engine(self)
+    }
 }

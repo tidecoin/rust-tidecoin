@@ -1,8 +1,8 @@
 #![cfg_attr(fuzzing, no_main)]
 #![cfg_attr(not(fuzzing), allow(unused))]
 
-use tidecoin_consensus_encoding::{ArrayDecoder, Decoder, Decoder2};
 use libfuzzer_sys::fuzz_target;
+use tidecoin_consensus_encoding::{ArrayDecoder, Decoder, Decoder2};
 
 #[cfg(not(fuzzing))]
 fn main() {}

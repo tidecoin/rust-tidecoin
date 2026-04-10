@@ -1,14 +1,14 @@
 #![cfg_attr(fuzzing, no_main)]
 #![cfg_attr(not(fuzzing), allow(unused))]
 
-use bitcoin::absolute::{Height, MedianTimePast};
-use bitcoin::relative::{NumberOf512Seconds, NumberOfBlocks};
-use bitcoin::{
+use libfuzzer_sys::fuzz_target;
+use standard_test::StandardChecks as _;
+use tidecoin::absolute::{Height, MedianTimePast};
+use tidecoin::relative::{NumberOf512Seconds, NumberOfBlocks};
+use tidecoin::{
     Amount, BlockHeight, BlockHeightInterval, BlockMtp, BlockMtpInterval, BlockTime, FeeRate,
     Sequence, SignedAmount, Weight,
 };
-use libfuzzer_sys::fuzz_target;
-use standard_test::StandardChecks as _;
 
 /// Implements the traits on the wrapper type $ty. Intended only to be called from inside wrap_for_checks!
 macro_rules! _impl_traits_on_wrapper {

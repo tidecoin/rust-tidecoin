@@ -40,11 +40,15 @@ mod encapsulate {
     impl BlockTime {
         /// Constructs a new [`BlockTime`] from an unsigned 32 bit integer value.
         #[inline]
-        pub const fn from_u32(t: u32) -> Self { Self(t) }
+        pub const fn from_u32(t: u32) -> Self {
+            Self(t)
+        }
 
         /// Returns the inner `u32` value.
         #[inline]
-        pub const fn to_u32(self) -> u32 { self.0 }
+        pub const fn to_u32(self) -> u32 {
+            self.0
+        }
     }
 }
 #[doc(inline)]
@@ -79,17 +83,23 @@ impl BlockTime {
 crate::internal_macros::impl_fmt_traits_for_u32_wrapper!(BlockTime, to_u32);
 
 impl fmt::Display for BlockTime {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.to_u32(), f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.to_u32(), f)
+    }
 }
 
 impl From<u32> for BlockTime {
     #[inline]
-    fn from(t: u32) -> Self { Self::from_u32(t) }
+    fn from(t: u32) -> Self {
+        Self::from_u32(t)
+    }
 }
 
 impl From<BlockTime> for u32 {
     #[inline]
-    fn from(t: BlockTime) -> Self { t.to_u32() }
+    fn from(t: BlockTime) -> Self {
+        t.to_u32()
+    }
 }
 
 parse_int::impl_parse_str_from_int_infallible!(BlockTime, u32, from_u32);
@@ -138,13 +148,17 @@ pub struct BlockTimeDecoder(encoding::ArrayDecoder<4>);
 
 #[cfg(feature = "encoding")]
 impl Default for BlockTimeDecoder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl BlockTimeDecoder {
     /// Constructs a new [`BlockTime`] decoder.
-    pub const fn new() -> Self { Self(encoding::ArrayDecoder::new()) }
+    pub const fn new() -> Self {
+        Self(encoding::ArrayDecoder::new())
+    }
 }
 
 #[cfg(feature = "encoding")]
@@ -164,13 +178,17 @@ impl encoding::Decoder for BlockTimeDecoder {
     }
 
     #[inline]
-    fn read_limit(&self) -> usize { self.0.read_limit() }
+    fn read_limit(&self) -> usize {
+        self.0.read_limit()
+    }
 }
 
 #[cfg(feature = "encoding")]
 impl encoding::Decodable for BlockTime {
     type Decoder = BlockTimeDecoder;
-    fn decoder() -> Self::Decoder { BlockTimeDecoder(encoding::ArrayDecoder::<4>::new()) }
+    fn decoder() -> Self::Decoder {
+        BlockTimeDecoder(encoding::ArrayDecoder::<4>::new())
+    }
 }
 
 /// Error types for block times.
@@ -190,7 +208,9 @@ pub mod error {
 
     #[cfg(feature = "encoding")]
     impl From<Infallible> for BlockTimeDecoderError {
-        fn from(never: Infallible) -> Self { match never {} }
+        fn from(never: Infallible) -> Self {
+            match never {}
+        }
     }
 
     #[cfg(feature = "encoding")]
@@ -202,7 +222,9 @@ pub mod error {
 
     #[cfg(all(feature = "std", feature = "encoding"))]
     impl std::error::Error for BlockTimeDecoderError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
     }
 }
 

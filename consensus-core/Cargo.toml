@@ -1,0 +1,34 @@
+[package]
+name = "tidecoin-consensus-core"
+version = "0.1.0"
+authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+license = "CC0-1.0"
+repository = "https://github.com/nicenemo/rust-tidecoin/"
+documentation = "https://docs.rs/tidecoin-consensus-core/"
+description = "Shared Tidecoin consensus-validation core types."
+categories = ["cryptography::cryptocurrencies"]
+keywords = ["crypto", "tidecoin", "consensus"]
+edition = "2021"
+rust-version = "1.94.1"
+
+[features]
+default = ["std"]
+std = ["encoding/std", "hashes/std", "internals/std", "io/std", "primitives/std"]
+serde = ["hashes/serde", "hex", "internals/serde"]
+hex = ["hashes/hex"]
+
+[dependencies]
+encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", version = "0.1.0", default-features = false }
+hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.20.0", default-features = false }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false }
+io = { package = "tidecoin-io", path = "../io", version = "0.5.0", default-features = false, features = ["hashes"] }
+primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc"] }
+fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
+tide-fn-dsa = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "27f47ec28af52ceb650f5cd93eba0a8c4ac5ea45" }
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(fuzzing)', 'cfg(kani)'] }
+
+[lints.clippy]
+redundant_clone = "warn"
+use_self = "warn"

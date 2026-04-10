@@ -40,7 +40,9 @@ impl Error {
     }
 
     /// Returns the error kind for this error.
-    pub fn kind(&self) -> ErrorKind { self.kind }
+    pub fn kind(&self) -> ErrorKind {
+        self.kind
+    }
 
     /// Returns a reference to this error.
     #[cfg(feature = "std")]
@@ -214,6 +216,8 @@ mod sealed {
     }
 
     impl IntoBoxDynDebug for String {
-        fn into(self) -> Box<dyn fmt::Debug + Send + Sync + 'static> { Box::new(self) }
+        fn into(self) -> Box<dyn fmt::Debug + Send + Sync + 'static> {
+            Box::new(self)
+        }
     }
 }

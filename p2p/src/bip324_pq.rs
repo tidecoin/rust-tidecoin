@@ -5,7 +5,6 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-use bitcoin::MlKem512SharedSecret;
 use chacha20_poly1305::chacha20::{ChaCha20, Key, Nonce};
 use chacha20_poly1305::ChaCha20Poly1305;
 use hashes::{hkdf::Hkdf, sha256};
@@ -153,9 +152,8 @@ impl FsChaCha20Poly1305 {
         }
 
         let mut payload = cipher[..plain_len].to_vec();
-        let tag: [u8; AEAD_EXPANSION] = cipher[plain_len..]
-            .try_into()
-            .expect("validated tag length");
+        let tag: [u8; AEAD_EXPANSION] =
+            cipher[plain_len..].try_into().expect("validated tag length");
         let result = self
             .cipher(nonce96(self.packet_counter, self.rekey_counter))
             .decrypt(&mut payload, tag, Some(aad))
@@ -202,9 +200,12 @@ pub enum Bip324PqError {
 impl fmt::Display for Bip324PqError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidLength { expected, got } =>
-                write!(f, "invalid length: expected {} bytes, got {}", expected, got),
-            Self::MessageTooLong(len) => write!(f, "message too long for 24-bit length field: {}", len),
+            Self::InvalidLength { expected, got } => {
+                write!(f, "invalid length: expected {} bytes, got {}", expected, got)
+            }
+            Self::MessageTooLong(len) => {
+                write!(f, "message too long for 24-bit length field: {}", len)
+            }
             Self::AuthenticationFailed => write!(f, "packet authentication failed"),
         }
     }
@@ -242,23 +243,11 @@ impl Bip324PqCipher {
     pub const IGNORE_BIT: u8 = 0x80;
 
     /// Initializes the packet cipher from a 32-byte shared secret.
-    pub fn from_shared_secret(
-        shared_secret: &[u8; 32],
-        magic: Magic,
-        initiator: bool,
-    ) -> Self {
+    pub fn from_shared_secret(shared_secret: &[u8; 32], magic: Magic, initiator: bool) -> Self {
         Self::from_shared_secret_with_self_decrypt(shared_secret, magic, initiator, false)
     }
 
     /// Initializes the packet cipher from an ML-KEM shared secret.
-    pub fn from_mlkem_shared_secret(
-        shared_secret: &MlKem512SharedSecret,
-        magic: Magic,
-        initiator: bool,
-    ) -> Self {
-        Self::from_shared_secret(shared_secret.as_bytes(), magic, initiator)
-    }
-
     /// Initializes the packet cipher and optionally swaps send/receive keys for self-decrypt tests.
     pub fn from_shared_secret_with_self_decrypt(
         shared_secret: &[u8; 32],
@@ -288,14 +277,10 @@ impl Bip324PqCipher {
         let mut recv_garbage_terminator = [0_u8; Self::GARBAGE_TERMINATOR_LEN];
         if initiator {
             send_garbage_terminator.copy_from_slice(&garbage[..Self::GARBAGE_TERMINATOR_LEN]);
-            recv_garbage_terminator.copy_from_slice(
-                &garbage[Self::GARBAGE_TERMINATOR_LEN..],
-            );
+            recv_garbage_terminator.copy_from_slice(&garbage[Self::GARBAGE_TERMINATOR_LEN..]);
         } else {
             recv_garbage_terminator.copy_from_slice(&garbage[..Self::GARBAGE_TERMINATOR_LEN]);
-            send_garbage_terminator.copy_from_slice(
-                &garbage[Self::GARBAGE_TERMINATOR_LEN..],
-            );
+            send_garbage_terminator.copy_from_slice(&garbage[Self::GARBAGE_TERMINATOR_LEN..]);
         }
 
         let cipher = Self {
@@ -351,12 +336,7 @@ impl Bip324PqCipher {
         self.send_l_cipher.crypt(&len, &mut output[..Self::LENGTH_LEN]);
 
         let header = [if ignore { Self::IGNORE_BIT } else { 0 }];
-        self.send_p_cipher.encrypt(
-            &header,
-            contents,
-            aad,
-            &mut output[Self::LENGTH_LEN..],
-        )
+        self.send_p_cipher.encrypt(&header, contents, aad, &mut output[Self::LENGTH_LEN..])
     }
 
     /// Decrypts the packet length prefix.
@@ -403,7 +383,9 @@ impl Bip324PqCipher {
     }
 
     /// Returns the transport session identifier.
-    pub fn session_id(&self) -> &[u8; Self::SESSION_ID_LEN] { &self.session_id }
+    pub fn session_id(&self) -> &[u8; Self::SESSION_ID_LEN] {
+        &self.session_id
+    }
 
     /// Returns the garbage terminator this side should send.
     pub fn send_garbage_terminator(&self) -> &[u8; Self::GARBAGE_TERMINATOR_LEN] {
@@ -441,7 +423,9 @@ mod tests {
 
     use super::*;
 
-    fn hex_vec(s: &str) -> Vec<u8> { hex::decode_to_vec(s).expect("valid hex") }
+    fn hex_vec(s: &str) -> Vec<u8> {
+        hex::decode_to_vec(s).expect("valid hex")
+    }
 
     #[test]
     fn fs_chacha20_matches_node_vectors() {
@@ -452,12 +436,7 @@ mod tests {
                 256_u32,
                 "a93df4ef03011f3db95f60d996e1785df5de38fc39bfcb663a47bb5561928349",
             ),
-            (
-                "01",
-                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-                5_u32,
-                "ea",
-            ),
+            ("01", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", 5_u32, "ea"),
             (
                 "e93fdb5c762804b9a706816aca31e35b11d2aa3080108ef46a5b1f1508819c0a",
                 "8ec4c3ccdaea336bdeb245636970be01266509b33f3d2642504eaf412206207a",
@@ -546,13 +525,7 @@ mod tests {
 
                 let mut plain_out = vec![0_u8; plain.len()];
                 let (prefix_out, suffix_out) = plain_out.split_at_mut(prefix);
-                dec.decrypt(
-                    &cipher,
-                    &aad,
-                    prefix_out,
-                    suffix_out,
-                )
-                .expect("decrypt");
+                dec.decrypt(&cipher, &aad, prefix_out, suffix_out).expect("decrypt");
                 assert_eq!(plain_out, plain);
             }
         }
@@ -571,21 +544,13 @@ mod tests {
             Bip324PqCipher::from_shared_secret(&shared_secret, Magic::TIDECOIN, false);
 
         assert_eq!(initiator.session_id(), responder.session_id());
-        assert_eq!(
-            initiator.send_garbage_terminator(),
-            responder.receive_garbage_terminator()
-        );
-        assert_eq!(
-            initiator.receive_garbage_terminator(),
-            responder.send_garbage_terminator()
-        );
+        assert_eq!(initiator.send_garbage_terminator(), responder.receive_garbage_terminator());
+        assert_eq!(initiator.receive_garbage_terminator(), responder.send_garbage_terminator());
 
         let aad = hex_vec("a1b2c3");
         let msg = hex_vec("deadbeef");
         let mut ciphertext = vec![0_u8; msg.len() + Bip324PqCipher::EXPANSION];
-        initiator
-            .encrypt(&msg, &aad, false, &mut ciphertext)
-            .expect("encrypt");
+        initiator.encrypt(&msg, &aad, false, &mut ciphertext).expect("encrypt");
 
         let len = responder
             .decrypt_length(&ciphertext[..Bip324PqCipher::LENGTH_LEN])
@@ -611,9 +576,7 @@ mod tests {
         let aad = hex_vec("01020304");
         let msg = hex_vec("cafebabe");
         let mut ciphertext = vec![0_u8; msg.len() + Bip324PqCipher::EXPANSION];
-        initiator
-            .encrypt(&msg, &aad, true, &mut ciphertext)
-            .expect("encrypt");
+        initiator.encrypt(&msg, &aad, true, &mut ciphertext).expect("encrypt");
         ciphertext[Bip324PqCipher::LENGTH_LEN + 2] ^= 0x01;
 
         let len = responder

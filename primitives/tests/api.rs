@@ -14,16 +14,16 @@
 #![cfg(feature = "arbitrary")]
 
 use arbitrary::Arbitrary;
+use hashes::sha256t;
 use tidecoin_primitives::block::{Checked, Unchecked};
 use tidecoin_primitives::script::{
     self, ScriptHash, ScriptPubKeyBufDecoder, ScriptSigBufDecoder, WScriptHash,
 };
 use tidecoin_primitives::{
     absolute, block, merkle_tree, pow, relative, transaction, witness, OutPoint, RedeemScript,
-    RedeemScriptBuf, ScriptPubKey, ScriptPubKeyBuf, ScriptSig, ScriptSigBuf, Sequence,
-    Transaction, TxIn, TxOut, Txid, Witness, WitnessScript, WitnessScriptBuf, Wtxid,
+    RedeemScriptBuf, ScriptPubKey, ScriptPubKeyBuf, ScriptSig, ScriptSigBuf, Sequence, Transaction,
+    TxIn, TxOut, Txid, Witness, WitnessScript, WitnessScriptBuf, Wtxid,
 };
-use hashes::sha256t;
 
 /// A struct that includes all public non-error enums.
 #[derive(Debug)] // All public types implement Debug (C-DEBUG).
@@ -411,7 +411,9 @@ fn regression_default() {
 }
 
 #[test]
-fn decoders_implement_default() { let _ = Decoders::default(); }
+fn decoders_implement_default() {
+    let _ = Decoders::default();
+}
 
 #[test]
 fn decoders_implement_new() {

@@ -55,11 +55,15 @@ macro_rules! load_int_le {
 
 impl Hash {
     /// Constructs a new `SipHash24` engine with keys.
-    pub fn engine(k0: u64, k1: u64) -> HashEngine { HashEngine::with_keys(k0, k1) }
+    pub fn engine(k0: u64, k1: u64) -> HashEngine {
+        HashEngine::with_keys(k0, k1)
+    }
 
     /// Produces a hash from the current state of a given engine.
     #[cfg(not(hashes_fuzz))]
-    pub fn from_engine(e: HashEngine) -> Self { Self::from_u64(Self::from_engine_to_u64(e)) }
+    pub fn from_engine(e: HashEngine) -> Self {
+        Self::from_u64(Self::from_engine_to_u64(e))
+    }
 
     #[cfg(hashes_fuzz)]
     pub fn from_engine(e: HashEngine) -> Self {
@@ -99,10 +103,14 @@ impl Hash {
     }
 
     /// Returns the (little endian) 64-bit integer representation of the hash value.
-    pub fn to_u64(self) -> u64 { u64::from_le_bytes(self.0) }
+    pub fn to_u64(self) -> u64 {
+        u64::from_le_bytes(self.0)
+    }
 
     /// Constructs a new hash from its (little endian) 64-bit integer representation.
-    pub fn from_u64(hash: u64) -> Self { Self(hash.to_le_bytes()) }
+    pub fn from_u64(hash: u64) -> Self {
+        Self(hash.to_le_bytes())
+    }
 }
 
 /// Internal state of the [`HashEngine`].
@@ -149,7 +157,9 @@ impl HashEngine {
     }
 
     /// Retrieves the keys of this engine.
-    pub fn keys(&self) -> (u64, u64) { (self.k0, self.k1) }
+    pub fn keys(&self) -> (u64, u64) {
+        (self.k0, self.k1)
+    }
 
     #[inline]
     fn c_rounds(state: &mut State) {
@@ -211,9 +221,13 @@ impl crate::HashEngine for HashEngine {
         self.ntail = left;
     }
 
-    fn n_bytes_hashed(&self) -> u64 { self.bytes_hashed }
+    fn n_bytes_hashed(&self) -> u64 {
+        self.bytes_hashed
+    }
 
-    fn finalize(self) -> Self::Hash { Hash::from_engine(self) }
+    fn finalize(self) -> Self::Hash {
+        Hash::from_engine(self)
+    }
 }
 
 /// Loads a u64 using up to 7 bytes of a byte slice.

@@ -486,8 +486,7 @@ fn script_buf_to_hex() {
 #[test]
 #[cfg(feature = "hex")]
 fn hex() {
-    // This test is similar to code in `bitcoin/examples/script.rs` but without
-    // touching the `bitcoin::consensus::encode` functions.
+    // This test mirrors the script example without going through any top-level codec facade.
     use alloc::format;
 
     let consensus = "04deadbeef";

@@ -6,13 +6,13 @@
 #![cfg(feature = "serde")]
 
 use bincode::serialize;
+use serde::{Deserialize, Serialize};
 use tidecoin_units::absolute::{Height, LockTime as AbsoluteLockTime, MedianTimePast};
 use tidecoin_units::relative::{LockTime as RelativeLockTime, NumberOf512Seconds, NumberOfBlocks};
 use tidecoin_units::{
     amount, fee_rate, Amount, BlockHeight, BlockHeightInterval, BlockTime, FeeRate, Sequence,
     SignedAmount, Weight,
 };
-use serde::{Deserialize, Serialize};
 
 /// A struct that includes all the types that implement or support `serde` traits.
 #[derive(Debug, Serialize, Deserialize)]
@@ -104,10 +104,14 @@ fn serde_regression() {
 }
 
 #[track_caller]
-fn sat(sat: u64) -> Amount { Amount::from_sat(sat).unwrap() }
+fn sat(sat: u64) -> Amount {
+    Amount::from_sat(sat).unwrap()
+}
 
 #[track_caller]
-fn ssat(ssat: i64) -> SignedAmount { SignedAmount::from_sat(ssat).unwrap() }
+fn ssat(ssat: i64) -> SignedAmount {
+    SignedAmount::from_sat(ssat).unwrap()
+}
 
 #[test]
 #[cfg(feature = "serde")]
@@ -411,10 +415,14 @@ fn serde_amount_as_str_opt() {
 }
 
 #[track_caller]
-fn fee_rate_vb(vb: u32) -> FeeRate { FeeRate::from_sat_per_vb(vb) }
+fn fee_rate_vb(vb: u32) -> FeeRate {
+    FeeRate::from_sat_per_vb(vb)
+}
 
 #[track_caller]
-fn fee_rate_kwu(vb: u32) -> FeeRate { FeeRate::from_sat_per_kwu(vb) }
+fn fee_rate_kwu(vb: u32) -> FeeRate {
+    FeeRate::from_sat_per_kwu(vb)
+}
 
 #[test]
 #[cfg(feature = "serde")]

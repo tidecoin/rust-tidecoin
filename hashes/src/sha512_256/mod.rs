@@ -39,11 +39,15 @@ pub struct HashEngine(sha512::HashEngine);
 
 impl HashEngine {
     /// Constructs a new SHA512/256 hash engine.
-    pub const fn new() -> Self { Self(sha512::HashEngine::sha512_256()) }
+    pub const fn new() -> Self {
+        Self(sha512::HashEngine::sha512_256())
+    }
 }
 
 impl Default for HashEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl crate::HashEngine for HashEngine {
@@ -51,9 +55,15 @@ impl crate::HashEngine for HashEngine {
     type Bytes = [u8; 64];
     const BLOCK_SIZE: usize = sha512::BLOCK_SIZE;
 
-    fn n_bytes_hashed(&self) -> u64 { self.0.n_bytes_hashed() }
-    fn input(&mut self, inp: &[u8]) { self.0.input(inp); }
-    fn finalize(self) -> Self::Hash { Hash::from_engine(self) }
+    fn n_bytes_hashed(&self) -> u64 {
+        self.0.n_bytes_hashed()
+    }
+    fn input(&mut self, inp: &[u8]) {
+        self.0.input(inp);
+    }
+    fn finalize(self) -> Self::Hash {
+        Hash::from_engine(self)
+    }
 }
 
 #[cfg(test)]

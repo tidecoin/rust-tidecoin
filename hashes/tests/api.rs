@@ -137,7 +137,9 @@ struct OtherStructs {
 }
 
 impl OtherStructs {
-    fn new() -> Self { Self { a: sha256::Midstate::new(TEST_MIDSTATE, 0) } }
+    fn new() -> Self {
+        Self { a: sha256::Midstate::new(TEST_MIDSTATE, 0) }
+    }
 }
 
 /// All hash engine types that implement `Default`.

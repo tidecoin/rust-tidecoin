@@ -21,19 +21,18 @@ jobs:
         # We only get 20 jobs at a time, we probably don't want to go
         # over that limit with fuzzing because of the hour run time.
         fuzz_target: [
-          bitcoin_arbitrary_block,
-          bitcoin_arbitrary_script,
-          bitcoin_arbitrary_transaction,
-          bitcoin_arbitrary_witness,
-          bitcoin_deserialize_block,
-          bitcoin_deserialize_prefilled_transaction,
-          bitcoin_deserialize_psbt,
-          bitcoin_deserialize_script,
-          bitcoin_deserialize_transaction,
-          bitcoin_deserialize_witness,
-          bitcoin_parse_address,
-          bitcoin_parse_outpoint,
-          bitcoin_script_bytes_to_asm_fmt,
+          tidecoin_arbitrary_block,
+          tidecoin_arbitrary_script,
+          tidecoin_arbitrary_transaction,
+          tidecoin_arbitrary_witness,
+          tidecoin_deserialize_block,
+          tidecoin_deserialize_prefilled_transaction,
+          tidecoin_deserialize_script,
+          tidecoin_deserialize_transaction,
+          tidecoin_deserialize_witness,
+          tidecoin_parse_address,
+          tidecoin_parse_outpoint,
+          tidecoin_script_bytes_to_asm_fmt,
           consensus_encoding_decode_array,
           consensus_encoding_decode_byte_vec,
           consensus_encoding_decode_compact_size,
@@ -68,11 +67,11 @@ jobs:
           key: cache-${{ matrix.target }}-${{ hashFiles('**/Cargo.toml','**/Cargo.lock') }}
       - uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
         with:
-          toolchain: '1.74.0'
+          toolchain: '1.94.1'
       - name: fuzz
         run: |
-          if [[ "${{ matrix.fuzz_target }}" =~ ^bitcoin ]]; then
-              export RUSTFLAGS='--cfg=hashes_fuzz --cfg=secp256k1_fuzz'
+          if [[ "${{ matrix.fuzz_target }}" =~ ^tidecoin ]]; then
+              export RUSTFLAGS='--cfg=hashes_fuzz'
           fi
           echo "Using RUSTFLAGS $RUSTFLAGS"
           cd fuzz && ./fuzz.sh "${{ matrix.fuzz_target }}"

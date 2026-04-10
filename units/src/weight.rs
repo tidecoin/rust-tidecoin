@@ -26,12 +26,16 @@ mod encapsulate {
 
     impl Weight {
         /// Constructs a new [`Weight`] from weight units.
-        pub const fn from_wu(wu: u64) -> Self { Self(wu) }
+        pub const fn from_wu(wu: u64) -> Self {
+            Self(wu)
+        }
 
         /// Returns raw weight units.
         ///
         /// Can be used instead of `into()` to avoid inference issues.
-        pub const fn to_wu(self) -> u64 { self.0 }
+        pub const fn to_wu(self) -> u64 {
+            self.0
+        }
     }
 }
 #[doc(inline)]
@@ -98,7 +102,9 @@ impl Weight {
 
     /// Constructs a new [`Weight`] from witness size.
     #[deprecated(since = "1.0.0-rc.1", note = "use `from_wu` instead")]
-    pub const fn from_witness_data_size(witness_size: u64) -> Self { Self::from_wu(witness_size) }
+    pub const fn from_witness_data_size(witness_size: u64) -> Self {
+        Self::from_wu(witness_size)
+    }
 
     /// Constructs a new [`Weight`] from non-witness size.
     ///
@@ -135,16 +141,24 @@ impl Weight {
     }
 
     /// Converts to kilo weight units rounding down.
-    pub const fn to_kwu_floor(self) -> u64 { self.to_wu() / 1000 }
+    pub const fn to_kwu_floor(self) -> u64 {
+        self.to_wu() / 1000
+    }
 
     /// Converts to kilo weight units rounding up.
-    pub const fn to_kwu_ceil(self) -> u64 { self.to_wu().div_ceil(1_000) }
+    pub const fn to_kwu_ceil(self) -> u64 {
+        self.to_wu().div_ceil(1_000)
+    }
 
     /// Converts to vB rounding down.
-    pub const fn to_vbytes_floor(self) -> u64 { self.to_wu() / Self::WITNESS_SCALE_FACTOR }
+    pub const fn to_vbytes_floor(self) -> u64 {
+        self.to_wu() / Self::WITNESS_SCALE_FACTOR
+    }
 
     /// Converts to vB rounding up.
-    pub const fn to_vbytes_ceil(self) -> u64 { self.to_wu().div_ceil(Self::WITNESS_SCALE_FACTOR) }
+    pub const fn to_vbytes_ceil(self) -> u64 {
+        self.to_wu().div_ceil(Self::WITNESS_SCALE_FACTOR)
+    }
 
     /// Checked addition.
     ///
@@ -218,7 +232,9 @@ impl fmt::Display for Weight {
 }
 
 impl From<Weight> for u64 {
-    fn from(value: Weight) -> Self { value.to_wu() }
+    fn from(value: Weight) -> Self {
+        value.to_wu()
+    }
 }
 
 crate::internal_macros::impl_op_for_references! {
@@ -273,15 +289,21 @@ crate::internal_macros::impl_add_assign!(Weight);
 crate::internal_macros::impl_sub_assign!(Weight);
 
 impl ops::MulAssign<u64> for Weight {
-    fn mul_assign(&mut self, rhs: u64) { *self = Self::from_wu(self.to_wu() * rhs); }
+    fn mul_assign(&mut self, rhs: u64) {
+        *self = Self::from_wu(self.to_wu() * rhs);
+    }
 }
 
 impl ops::DivAssign<u64> for Weight {
-    fn div_assign(&mut self, rhs: u64) { *self = Self::from_wu(self.to_wu() / rhs); }
+    fn div_assign(&mut self, rhs: u64) {
+        *self = Self::from_wu(self.to_wu() / rhs);
+    }
 }
 
 impl ops::RemAssign<u64> for Weight {
-    fn rem_assign(&mut self, rhs: u64) { *self = Self::from_wu(self.to_wu() % rhs); }
+    fn rem_assign(&mut self, rhs: u64) {
+        *self = Self::from_wu(self.to_wu() % rhs);
+    }
 }
 
 impl core::iter::Sum for Weight {
@@ -368,7 +390,9 @@ mod tests {
     }
 
     #[test]
-    fn from_kwu_overflows() { assert!(Weight::from_kwu(u64::MAX).is_none()) }
+    fn from_kwu_overflows() {
+        assert!(Weight::from_kwu(u64::MAX).is_none());
+    }
 
     #[test]
     fn from_vb() {
@@ -392,7 +416,9 @@ mod tests {
     #[test]
     #[cfg(debug_assertions)]
     #[should_panic = "attempt to multiply with overflow"]
-    fn from_vb_unchecked_panic() { Weight::from_vb_unchecked(u64::MAX); }
+    fn from_vb_unchecked_panic() {
+        Weight::from_vb_unchecked(u64::MAX);
+    }
 
     #[test]
     #[allow(deprecated)] // tests the deprecated function
@@ -476,7 +502,9 @@ mod tests {
     }
 
     #[test]
-    fn checked_add_overflows() { assert!(Weight::MAX.checked_add(ONE).is_none()) }
+    fn checked_add_overflows() {
+        assert!(Weight::MAX.checked_add(ONE).is_none());
+    }
 
     #[test]
     fn checked_sub() {
@@ -484,7 +512,9 @@ mod tests {
     }
 
     #[test]
-    fn checked_sub_overflows() { assert!(Weight::ZERO.checked_sub(ONE).is_none()) }
+    fn checked_sub_overflows() {
+        assert!(Weight::ZERO.checked_sub(ONE).is_none());
+    }
 
     #[test]
     fn checked_mul() {
@@ -493,7 +523,9 @@ mod tests {
     }
 
     #[test]
-    fn checked_mul_overflows() { assert!(Weight::MAX.checked_mul(2).is_none()) }
+    fn checked_mul_overflows() {
+        assert!(Weight::MAX.checked_mul(2).is_none());
+    }
 
     #[test]
     fn checked_div() {
@@ -502,7 +534,9 @@ mod tests {
     }
 
     #[test]
-    fn checked_div_overflows() { assert!(TWO.checked_div(0).is_none()) }
+    fn checked_div_overflows() {
+        assert!(TWO.checked_div(0).is_none());
+    }
 
     #[test]
     #[allow(clippy::op_ref)]

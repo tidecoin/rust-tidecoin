@@ -95,7 +95,9 @@ struct Types {
 }
 
 impl Types {
-    fn new() -> Self { Self { a: Enums::new(), b: Structs::max() } }
+    fn new() -> Self {
+        Self { a: Enums::new(), b: Structs::max() }
+    }
 }
 
 /// A struct that includes all public non-error non-helper structs.
@@ -454,7 +456,9 @@ fn dyn_compatible() {
 
 #[test]
 #[cfg(feature = "encoding")]
-fn decoders_implement_default() { let _ = Decoders::default(); }
+fn decoders_implement_default() {
+    let _ = Decoders::default();
+}
 
 #[test]
 #[cfg(feature = "encoding")]

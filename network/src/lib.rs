@@ -39,7 +39,9 @@ pub enum NetworkKind {
 
 impl NetworkKind {
     /// Returns true if this is real mainnet tidecoin.
-    pub const fn is_mainnet(self) -> bool { matches!(self, Self::Main) }
+    pub const fn is_mainnet(self) -> bool {
+        matches!(self, Self::Main)
+    }
 }
 
 impl From<Network> for NetworkKind {
@@ -214,7 +216,9 @@ impl fmt::Display for ParseNetworkError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for ParseNetworkError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 impl FromStr for Network {
@@ -232,7 +236,9 @@ impl FromStr for Network {
 }
 
 impl AsRef<Self> for Network {
-    fn as_ref(&self) -> &Self { self }
+    fn as_ref(&self) -> &Self {
+        self
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -277,11 +283,7 @@ mod tests {
         use std::{format, vec};
 
         use Network::*;
-        let tests = vec![
-            (Tidecoin, "tidecoin"),
-            (Testnet, "testnet"),
-            (Regtest, "regtest"),
-        ];
+        let tests = vec![(Tidecoin, "tidecoin"), (Testnet, "testnet"), (Regtest, "regtest")];
 
         for tc in tests {
             let network = tc.0;

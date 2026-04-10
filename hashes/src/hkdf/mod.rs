@@ -38,7 +38,9 @@ pub struct Hkdf<T: HashEngine> {
 }
 
 impl<T: HashEngine> Drop for Hkdf<T> {
-    fn drop(&mut self) { self.non_secure_erase(); }
+    fn drop(&mut self) {
+        self.non_secure_erase();
+    }
 }
 
 impl<T: HashEngine> Hkdf<T> {
@@ -49,7 +51,9 @@ impl<T: HashEngine> Hkdf<T> {
     /// is very subtle. For more discussion on this, please see the documentation
     /// of the [`zeroize`](https://docs.rs/zeroize) crate.
     #[inline]
-    pub fn non_secure_erase(&mut self) { crate::non_secure_erase(&mut self.prk); }
+    pub fn non_secure_erase(&mut self) {
+        crate::non_secure_erase(&mut self.prk);
+    }
 }
 
 impl<T: HashEngine> Hkdf<T>
@@ -137,7 +141,9 @@ impl<T: HashEngine> fmt::Debug for Hkdf<T> {
         struct Fingerprint([u8; 8]); // Print 16 hex characters as a fingerprint.
 
         impl fmt::Debug for Fingerprint {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { crate::debug_hex(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                crate::debug_hex(&self.0, f)
+            }
         }
 
         sha256t_tag! {

@@ -153,7 +153,9 @@ pub struct EncodableByteIter<'e, T: Encodable + ?Sized + 'e> {
 
 impl<'e, T: Encodable + ?Sized + 'e> EncodableByteIter<'e, T> {
     /// Constructs a new byte iterator around a provided encodable.
-    pub fn new(encodable: &'e T) -> Self { Self { enc: encodable.encoder(), position: 0 } }
+    pub fn new(encodable: &'e T) -> Self {
+        Self { enc: encodable.encoder(), position: 0 }
+    }
 }
 
 // Manual impl rather than #[derive(Clone)] because derive would constrain `where T: Clone`,
@@ -162,7 +164,9 @@ impl<'e, T: Encodable + ?Sized + 'e> Clone for EncodableByteIter<'e, T>
 where
     T::Encoder<'e>: Clone,
 {
-    fn clone(&self) -> Self { Self { enc: self.enc.clone(), position: self.position } }
+    fn clone(&self) -> Self {
+        Self { enc: self.enc.clone(), position: self.position }
+    }
 }
 
 impl<'e, T: Encodable + ?Sized + 'e> Iterator for EncodableByteIter<'e, T> {
@@ -186,7 +190,9 @@ where
     T: Encodable + ?Sized + 'e,
     T::Encoder<'e>: ExactSizeEncoder,
 {
-    fn len(&self) -> usize { self.enc.len() - self.position }
+    fn len(&self) -> usize {
+        self.enc.len() - self.position
+    }
 }
 
 /// An encoder with a known size.
@@ -195,7 +201,9 @@ pub trait ExactSizeEncoder: Encoder {
     fn len(&self) -> usize;
 
     /// Returns whether the encoder would yield an empty response.
-    fn is_empty(&self) -> bool { self.len() == 0 }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Encodes an object into a vector.

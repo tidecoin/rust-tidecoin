@@ -16,7 +16,9 @@ use crate::result::{MathOp, NumOpError, NumOpResult};
 use crate::FeeRate;
 use crate::Weight;
 
-fn amt_err(e: ParseAmountErrorInner) -> ParseAmountError { ParseAmountError(e) }
+fn amt_err(e: ParseAmountErrorInner) -> ParseAmountError {
+    ParseAmountError(e)
+}
 
 fn parse_err(e: ParseAmountErrorInner) -> ParseError {
     ParseError(ParseErrorInner::Amount(ParseAmountError(e)))
@@ -26,16 +28,24 @@ fn denom_err(e: ParseDenominationError) -> ParseError {
 }
 
 #[track_caller]
-fn sat(sat: u64) -> Amount { Amount::from_sat(sat).unwrap() }
+fn sat(sat: u64) -> Amount {
+    Amount::from_sat(sat).unwrap()
+}
 
 #[track_caller]
-fn ssat(ssat: i64) -> SignedAmount { SignedAmount::from_sat(ssat).unwrap() }
+fn ssat(ssat: i64) -> SignedAmount {
+    SignedAmount::from_sat(ssat).unwrap()
+}
 
 #[track_caller]
-fn res(n_sat: u64) -> NumOpResult<Amount> { NumOpResult::from(sat(n_sat)) }
+fn res(n_sat: u64) -> NumOpResult<Amount> {
+    NumOpResult::from(sat(n_sat))
+}
 
 #[track_caller]
-fn sres(n_sat: i64) -> NumOpResult<SignedAmount> { NumOpResult::from(ssat(n_sat)) }
+fn sres(n_sat: i64) -> NumOpResult<SignedAmount> {
+    NumOpResult::from(ssat(n_sat))
+}
 
 #[test]
 fn sanity_check() {
@@ -1003,8 +1013,8 @@ fn denomination_string_acceptable_forms() {
     // Exhaustive list of valid forms.
     let valid = [
         "TDC", "tdc", "cTDC", "ctdc", "mTDC", "mtdc", "uTDC", "utdc", "µTDC", "µtdc", "bit",
-        "bits", "BIT", "BITS", "TIDOSHI", "tidoshi", "TIDOSHIS", "tidoshis", "TIDO", "tido", "TIDOS",
-        "tidos",
+        "bits", "BIT", "BITS", "TIDOSHI", "tidoshi", "TIDOSHIS", "tidoshis", "TIDO", "tido",
+        "TIDOS", "tidos",
     ];
     for denom in valid {
         assert!(denom.parse::<Denomination>().is_ok());

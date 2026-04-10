@@ -412,7 +412,9 @@ pub mod as_sat_per_vb_ceil {
 pub struct OverflowError;
 
 impl From<Infallible> for OverflowError {
-    fn from(never: Infallible) -> Self { match never {} }
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
 }
 
 impl fmt::Display for OverflowError {
