@@ -352,7 +352,7 @@ impl_u32_wrapper! {
 impl BlockMtp {
     /// Block MTP 0.
     ///
-    /// Since MTP is a timestamp, 0 is before Bitcoin was invented. This const may still be useful
+    /// Since MTP is a timestamp, 0 is before Tidecoin genesis. This const may still be useful
     /// for some use cases e.g., folding a sum of intervals.
     pub const ZERO: Self = Self(0);
 

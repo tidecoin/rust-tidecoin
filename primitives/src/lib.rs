@@ -10,7 +10,7 @@
 //! This crate can be used in a no-std environment but a lot of the functionality requires an
 //! allocator i.e., requires the `alloc` feature to be enabled.
 //!
-//! [`rust-tidecoin`]: <https://github.com/nicenemo/rust-tidecoin>
+//! [`rust-tidecoin`]: <https://github.com/tidecoin/rust-tidecoin>
 
 #![no_std]
 // Coding conventions.
@@ -50,7 +50,9 @@ mod hash_types;
 pub mod opcodes;
 
 pub mod block;
+pub mod compact_filter;
 pub mod merkle_tree;
+pub mod pq;
 #[cfg(feature = "alloc")]
 pub mod script;
 #[cfg(all(feature = "serde", feature = "hex", feature = "alloc"))]
@@ -76,10 +78,6 @@ pub use units::{
     weight::{self, Weight},
 };
 
-#[deprecated(since = "1.0.0-rc.0", note = "use `BlockHeightInterval` instead")]
-#[doc(hidden)]
-pub type BlockInterval = BlockHeightInterval;
-
 #[doc(inline)]
 #[cfg(feature = "alloc")]
 pub use self::{
@@ -96,6 +94,7 @@ pub use self::{
 #[doc(inline)]
 pub use self::{
     block::{BlockHash, Header as BlockHeader, Version as BlockVersion, WitnessCommitment},
+    pq::PqScheme,
     transaction::{OutPoint, Txid, Version as TransactionVersion, Wtxid},
 };
 

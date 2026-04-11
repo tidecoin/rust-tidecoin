@@ -1,7 +1,7 @@
 # PSBT
 
-PSBT is not part of the live Tidecoin crate.
+PSBT is not exposed as a full live Rust API in this repository.
 
-This file remains only as a marker that PSBT is not part of the current active architecture. If a
-future Tidecoin-native transaction construction format is introduced, it should be designed from
-current Tidecoin requirements rather than by reviving removed signing infrastructure.
+The Tidecoin node has PSBT support, and this repository keeps only the lower-level primitives that
+are needed by active Tidecoin code. If a full Rust PSBT API is introduced here, it should be designed
+from current Tidecoin requirements rather than by reviving removed signing infrastructure.

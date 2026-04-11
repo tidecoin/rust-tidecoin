@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! A UNIX timestamp used as the Bitcoin block time.
+//! A UNIX timestamp used as the Tidecoin block time.
 //!
 //! Also known as Epoch Time - January 1, 1970.
 //!
-//! This differs from other UNIX timestamps in that we only use non-negative values. The Epoch
-//! pre-dates Bitcoin so timestamps before this are not useful for block timestamps.
+//! This differs from other UNIX timestamps in that we only use non-negative values.
 
 use core::fmt;
 
@@ -22,18 +21,11 @@ use crate::parse_int::{self, PrefixedHexError, UnprefixedHexError};
 pub use self::error::BlockTimeDecoderError;
 
 mod encapsulate {
-    /// A Bitcoin block timestamp.
+    /// A Tidecoin block timestamp.
     ///
-    /// > Each block contains a Unix time timestamp. In addition to serving as a source of variation for
-    /// > the block hash, they also make it more difficult for an adversary to manipulate the block chain.
-    /// >
-    /// > A timestamp is accepted as valid if it is greater than the median timestamp of previous 11
-    /// > blocks, and less than the network-adjusted time + 2 hours. "Network-adjusted time" is the
-    /// > median of the timestamps returned by all nodes connected to you. As a result block timestamps
-    /// > are not exactly accurate, and they do not need to be. Block times are accurate only to within
-    /// > an hour or two.
+    /// Each block contains a Unix timestamp. The timestamp is consensus data and participates in
+    /// the block hash. It is not expected to be a precise wall-clock time.
     ///
-    /// ref: <https://en.bitcoin.it/wiki/Block_timestamp>
     #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct BlockTime(u32);
 

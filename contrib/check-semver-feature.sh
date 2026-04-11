@@ -18,34 +18,32 @@ set -euo pipefail
 # under the hood to invoke rustdoc.
 RUSTDOCFLAGS="-Z unstable-options --document-private-items --document-hidden-items --output-format=json --cap-lints=allow"
 
+SEMVER_FEATURE_CRATES=(
+    "base58ck"
+    "chacha20-poly1305"
+    "consensus"
+    "tidecoin"
+    "tidecoin-consensus-core"
+    "tidecoin-consensus-encoding"
+    "tidecoin_hashes"
+    "tidecoin-internals"
+    "tidecoin-io"
+    "tidecoin-network-kind"
+    "tidecoin-p2p-messages"
+    "tidecoin-primitives"
+    "tidecoin-units"
+)
+
 main() {
-    # Generate JSON files for no-features and all-features
-    # 1. bitcoin
-    generate_json_files_all_features "bitcoin"
-    generate_json_files_no_default_features "bitcoin"
-
-    # 2. base58ck
-    generate_json_files_all_features "base58ck"
-    generate_json_files_no_default_features "base58ck"
-
-    # 3. bitcoin_hashes
-    generate_json_files_all_features "bitcoin_hashes"
-    generate_json_files_no_default_features "bitcoin_hashes"
-
-    # 4. bitcoin-units
-    generate_json_files_all_features "bitcoin-units"
-    generate_json_files_no_default_features "bitcoin-units"
-
-    # 5. bitcoin-io
-    generate_json_files_all_features "bitcoin-io"
-    generate_json_files_no_default_features "bitcoin-io"
+    for crate in "${SEMVER_FEATURE_CRATES[@]}"; do
+        generate_json_files_all_features "$crate"
+        generate_json_files_no_default_features "$crate"
+    done
 
     # Check for API semver non-additive cargo features on all the generated JSON files above.
-    run_cargo_semver_check "bitcoin"
-    run_cargo_semver_check "base58ck"
-    run_cargo_semver_check "bitcoin_hashes"
-    run_cargo_semver_check "bitcoin-units"
-    run_cargo_semver_check "bitcoin-io"
+    for crate in "${SEMVER_FEATURE_CRATES[@]}"; do
+        run_cargo_semver_check "$crate"
+    done
 
     # Invoke cargo semver-checks to check for non-additive cargo features
     # in all generated files.

@@ -1,14 +1,13 @@
 //! The Tidecoin segregated witness program.
 //!
-//! > A scriptPubKey (or redeemScript as defined in BIP-0016/P2SH) that consists of a 1-byte push
-//! > opcode (for 0 to 16) followed by a data push between 2 and 40 bytes gets a new special
-//! > meaning. The value of the first push is called the "version byte". The following byte
-//! > vector pushed is called the "witness program".
+//! > A script pubkey consisting of a 1-byte push opcode (for 0 to 16) followed by a data push
+//! > between 2 and 40 bytes is a witness program. The value of the first push is the "version
+//! > byte"; the following byte vector is the witness program.
 //!
-use core::convert::Infallible;
-use core::fmt;
-
 use internals::array_vec::ArrayVec;
+use primitives::script::{
+    validate_witness_program, ParsedWitnessProgram, WitnessProgramClass as PrimitiveClass,
+};
 
 use super::witness_version::WitnessVersion;
 use super::{PushBytes, WScriptHash, WitnessScript, WitnessScriptSizeError};
@@ -16,13 +15,13 @@ use crate::crypto::key::WPubkeyHash;
 use crate::script::WitnessScriptExt as _;
 
 /// The minimum byte size of a segregated witness program.
-pub const MIN_SIZE: usize = 2;
+pub const MIN_SIZE: usize = primitives::script::WITNESS_PROGRAM_MIN_SIZE;
 
 /// The maximum byte size of a segregated witness program.
-pub const MAX_SIZE: usize = 64;
+pub const MAX_SIZE: usize = primitives::script::WITNESS_PROGRAM_MAX_SIZE;
 
 /// The P2A program which is given by 0x4e73.
-pub(crate) const P2A_PROGRAM: [u8; 2] = [78, 115];
+pub(crate) use primitives::script::P2A_PROGRAM;
 
 /// The segregated witness program.
 ///
@@ -40,15 +39,7 @@ pub struct WitnessProgram {
 impl WitnessProgram {
     /// Constructs a new witness program, copying the content from the given byte slice.
     pub fn new(version: WitnessVersion, bytes: &[u8]) -> Result<Self, Error> {
-        let program_len = bytes.len();
-        if program_len < MIN_SIZE || program_len > MAX_SIZE {
-            return Err(Error::InvalidLength(program_len));
-        }
-
-        // Specific SegWit v0 check. These addresses can never spend funds sent to them.
-        if version == WitnessVersion::V0 && (program_len != 20 && program_len != 32) {
-            return Err(Error::InvalidSegwitV0Length(program_len));
-        }
+        validate_witness_program(version.to_num(), bytes.len())?;
 
         let program = ArrayVec::from_slice(bytes);
         Ok(Self { version, program })
@@ -109,62 +100,31 @@ impl WitnessProgram {
 
     /// Returns true if this witness program is for a P2WPKH output.
     pub fn is_p2wpkh(&self) -> bool {
-        self.version == WitnessVersion::V0 && self.program.len() == 20
+        self.class() == PrimitiveClass::P2wpkh
     }
 
     /// Returns true if this witness program is for a P2WSH output.
     pub fn is_p2wsh(&self) -> bool {
-        self.version == WitnessVersion::V0 && self.program.len() == 32
+        self.class() == PrimitiveClass::P2wsh
     }
 
     /// Returns true if this witness program is for a P2WSH-512 output.
     pub fn is_p2wsh512(&self) -> bool {
-        self.version == WitnessVersion::V1 && self.program.len() == 64
+        self.class() == PrimitiveClass::P2wsh512
     }
 
     /// Returns true if this witness program is for a P2A output.
     pub fn is_p2a(&self) -> bool {
-        self.version == WitnessVersion::V1 && self.program == P2A_PROGRAM
+        self.class() == PrimitiveClass::P2a
+    }
+
+    fn class(&self) -> PrimitiveClass {
+        ParsedWitnessProgram::from_program(self.version.to_num(), self.program.as_slice()).class()
     }
 }
 
 /// Witness program error.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Error {
-    /// The witness program must be between 2 and 64 bytes in length.
-    InvalidLength(usize),
-    /// A v0 witness program must be either of length 20 or 32.
-    InvalidSegwitV0Length(usize),
-}
-
-impl From<Infallible> for Error {
-    fn from(never: Infallible) -> Self {
-        match never {}
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::InvalidLength(len) => {
-                write!(f, "witness program must be between 2 and 64 bytes: length={}", len)
-            }
-            Self::InvalidSegwitV0Length(len) => {
-                write!(f, "a v0 witness program must be either 20 or 32 bytes: length={}", len)
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::InvalidLength(_) | Self::InvalidSegwitV0Length(_) => None,
-        }
-    }
-}
+pub type Error = primitives::script::WitnessProgramError;
 
 #[cfg(test)]
 mod tests {

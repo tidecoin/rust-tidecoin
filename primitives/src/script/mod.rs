@@ -10,6 +10,7 @@ mod push_bytes;
 mod tag;
 #[cfg(test)]
 mod tests;
+mod witness_program;
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -17,7 +18,7 @@ use core::fmt;
 use core::marker::PhantomData;
 
 #[cfg(feature = "hex")]
-use hex_unstable::DisplayHex;
+use internals::hex::DisplayHex;
 use internals::script::{self, PushDataLenLen};
 
 use crate::prelude::rc::Rc;
@@ -34,6 +35,10 @@ pub use self::{
     owned::{ScriptBuf, ScriptBufDecoder, ScriptBufDecoderError},
     push_bytes::{PushBytes, PushBytesBuf, PushBytesError, ScriptIntError},
     tag::{Tag, RedeemScriptTag, ScriptPubKeyTag, ScriptSigTag, WitnessScriptTag},
+    witness_program::{
+        validate_witness_program, ParsedWitnessProgram, WitnessProgramClass, WitnessProgramError,
+        P2A_PROGRAM, WITNESS_PROGRAM_MAX_SIZE, WITNESS_PROGRAM_MIN_SIZE,
+    },
 };
 #[doc(inline)]
 pub use crate::hash_types::{
@@ -100,6 +105,10 @@ impl std::error::Error for Error {}
 pub const MAX_REDEEM_SCRIPT_SIZE: usize = 520;
 /// The maximum allowed redeem script size of the witness script.
 pub const MAX_WITNESS_SCRIPT_SIZE: usize = 10_000;
+/// Standard script-number byte limit used by arithmetic and most script opcodes.
+pub const SCRIPTNUM_STANDARD_MAX_LEN: usize = 4;
+/// Extended script-number byte limit used by lock-time related opcodes.
+pub const SCRIPTNUM_CLTV_MAX_LEN: usize = 5;
 
 /// Either a redeem script or a Segwit version 0 scriptpubkey.
 ///
@@ -177,30 +186,40 @@ impl TryFrom<&WitnessScript> for WScriptHash {
 }
 
 /// Encodes an integer in script number format.
+///
+/// # Panics
+///
+/// Panics if the encoded value exceeds the legacy 8-byte output buffer.
 pub fn write_scriptint(out: &mut [u8; 8], n: i64) -> usize {
-    let mut len = 0;
+    let encoded = encode_scriptnum(n);
+    assert!(encoded.len() <= out.len(), "encoded script integer exceeds output buffer");
+    out[..encoded.len()].copy_from_slice(&encoded);
+    encoded.len()
+}
+
+/// Encodes an integer in script number format into a freshly allocated buffer.
+pub fn encode_scriptnum(n: i64) -> Vec<u8> {
     if n == 0 {
-        return len;
+        return Vec::new();
     }
 
+    let mut encoded = Vec::new();
     let neg = n < 0;
     let mut abs = n.unsigned_abs();
-    while abs > 0xFF {
-        out[len] = (abs & 0xFF) as u8;
-        len += 1;
+    while abs > 0 {
+        encoded.push((abs & 0xff) as u8);
         abs >>= 8;
     }
-    if abs & 0x80 != 0 {
-        out[len] = abs as u8;
-        len += 1;
-        out[len] = if neg { 0x80 } else { 0 };
-        len += 1;
-    } else {
-        abs |= if neg { 0x80 } else { 0 };
-        out[len] = abs as u8;
-        len += 1;
+
+    if let Some(last) = encoded.last_mut() {
+        if *last & 0x80 != 0 {
+            encoded.push(if neg { 0x80 } else { 0 });
+        } else if neg {
+            *last |= 0x80;
+        }
     }
-    len
+
+    encoded
 }
 
 /// Decodes a script integer without enforcing minimal encoding.
@@ -213,11 +232,29 @@ pub fn write_scriptint(out: &mut [u8; 8], n: i64) -> usize {
 ///
 /// Panics only if the internal 4-byte bound invariant is violated.
 pub fn read_scriptint_non_minimal(v: &[u8]) -> Result<i32, ScriptIntError> {
+    let ret = read_scriptnum(v, false, SCRIPTNUM_STANDARD_MAX_LEN)?;
+    Ok(i32::try_from(ret).expect("4 bytes or less fits in i32"))
+}
+
+/// Decodes a script number with caller-selected minimal-encoding and length rules.
+///
+/// # Errors
+///
+/// Returns [`ScriptIntError::NumericOverflow`] when `v` is longer than `max_len`, and
+/// [`ScriptIntError::NonMinimal`] when `require_minimal` is true and the encoding is non-minimal.
+pub fn read_scriptnum(
+    v: &[u8],
+    require_minimal: bool,
+    max_len: usize,
+) -> Result<i64, ScriptIntError> {
     if v.is_empty() {
         return Ok(0);
     }
-    if v.len() > 4 {
+    if v.len() > max_len {
         return Err(ScriptIntError::NumericOverflow);
+    }
+    if require_minimal && !is_minimally_encoded_scriptnum(v, max_len) {
+        return Err(ScriptIntError::NonMinimal);
     }
 
     let mut ret = 0i64;
@@ -230,7 +267,41 @@ pub fn read_scriptint_non_minimal(v: &[u8]) -> Result<i32, ScriptIntError> {
         ret &= (1 << (sh - 1)) - 1;
         ret = -ret;
     }
-    Ok(i32::try_from(ret).expect("4 bytes or less fits in i32"))
+    Ok(ret)
+}
+
+/// Returns whether a script-number byte slice uses minimal encoding for the provided bound.
+pub fn is_minimally_encoded_scriptnum(v: &[u8], max_len: usize) -> bool {
+    if v.len() > max_len {
+        return false;
+    }
+    if v.is_empty() {
+        return true;
+    }
+
+    let last = v[v.len() - 1];
+    if last.trailing_zeros() >= 7 {
+        if v.len() == 1 {
+            return false;
+        }
+        if v[v.len() - 2] & 0x80 == 0 {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Decodes a script truth value.
+///
+/// This uses script boolean semantics: all zero bytes and negative zero are false; every other
+/// byte string is true. Numeric-overflow rules do not apply.
+#[inline]
+pub fn read_scriptbool(v: &[u8]) -> bool {
+    match v.split_last() {
+        Some((last, rest)) => !((last & !0x80 == 0x00) && rest.iter().all(|&b| b == 0)),
+        None => false,
+    }
 }
 
 // We keep all the `Script` and `ScriptBuf` impls together since it's easier to see side-by-side.

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! BIP 158 Compact Block Filters for Light Clients.
+//! Tidecoin compact block filters for light clients.
 //!
 //! This module implements a structure for compact filters on block data, for
-//! use in the BIP 157 light client protocol. The filter construction proposed
-//! is an alternative to Bloom filters, as used in BIP 37, that minimizes filter
+//! use in the Tidecoin light client protocol. The filter construction
+//! is an alternative to Bloom filters that minimizes filter
 //! size by using Golomb-Rice coding for compression.
 //!
 //! # Examples
@@ -33,17 +33,18 @@ use core::convert::Infallible;
 use core::fmt;
 
 use encoding::{CompactSizeEncoder, CompactSizeU64Decoder, Decoder as _, Encoder as _};
-use hashes::{sha256d, siphash24};
+use hashes::siphash24;
 use internals::array::ArrayExt as _;
 use internals::{write_err, ToU64 as _};
 use io::{BufRead, Write};
+use primitives::compact_filter::FilterHash;
 
 use crate::block::{Block, BlockHash, Checked};
 use crate::prelude::{BTreeSet, Borrow, Vec};
 use crate::script::{ScriptPubKey, ScriptPubKeyExt as _};
 use crate::transaction::OutPoint;
 
-/// Golomb encoding parameter used by the BIP-0158-style filter format.
+/// Golomb encoding parameter used by the Tidecoin compact-filter format.
 const P: u8 = 19;
 const M: u64 = 784931;
 
@@ -88,7 +89,7 @@ impl From<io::Error> for Error {
     }
 }
 
-/// A block filter, as described by BIP 158.
+/// A Tidecoin compact block filter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockFilter {
     /// Golomb encoded filter
@@ -121,8 +122,8 @@ impl BlockFilter {
     }
 
     /// Computes the canonical hash for the given filter.
-    pub fn filter_hash(&self) -> sha256d::Hash {
-        sha256d::Hash::hash(&self.content)
+    pub fn filter_hash(&self) -> FilterHash {
+        FilterHash::hash_filter_content(&self.content)
     }
 
     /// Returns true if any query matches against this [`BlockFilter`].
@@ -500,7 +501,7 @@ impl<'a, R: BufRead + ?Sized> BitStreamReader<'a, R> {
     /// # Examples
     ///
     /// ```
-    /// # use tidecoin::bip158::BitStreamReader;
+    /// # use tidecoin::compact_filter::BitStreamReader;
     /// # let data = [0xff];
     /// # let mut input = data.as_slice();
     /// let mut reader = BitStreamReader::new(&mut input); // input contains all 1's
@@ -582,7 +583,7 @@ mod test {
     #[cfg(feature = "std")]
     use std::collections::HashMap;
 
-    use hex_unstable::hex;
+    use internals::hex_lit as hex;
     #[cfg(feature = "std")]
     use serde_json::Value;
 
@@ -595,7 +596,8 @@ mod test {
     fn blockfilters() {
         let hex = |b| crate::hex::decode_to_vec(b).unwrap();
 
-        // Compact block filter test vectors.
+        // Generic compact-filter vectors. These prove the codec/filter algorithm, not Tidecoin
+        // node parity; node-backed compact-filter fixtures should live in a dedicated parity test.
         let data = include_str!("../tests/data/blockfilters.json");
 
         let testdata = serde_json::from_str::<Value>(data).unwrap().as_array().unwrap().clone();

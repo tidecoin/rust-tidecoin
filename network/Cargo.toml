@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin-network-kind"
 version = "0.1.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 description = "Which network we are operating on"
 categories = ["cryptography::cryptocurrencies"]
 keywords = ["tidecoin", "types"]

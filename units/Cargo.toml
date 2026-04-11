@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin-units"
 version = "0.3.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>", "Tobin C. Harding <me@tobin.cc>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin/"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 description = "Basic Tidecoin numeric units such as amount"
 categories = ["cryptography::cryptocurrencies"]
 keywords = ["tidecoin", "newtypes", "no-std"]

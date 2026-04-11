@@ -2,28 +2,14 @@
 
 //! Tidecoin key expression and deterministic derivation.
 //!
-//! This crate currently implements the Tidecoin node's `pqhd(...)` key
-//! expression surface and the wallet descriptor strings built on top of it.
+//! This module implements the Tidecoin node's `pqhd(...)` key expression
+//! surface and the wallet descriptor strings built on top of it.
 
-#![no_std]
-#![doc(test(attr(warn(unused))))]
-#![warn(deprecated_in_future)]
-#![warn(missing_docs)]
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
-#[cfg(feature = "std")]
-extern crate std;
-
-#[cfg(feature = "alloc")]
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::str::FromStr;
 
-#[cfg(feature = "alloc")]
-use tidecoin::Params;
-use tidecoin::{pqhd, PqError, PqPublicKey, PqScheme, PqSecretKey, PqhdSeedId};
+use crate::{pqhd, Params, PqError, PqPublicKey, PqScheme, PqSecretKey, PqhdSeedId};
 
 /// Wallet descriptor output types used by Tidecoin's PQHD wallet generator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -391,7 +377,6 @@ impl FromStr for PqhdDescriptor {
 
 /// Generates the same ranged wallet descriptor strings as Tidecoin node's
 /// `GeneratePQHDWalletDescriptor(...)`.
-#[cfg(feature = "alloc")]
 ///
 /// # Errors
 ///
@@ -406,7 +391,10 @@ pub fn generate_pqhd_wallet_descriptor(
     target_height: u32,
 ) -> Result<String, Error> {
     let params = params.as_ref();
-    if !scheme.is_allowed_at_height(target_height, params) {
+    if !scheme.is_allowed_at_height(
+        target_height,
+        params.auxpow_start_height.map(|height| height.to_u32()),
+    ) {
         return Err(Error::SchemeNotAllowedAtHeight { scheme, height: target_height });
     }
 
@@ -590,7 +578,7 @@ mod tests {
     }
 
     fn master_seed() -> [u8; 32] {
-        tidecoin::hex::decode_to_array::<32>(
+        crate::hex::decode_to_array::<32>(
             "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
         )
         .unwrap()
@@ -705,11 +693,10 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "alloc")]
     #[test]
     fn generate_wallet_descriptor_matches_node_templates() {
         let mut params = Params::MAINNET;
-        params.auxpow_start_height = Some(tidecoin::BlockHeight::from_u32(100));
+        params.auxpow_start_height = Some(crate::BlockHeight::from_u32(100));
 
         let bech32 = generate_pqhd_wallet_descriptor(
             seed_id(),

@@ -2,7 +2,7 @@
 
 //! Internal macros.
 //!
-//! Macros meant to be used inside the `bitcoin-units` library.
+//! Macros meant to be used inside the `tidecoin-units` library.
 
 /// Implements a mathematical operation for various reference combinations.
 ///

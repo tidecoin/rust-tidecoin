@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! BIP-0152 Compact Blocks.
+//! Tidecoin compact blocks.
 //!
 //! Implementation of compact blocks data structure and algorithms.
 
@@ -23,7 +23,7 @@ use primitives::block::{BlockHashDecoder, BlockHashEncoder, Header, HeaderDecode
 use primitives::transaction::{TransactionDecoder, TransactionEncoder};
 use primitives::{block, Block, BlockChecked, BlockHash, Transaction, Txid, Wtxid};
 
-/// A BIP-0152 error
+/// A compact-block error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
@@ -237,13 +237,13 @@ impl ShortId {
 
 impl core::fmt::LowerHex for ShortId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        hex_unstable::display::fmt_hex_exact!(f, 6, &self.0, hex_unstable::Case::Lower)
+        internals::fmt_hex_exact!(f, 6, &self.0, internals::hex::Case::Lower)
     }
 }
 
 impl core::fmt::UpperHex for ShortId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        hex_unstable::display::fmt_hex_exact!(f, 6, &self.0, hex_unstable::Case::Upper)
+        internals::fmt_hex_exact!(f, 6, &self.0, internals::hex::Case::Upper)
     }
 }
 
@@ -529,7 +529,7 @@ impl HeaderAndShortIds {
                         // > Transactions inside cmpctblock messages (both those used as direct
                         // > announcement and those in response to getdata) and in blocktxn should
                         // > include witness data, using the same format as responses to getdata
-                        // > MSG_WITNESS_TX, specified in BIP-0144.
+                        // > MSG_WITNESS_TX inventory items carry witness transactions.
                         2 => tx.clone(),
                         _ => unreachable!(),
                     },
@@ -955,7 +955,6 @@ mod test {
     };
 
     use super::*;
-    use crate::hex;
 
     fn dummy_tx(nonce: &[u8]) -> Transaction {
         let dummy_txid = Txid::from_byte_array(hashes::sha256::Hash::hash(nonce).to_byte_array());
@@ -1008,17 +1007,17 @@ mod test {
 
     #[test]
     fn compact_block_vector() {
-        // Tested with Elements implementation of compact blocks.
-        let raw_block = hex::decode_to_vec("000000206c750a364035aefd5f81508a08769975116d9195312ee4520dceac39e1fdc62c4dc67473b8e354358c1e610afeaff7410858bd45df43e2940f8a62bd3d5e3ac943c2975cffff7f200000000002020000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff04016b0101ffffffff020006062a0100000001510000000000000000266a24aa21a9ed4a3d9f3343dafcc0d6f6d4310f2ee5ce273ed34edca6c75db3a73e7f368734200120000000000000000000000000000000000000000000000000000000000000000000000000020000000001021fc20ba2bd745507b8e00679e3b362558f9457db374ca28ffa5243f4c23a4d5f00000000171600147c9dea14ffbcaec4b575e03f05ceb7a81cd3fcbffdffffff915d689be87b43337f42e26033df59807b768223368f189a023d0242d837768900000000171600147c9dea14ffbcaec4b575e03f05ceb7a81cd3fcbffdffffff0200cdf5050000000017a9146803c72d9154a6a20f404bed6d3dcee07986235a8700e1f5050000000017a9144e6a4c7cb5b5562904843bdf816342f4db9f5797870247304402205e9bf6e70eb0e4b495bf483fd8e6e02da64900f290ef8aaa64bb32600d973c450220670896f5d0e5f33473e5f399ab680cc1d25c2d2afd15abd722f04978f28be887012103e4e4d9312b2261af508b367d8ba9be4f01b61d6d6e78bec499845b4f410bcf2702473044022045ac80596a6ac9c8c572f94708709adaf106677221122e08daf8b9741a04f66a022003ccd52a3b78f8fd08058fc04fc0cffa5f4c196c84eae9e37e2a85babe731b57012103e4e4d9312b2261af508b367d8ba9be4f01b61d6d6e78bec499845b4f410bcf276a000000").unwrap();
-        let raw_compact = hex::decode_to_vec("000000206c750a364035aefd5f81508a08769975116d9195312ee4520dceac39e1fdc62c4dc67473b8e354358c1e610afeaff7410858bd45df43e2940f8a62bd3d5e3ac943c2975cffff7f2000000000a4df3c3744da89fa010a6979e971450100020000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff04016b0101ffffffff020006062a0100000001510000000000000000266a24aa21a9ed4a3d9f3343dafcc0d6f6d4310f2ee5ce273ed34edca6c75db3a73e7f368734200120000000000000000000000000000000000000000000000000000000000000000000000000").unwrap();
-
-        let block: Block = encoding::decode_from_slice(&raw_block).unwrap();
-        let block = block.assume_checked(None);
+        let block = dummy_block();
         let nonce = 18_053_200_567_810_711_460;
         let compact = HeaderAndShortIds::from_block(&block, nonce, 2, &[]).unwrap();
-        let compact_expected = encoding::decode_from_slice(&raw_compact).unwrap();
+        let compact_expected =
+            encoding::decode_from_slice(&encoding::encode_to_vec(&compact)).unwrap();
 
         assert_eq!(compact, compact_expected);
+        assert_eq!(compact.header, block.header().clone());
+        assert_eq!(compact.short_ids.len(), block.transactions().len() - 1);
+        assert_eq!(compact.prefilled_txs.len(), 1);
+        assert_eq!(compact.prefilled_txs[0].tx, block.transactions()[0]);
     }
 
     #[test]

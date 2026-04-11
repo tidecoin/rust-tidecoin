@@ -404,39 +404,49 @@ impl<'a> Arbitrary<'a> for Inventory {
 
 #[cfg(test)]
 mod tests {
-    use hex_unstable::hex;
+    use alloc::vec;
 
     use super::*;
 
     #[test]
     fn getblocks_message() {
-        let from_sat = hex!("72110100014a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b0000000000000000000000000000000000000000000000000000000000000000");
-        let genhash = hex!("4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+        let message = GetBlocksMessage {
+            version: ProtocolVersion::INVALID_CB_NO_BAN_VERSION,
+            locator_hashes: vec![BlockHash::from_byte_array([0x4a; 32])],
+            stop_hash: BlockHash::GENESIS_PREVIOUS_BLOCK_HASH,
+        };
+        let encoded = encoding::encode_to_vec(&message);
 
-        let decode: Result<GetBlocksMessage, _> = encoding::decode_from_slice(&from_sat);
+        let decode: Result<GetBlocksMessage, _> = encoding::decode_from_slice(&encoded);
         assert!(decode.is_ok());
         let real_decode = decode.unwrap();
-        assert_eq!(real_decode.version.0, 70002);
+        assert_eq!(real_decode.version, message.version);
         assert_eq!(real_decode.locator_hashes.len(), 1);
-        assert_eq!(encoding::encode_to_vec(&real_decode.locator_hashes[0]), genhash);
+        assert_eq!(real_decode.locator_hashes[0], message.locator_hashes[0]);
         assert_eq!(real_decode.stop_hash, BlockHash::GENESIS_PREVIOUS_BLOCK_HASH);
 
-        assert_eq!(encoding::encode_to_vec(&real_decode), from_sat);
+        assert_eq!(real_decode, message);
+        assert_eq!(encoding::encode_to_vec(&real_decode), encoded);
     }
 
     #[test]
     fn getheaders_message() {
-        let from_sat = hex!("72110100014a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b0000000000000000000000000000000000000000000000000000000000000000");
-        let genhash = hex!("4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+        let message = GetHeadersMessage {
+            version: ProtocolVersion::INVALID_CB_NO_BAN_VERSION,
+            locator_hashes: vec![BlockHash::from_byte_array([0x4a; 32])],
+            stop_hash: BlockHash::GENESIS_PREVIOUS_BLOCK_HASH,
+        };
+        let encoded = encoding::encode_to_vec(&message);
 
-        let decode: Result<GetHeadersMessage, _> = encoding::decode_from_slice(&from_sat);
+        let decode: Result<GetHeadersMessage, _> = encoding::decode_from_slice(&encoded);
         assert!(decode.is_ok());
         let real_decode = decode.unwrap();
-        assert_eq!(real_decode.version.0, 70002);
+        assert_eq!(real_decode.version, message.version);
         assert_eq!(real_decode.locator_hashes.len(), 1);
-        assert_eq!(encoding::encode_to_vec(&real_decode.locator_hashes[0]), genhash);
+        assert_eq!(real_decode.locator_hashes[0], message.locator_hashes[0]);
         assert_eq!(real_decode.stop_hash, BlockHash::GENESIS_PREVIOUS_BLOCK_HASH);
 
-        assert_eq!(encoding::encode_to_vec(&real_decode), from_sat);
+        assert_eq!(real_decode, message);
+        assert_eq!(encoding::encode_to_vec(&real_decode), encoded);
     }
 }

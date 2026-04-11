@@ -79,7 +79,7 @@
 | PQ address encoding | Bech32m with PQ HRP | N/A |
 | P2PKH version | Network-dependent | `0x21` |
 | P2SH version | Network-dependent | `0x41` |
-| Taproot / P2TR | Accepted but unclassified (`v1+32 bytes` returns `None` from `address_type()`) | Not supported |
+| Witness v1 non-PQ programs | Not an active address class; PQ witness v1 uses the 64-byte P2WSH512 program in the PQ namespace | Not supported |
 
 ## Fee and Dust
 
@@ -109,7 +109,7 @@
 | Role | General-purpose Tidecoin protocol library (serialization/parsing, scripts, PSBT, validation helpers, P2P message types) | Mobile wallet core (derive, sign, build tx) |
 | API surface | Rust library types | Protobuf FFI (`tidecoin_call` for iOS C, `Java_com_tidecoin_core_FFIBridge_call` for Android JNI) |
 | PSBT support | Yes | No |
-| P2P / BIP324 with ML-KEM | Yes: protocol/message surfaces plus PQ transport primitives | No |
+| P2P PQ v2 transport | Yes: protocol/message surfaces plus ML-KEM-backed transport primitives | No |
 | Script types for signing | Full transaction/script validation entrypoints; classic script validation is feature-gated and Tidecoin-specific/PQ execution uses internal eval paths | P2WPKH, P2SH (nested SegWit), P2PKH |
 
 ---
@@ -198,7 +198,7 @@ This doesn't replace the existing BIP44 derivation for current wallets. Existing
 
 ## ML-KEM-512 Key Encapsulation
 
-Not a signing primitive, but a key encapsulation mechanism. `rust-tidecoin` contains ML-KEM-backed BIP324 transport primitives and packet-cipher code today. Any mobile use beyond that would be future work rather than a current wallet feature.
+Not a signing primitive, but a key encapsulation mechanism. `rust-tidecoin` contains ML-KEM-backed PQ v2 transport primitives and packet-cipher code today. Any mobile use beyond that would be future work rather than a current wallet feature.
 
 ## Scheme-Aware Fee Estimation
 
@@ -290,6 +290,6 @@ Some things in `rust-tidecoin` exist outside the likely scope of a mobile PQ ext
 
 - Full consensus validation and script interpreter
 - Height-gated scheme activation policy (`is_allowed_at_height`)
-- P2P protocol/message surfaces and BIP324 transport primitives
+- P2P protocol/message surfaces and PQ v2 transport primitives
 - PSBT construction and parsing
 - Multi-network address validation and namespace rules (`is_valid_for_network`, `require_network`, PQ HRP checks)

@@ -65,7 +65,7 @@ requests.
 > results by using the resources below.
 
 You may get helpful advice by opening a discussion on the
-[GitHub repository](https://github.com/nicenemo/rust-tidecoin).
+[GitHub repository](https://github.com/tidecoin/rust-tidecoin).
 
 
 ## Getting Started
@@ -83,7 +83,7 @@ current stable one (see MSRV section in [README.md](./README.md)).
 The library can be built and tested using [`cargo`](https://github.com/rust-lang/cargo/):
 
 ```
-git clone git@github.com:nicenemo/rust-tidecoin.git
+git clone git@github.com:tidecoin/rust-tidecoin.git
 cd rust-tidecoin
 cargo build
 ```
@@ -167,7 +167,7 @@ Prerequisites that a PR must satisfy for merging into the `master` branch:
 * contain all inline docs for newly introduced API and pass doc tests including
   running `just lint` without any errors or warnings;
 * be based on the recent `master` tip from the original repository at
-  <https://github.com/nicenemo/rust-tidecoin>.
+  <https://github.com/tidecoin/rust-tidecoin>.
 
 NB: reviewers may run more complex test/CI scripts, thus, satisfying all the
 requirements above is just a preliminary, but not necessary sufficient step for
@@ -186,23 +186,15 @@ Note on formatting:
   front of your PR if you plan on formatting your changes. I.e., don't include
   arbitrary formatting changes in your other patches.
 - You can use `just fmt`.
-- Remember to use nightly if your editor runs the formatter (`cargo +nightly fmt`).
+- Use the stable formatter if your editor runs the formatter (`cargo fmt`).
 - There is a CI job that runs the formatter.
-- There is a _very_ long history on the reasons for all this. Sorry this is the
-  best solution we have been able to come up with to keep all parties somewhat
-  happy.
 
-### Deprecation and Versioning
+### Public API Changes
 
-Whenever any part of your code wants to mention the version number the code will
-be released in, primarily in deprecation notices, you should use the string
-`TBD` (verbatim), so that the release preparation script can detect the
-change and the correct version number can be filled in preparation of the
-release.
-
-```rust
-    #[deprecated(since = "TBD", note = "use `alternative_method()` instead")]
-```
+This project does not preserve compatibility-shaped APIs by default. Prefer
+deleting obsolete aliases and documenting the Tidecoin-native replacement. If a
+deprecation is intentionally kept for a release transition, use the concrete
+release version in the attribute instead of a placeholder.
 
 ### Peer review
 
@@ -352,10 +344,6 @@ for your time, please be respectful of ours.
 
 ## Going further
 
-You may be interested in the guide by Jon Atack on
-[How to review Bitcoin Core PRs](https://github.com/jonatack/bitcoin-development/blob/master/how-to-review-bitcoin-core-prs.md)
-and [How to make Bitcoin Core PRs](https://github.com/jonatack/bitcoin-development/blob/master/how-to-make-bitcoin-core-prs.md).
-While these are Bitcoin-specific guides, many of the suggestions offered apply
-to this project as well.
-
-Overall, have fun :)
+Prefer Tidecoin-specific design notes, issue threads, and node-parity evidence
+when reviewing consensus or protocol changes. General review advice is useful
+only when it does not conflict with the current Tidecoin architecture.

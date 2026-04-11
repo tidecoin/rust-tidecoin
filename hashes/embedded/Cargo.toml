@@ -1,5 +1,5 @@
 [package]
-authors = ["Riccardo Casatta <riccardo@casatta.it>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 edition = "2021"
 rust-version = "1.94.1"
 readme = "README.md"

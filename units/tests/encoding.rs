@@ -101,11 +101,11 @@ macro_rules! test_incremental_decoding {
 }
 
 // Amount encodes as 8-byte little-endian u64 (satoshis).
-// 1 BTC = 100_000_000 satoshis = 0x05F5E100
+// 1 TDC = 100_000_000 tidoshi = 0x05F5E100
 // As little-endian: [0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00]
 #[test]
 fn amount_hardcoded_encoding() {
-    let amount = Amount::from_sat(100_000_000).unwrap(); // 1 BTC
+    let amount = Amount::from_sat(100_000_000).unwrap(); // 1 TDC
     let encoded = encode_to_vec(&amount);
     assert_eq!(encoded, [0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00]);
 }
@@ -118,8 +118,8 @@ test_hardcoded_decoding!(
     ([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], Amount::ZERO),
     ([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], Amount::ONE_SAT),
     ([0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00], Amount::ONE_TDC), // 100_000_000 sats
-    ([0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00], Amount::from_sat(100_000_000).unwrap()), // 1 BTC
-    ([0x00, 0x40, 0x07, 0x5a, 0xf0, 0x75, 0x07, 0x00], Amount::from_sat(21_000_000 * 100_000_000).unwrap()), // 21M BTC
+    ([0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00], Amount::from_sat(100_000_000).unwrap()), // 1 TDC
+    ([0x00, 0x40, 0x07, 0x5a, 0xf0, 0x75, 0x07, 0x00], Amount::from_sat(21_000_000 * 100_000_000).unwrap()), // 21M TDC
 );
 
 test_decoder_default!(amount_decoder_default, Amount, AmountDecoder, 8);
@@ -132,7 +132,7 @@ test_round_trip!(
     Amount::ONE_SAT,
     Amount::ONE_TDC,
     Amount::MAX,
-    Amount::from_sat(21_000_000 * 100_000_000).unwrap(), // 21 million BTC
+    Amount::from_sat(21_000_000 * 100_000_000).unwrap(), // 21 million TDC
 );
 
 #[rustfmt::skip]
@@ -143,8 +143,8 @@ test_incremental_decoding!(
     ([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], Amount::ZERO),
     ([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], Amount::ONE_SAT),
     ([0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00], Amount::ONE_TDC), // 100_000_000 sats
-    ([0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00], Amount::from_sat(100_000_000).unwrap()), // 1 BTC
-    ([0x00, 0x40, 0x07, 0x5a, 0xf0, 0x75, 0x07, 0x00], Amount::from_sat(21_000_000 * 100_000_000).unwrap()), // 21M BTC
+    ([0x00, 0xe1, 0xf5, 0x05, 0x00, 0x00, 0x00, 0x00], Amount::from_sat(100_000_000).unwrap()), // 1 TDC
+    ([0x00, 0x40, 0x07, 0x5a, 0xf0, 0x75, 0x07, 0x00], Amount::from_sat(21_000_000 * 100_000_000).unwrap()), // 21M TDC
 );
 
 // BlockHeight encodes as 4-byte little-endian u32.
@@ -205,7 +205,7 @@ test_hardcoded_decoding!(
     BlockTimeDecoder,
     4,
     ([0x00, 0x00, 0x00, 0x00], BlockTime::from_u32(0)),
-    ([0x29, 0xab, 0x5f, 0x49], BlockTime::from_u32(1_231_006_505)), // Bitcoin genesis block
+    ([0x29, 0xab, 0x5f, 0x49], BlockTime::from_u32(1_231_006_505)), // Fixed timestamp fixture
     ([0x00, 0x57, 0x24, 0x66], BlockTime::from_u32(1_713_657_600)), // 2024-04-21
     ([0xff, 0xff, 0xff, 0xff], BlockTime::from_u32(u32::MAX)),
 );
@@ -217,7 +217,7 @@ test_round_trip!(
     BlockTimeDecoder,
     4,
     BlockTime::from_u32(0),
-    BlockTime::from_u32(1_231_006_505), // Bitcoin genesis block timestamp
+    BlockTime::from_u32(1_231_006_505), // Fixed timestamp fixture
     BlockTime::from_u32(1_713_657_600), // 2024-04-21
     BlockTime::from_u32(u32::MAX),
 );
@@ -227,7 +227,7 @@ test_incremental_decoding!(
     BlockTimeDecoder,
     4,
     ([0x00, 0x00, 0x00, 0x00], BlockTime::from_u32(0)),
-    ([0x29, 0xab, 0x5f, 0x49], BlockTime::from_u32(1_231_006_505)), // Bitcoin genesis block
+    ([0x29, 0xab, 0x5f, 0x49], BlockTime::from_u32(1_231_006_505)), // Fixed timestamp fixture
     ([0x00, 0x57, 0x24, 0x66], BlockTime::from_u32(1_713_657_600)), // 2024-04-21
     ([0xff, 0xff, 0xff, 0xff], BlockTime::from_u32(u32::MAX)),
 );

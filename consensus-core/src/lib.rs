@@ -33,7 +33,8 @@ pub use self::flags::{
 #[doc(inline)]
 pub use self::interpreter::{Interpreter, ScriptFlags, ScriptStack, SpendContext};
 #[doc(inline)]
-pub use self::pq::{PqError, PqPublicKey, PqScheme, PqSignature};
+pub use self::pq::{PqError, PqPublicKey, PqSignature};
+pub use primitives::PqScheme;
 #[doc(inline)]
 pub use self::sighash::{
     InputsIndexError, LegacySighash, NonStandardSighashTypeError, SegwitV0Sighash, Sighash512,

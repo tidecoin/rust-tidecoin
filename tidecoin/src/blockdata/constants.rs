@@ -53,11 +53,6 @@ pub const MAX_WITNESS_SCRIPT_SIZE: usize = 65_536;
 pub const MAX_STACK_ELEMENT_SIZE: usize = 8_192;
 /// How many blocks between halvings.
 pub const SUBSIDY_HALVING_INTERVAL: u32 = 262_800;
-/// Maximum allowed value for an integer in Script.
-/// This constant has ambiguous semantics. Please carefully check your intended use-case and define
-/// a new constant reflecting that.
-#[deprecated(since = "TBD", note = "use a more specific constant instead")]
-pub const MAX_SCRIPTNUM_VALUE: u32 = 0x80000000; // 2^31
 /// Number of blocks needed for an output from a coinbase transaction to be spendable.
 pub const COINBASE_MATURITY: u32 = 100;
 /// The maximum allowed size for a serialized block, in bytes (only for buffer size limits)
@@ -240,13 +235,6 @@ impl ChainHash {
     /// Converts genesis block hash into `ChainHash`.
     pub fn from_genesis_block_hash(block_hash: crate::BlockHash) -> Self {
         Self(block_hash.to_byte_array())
-    }
-
-    /// Copies the underlying bytes into a new `Vec`.
-    #[inline]
-    #[deprecated(since = "TBD", note = "use to_vec instead")]
-    pub fn to_bytes(self) -> alloc::vec::Vec<u8> {
-        self.to_vec()
     }
 }
 

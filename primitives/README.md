@@ -1,7 +1,7 @@
 # Rust Tidecoin - primitive types.
 
 This crate provides primitive data types that are used throughout the
-[`rust-tidecoin`](https://github.com/nicenemo/rust-tidecoin) ecosystem.
+[`rust-tidecoin`](https://github.com/tidecoin/rust-tidecoin) ecosystem.
 
 ## Semver compliance
 

@@ -370,11 +370,13 @@ Checklist:
 - [x] Finish migrating the remaining Tidecoin node-backed helper surface to the shared harness.
 - [x] Make the first `consensus/` test consume the shared Tidecoin node-parity harness.
 - [x] Cover the first Tidecoin script and transaction corpora in `consensus/` via the shared harness.
-- [ ] Replace the Bitcoin-specific `core_diff_bridge` path in `consensus/` with the shared Tidecoin harness.
-  - done: the explicitly Bitcoin/Core-diff integration files were moved to
+- [x] Replace the Bitcoin-specific `core_diff_bridge` path in `consensus/` with the shared Tidecoin harness.
+  - done: active `consensus/` parity tests use the shared Tidecoin harness, and
+    the explicitly Bitcoin/Core-diff integration files were moved to
     [consensus/tests/archived/](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived)
     after the live runtime stopped supporting their flag/error model
-  - open: reintroduce only the useful coverage as Tidecoin-native parity tests
+  - open: reconcile archived proof classes against the Tidecoin-native coverage
+    matrix before deleting the historical reference files
 
 ### Phase 4: Extract From The Current Top-Level Crate
 
@@ -404,7 +406,9 @@ Goal:
 
 Execution rule:
 - runtime/API migration in [`consensus/src/lib.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs) comes first
-- broad retirement of [`consensus/tests/core_diff_bridge.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/core_diff_bridge.rs) consumers follows that work, not the other way around
+- broad retirement of `consensus/tests/core_diff_bridge.rs` consumers has been
+  completed for the active test surface; the remaining task is coverage-matrix
+  reconciliation against the archived proof material
 
 Checklist:
 - [x] Audit `consensus/src/lib.rs` for Bitcoin/Taproot/`bitcoinconsensus` assumptions and classify each as `delete`, `rewrite`, or `replace via consensus-core`.
@@ -414,9 +418,9 @@ Checklist:
 - [x] Remove the assumption that `consensus/` should depend directly on the top-level `tidecoin` crate.
 - [x] Remove the temporary direct `tidecoin` dependency previously used for PQ verification types by lowering that facade into shared core.
 - [x] Make `consensus/` depend on `tidecoin-consensus-core`.
-- [ ] Remove upstream `bitcoin` runtime types/helpers from `consensus/src/**` by migrating onto lower Tidecoin-native shared crates:
+- [x] Remove upstream `bitcoin` runtime types/helpers from `consensus/src/**` by migrating onto lower Tidecoin-native shared crates:
   - done for the active runtime/test surface
-  - open only for archived historical files that still need Tidecoin-native replacements
+  - archived historical files remain reference-only and are outside the active runtime surface
 - [x] Make the first `consensus/` test depend on the shared Tidecoin node-parity harness.
 - [~] Migrate the rest of `consensus/` differential tests onto the shared Tidecoin node-parity harness.
   - done: shared script/tx corpus parity, runtime diff/error suite, PQ multisig parity, script-assets replay, generated large-corpus/provenance, and fixture pinning
@@ -424,10 +428,10 @@ Checklist:
 - [x] Remove the old `tidecoin::consensus` codec compatibility API; codec callers now use
   `tidecoin-consensus-encoding` names directly, and serde callers use the lower-level
   `primitives::serde_as_consensus` adapter directly.
-- [ ] Replace Bitcoin-only public flags and behavior with Tidecoin semantics.
+- [x] Replace Bitcoin-only public flags and behavior with Tidecoin semantics.
 - [x] Replace the active witness-v1 runtime path with Tidecoin witness-v1-512 program semantics.
 - [x] Remove the largest Taproot/Tapscript fixture block from `consensus/src/lib.rs` and replace it with Tidecoin witness-v1-512 tests.
-- [~] Remove the remaining Taproot/Tapscript/Schnorr placeholder flags and compatibility shims from runtime code.
+- [x] Remove the remaining Taproot/Tapscript/Schnorr placeholder flags and compatibility shims from runtime code.
   - done: fake Taproot/public-key-type flag bits removed
   - done: temporary ECDSA fallback removed from the active interpreter
   - open: archived historical materials are temporary and should be deleted later
@@ -469,7 +473,7 @@ Checklist:
     [consensus/tests/tidecoin_script_assets.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_script_assets.rs)
   - done: PQ multisig replacement landed in
     [consensus/tests/tidecoin_pq_multisig_parity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_pq_multisig_parity.rs)
-- [ ] Remove or rewrite Taproot-specific fixtures and tests.
+- [x] Remove or rewrite Taproot-specific fixtures and tests from the active test surface.
 - [ ] Import Tidecoin node fixtures:
   - [x] `script_tests_pq.json`
   - [x] `tx_valid_pq.json`
@@ -484,7 +488,7 @@ Checklist:
     [consensus/tests/archived/data](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data),
     leaving only active Tidecoin-generated metadata in `consensus/tests/data`
   - applicable sighash fixtures
-- [ ] Rewrite token/flag parsing around:
+- [x] Rewrite token/flag parsing around:
   - `PQ_STRICT`
   - `WITNESS_V1_512`
   - `SHA512`
@@ -500,6 +504,9 @@ Checklist:
 - [ ] Subsidy/reward schedule tests
 - [ ] Difficulty retargeting edge-case tests
 - [ ] Standalone PQ signature operation tests where still useful below the node-backed layer
+- [ ] Keep the `hashes/embedded` smoke test supported at a limited level:
+  target-specific `thumbv7m-none-eabi` check documented, no host-target check,
+  and no broad embedded matrix until intentionally scheduled.
 
 ## Supporting Documents
 
@@ -520,11 +527,8 @@ These files are supporting references, not co-equal sources of truth.
   - Archived-suite to Tidecoin-native replacement matrix, used to preserve the
     original proof depth of the imported consensus test surface.
 
-- [consensus/docs/rust-tidecoin-migration-handoff.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/docs/rust-tidecoin-migration-handoff.md)
-  - Best current architecture explanation for the `consensus/` migration.
-
 - [consensus/docs/pq-integration-plan.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/docs/pq-integration-plan.md)
-  - Detailed migration checklist for the imported `consensus/` crate.
+  - Current architecture and integration checklist for the Tidecoin consensus crates.
 
 ### Status And Backlog Detail
 
@@ -551,6 +555,9 @@ These files are supporting references, not co-equal sources of truth.
 
 ### Archived
 
+- [consensus/docs/archived/rust-tidecoin-migration-handoff.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/docs/archived/rust-tidecoin-migration-handoff.md)
+  - Historical consensus migration handoff. Do not use as the current architecture description.
+
 - [ai-docs/archived/PORTING_VALIDATION_PROMPT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/PORTING_VALIDATION_PROMPT.md)
   - Historical only. Do not use as a current checklist.
 
@@ -559,6 +566,6 @@ These files are supporting references, not co-equal sources of truth.
 When deciding what to do next:
 
 1. Use this file first.
-2. Use `rust-tidecoin-migration-handoff.md` for architecture detail.
-3. Use `pq-integration-plan.md` and `VALIDATION_FIX_BACKLOG.md` for deeper checklists.
+2. Use `pq-integration-plan.md` for current consensus architecture detail.
+3. Use `VALIDATION_FIX_BACKLOG.md` for deeper checklists.
 4. Treat everything older as supporting evidence unless it has been explicitly updated.

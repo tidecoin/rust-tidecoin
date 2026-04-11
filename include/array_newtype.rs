@@ -19,15 +19,13 @@ macro_rules! impl_array_newtype_stringify {
 
         impl core::fmt::LowerHex for $t {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                use hex_unstable::{display, Case};
-                display::fmt_hex_exact!(f, $len, &self.0, Case::Lower)
+                internals::fmt_hex_exact!(f, $len, &self.0, internals::hex::Case::Lower)
             }
         }
 
         impl core::fmt::UpperHex for $t {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                use hex_unstable::{display, Case};
-                display::fmt_hex_exact!(f, $len, &self.0, Case::Upper)
+                internals::fmt_hex_exact!(f, $len, &self.0, internals::hex::Case::Upper)
             }
         }
 
@@ -45,7 +43,9 @@ macro_rules! impl_array_newtype_stringify {
 
         impl core::str::FromStr for $t {
             type Err = $crate::hex::DecodeFixedLengthBytesError;
-            fn from_str(s: &str) -> core::result::Result<Self, Self::Err> { Self::from_hex(s) }
+            fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
+                Self::from_hex(s)
+            }
         }
 
         #[cfg(feature = "serde")]

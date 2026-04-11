@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
 //!
-//! BIP-0152  Compact Blocks network messages
+//! Tidecoin compact-block network messages.
 
 use core::convert::Infallible;
 use core::fmt;

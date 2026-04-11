@@ -13,7 +13,10 @@
 //! # Cargo features
 //!
 //! * `arbitrary` (dependency) - arbitrary type implementations for testing.
-//! * `default` - enables `std`.
+//! * `default` - enables `std` and `rand`.
+//! * `rand` - enables OS-random convenience APIs for PQ key generation, signing, and KEM
+//!   encapsulation. Without this feature callers can still use deterministic APIs or provide their
+//!   own RNG.
 //! * `serde` (dependency) - implements `serde`-based serialization and deserialization.
 //! * `std` - the usual dependency on `std`.
 
@@ -86,21 +89,24 @@ pub mod ext {
     //! ```
     #[rustfmt::skip] // Use terse custom grouping.
     pub use crate::{
-        block::{BlockCheckedExt as _, HeaderExt as _},
-        pow::CompactTargetExt as _,
-        script::{ScriptExt as _, ScriptBufExt as _, ScriptPubKeyExt as _, ScriptPubKeyBufExt as _, WitnessScriptExt as _, ScriptSigExt as _},
-        transaction::{TxidExt as _, WtxidExt as _, OutPointExt as _, TxInExt as _, TxOutExt as _, TransactionExt as _},
-        witness::WitnessExt as _,
+        block::{BlockCheckedExt, HeaderExt},
+        pow::CompactTargetExt,
+        script::{ScriptExt, ScriptBufExt, ScriptPubKeyExt, ScriptPubKeyBufExt, WitnessScriptExt, ScriptSigExt},
+        transaction::{TxInExt, TxOutExt, TransactionExt as TransactionWeightExt},
+        witness::WitnessExt,
     };
-    pub use crate::consensus_validation::{ScriptPubKeyExt as _, TransactionExt as _};
+    pub use crate::consensus_validation::{
+        ScriptPubKeyExt as ConsensusScriptPubKeyValidationExt,
+        TransactionExt as ConsensusTransactionValidationExt,
+    };
 }
 pub mod address;
-pub mod bip158;
 pub mod blockdata;
+pub mod compact_filter;
 pub mod consensus_validation;
 // Private until we either make this a crate or flatten it - still to be decided.
 pub(crate) mod crypto;
-pub mod hash_types;
+pub mod key_expression;
 pub mod merkle_tree;
 pub mod network;
 pub mod policy;
@@ -136,10 +142,6 @@ pub use units::{
     weight::Weight,
 };
 
-#[deprecated(since = "TBD", note = "use `BlockHeightInterval` instead")]
-#[doc(hidden)]
-pub type BlockInterval = BlockHeightInterval;
-
 #[doc(inline)]
 pub use crate::{
     address::{Address, AddressType, KnownHrp},
@@ -149,7 +151,11 @@ pub use crate::{
     },
     crypto::pq::{
         MlKem512Ciphertext, MlKem512Keypair, MlKem512PublicKey, MlKem512SecretKey,
-        MlKem512SharedSecret, PqError, PqPublicKey, PqScheme, PqSecretKey, PqSignature,
+        MlKem512SharedSecret, PqError, PqPublicKey, PqScheme, PqSchemeCryptoExt, PqSecretKey,
+        PqSignature,
+    },
+    key_expression::{
+        KeyIndex, PqhdDescriptor, PqhdKeyExpression, PqhdKeyPathInfo, WalletOutputType,
     },
     network::params::{self, Params},
     network::{Network, NetworkKind},
@@ -193,7 +199,7 @@ mod prelude {
 
     pub use crate::io::sink;
 
-    pub use hex_unstable::DisplayHex;
+    pub use internals::hex::DisplayHex;
 }
 
 pub mod amount {

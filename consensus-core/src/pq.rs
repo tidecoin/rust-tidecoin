@@ -7,64 +7,8 @@ use alloc::vec::Vec;
 use core::fmt;
 
 use fips204::traits::{SerDes, Verifier};
-use tide_fn_dsa::{FalconProfile, VerifyingKey as TideVerifyingKey, VerifyingKeyStandard};
-
-/// Identifies which post-quantum signature scheme a key belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum PqScheme {
-    /// Falcon-512.
-    Falcon512 = 0x07,
-    /// Falcon-1024.
-    Falcon1024 = 0x08,
-    /// ML-DSA-44.
-    MlDsa44 = 0x09,
-    /// ML-DSA-65.
-    MlDsa65 = 0x0A,
-    /// ML-DSA-87.
-    MlDsa87 = 0x0B,
-}
-
-impl PqScheme {
-    /// Resolves a scheme from its on-wire prefix byte.
-    pub fn from_prefix(byte: u8) -> Option<Self> {
-        match byte {
-            0x07 => Some(Self::Falcon512),
-            0x08 => Some(Self::Falcon1024),
-            0x09 => Some(Self::MlDsa44),
-            0x0A => Some(Self::MlDsa65),
-            0x0B => Some(Self::MlDsa87),
-            _ => None,
-        }
-    }
-
-    /// Returns the on-wire prefix byte for this scheme.
-    pub fn prefix(self) -> u8 {
-        self as u8
-    }
-
-    /// Raw public key length in bytes.
-    pub fn pubkey_len(self) -> usize {
-        match self {
-            Self::Falcon512 => 897,
-            Self::Falcon1024 => 1793,
-            Self::MlDsa44 => 1312,
-            Self::MlDsa65 => 1952,
-            Self::MlDsa87 => 2592,
-        }
-    }
-
-    /// Maximum signature length in bytes.
-    pub fn max_sig_len(self) -> usize {
-        match self {
-            Self::Falcon512 => 752,
-            Self::Falcon1024 => 1462,
-            Self::MlDsa44 => 2420,
-            Self::MlDsa65 => 3309,
-            Self::MlDsa87 => 4627,
-        }
-    }
-}
+use primitives::PqScheme;
+use tide_fn_dsa_vrfy::{FalconProfile, VerifyingKey as TideVerifyingKey, VerifyingKeyStandard};
 
 /// A verification-only post-quantum public key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,15 +18,21 @@ pub struct PqPublicKey {
 }
 
 impl PqPublicKey {
+    /// Builds a verification key from an already-separated scheme and raw public
+    /// key bytes.
+    pub fn from_scheme_and_bytes(scheme: PqScheme, data: &[u8]) -> Result<Self, PqError> {
+        let expected = scheme.pubkey_len();
+        if data.len() != expected {
+            return Err(PqError::InvalidKeyLength { expected, got: data.len() });
+        }
+        Ok(Self { scheme, data: data.to_vec() })
+    }
+
     /// Parses a prefixed public key `[scheme_prefix][raw_pubkey]`.
     pub fn from_prefixed_slice(data: &[u8]) -> Result<Self, PqError> {
         let (&prefix, raw) = data.split_first().ok_or(PqError::EmptyData)?;
         let scheme = PqScheme::from_prefix(prefix).ok_or(PqError::UnknownScheme(prefix))?;
-        let expected = scheme.pubkey_len();
-        if raw.len() != expected {
-            return Err(PqError::InvalidKeyLength { expected, got: raw.len() });
-        }
-        Ok(Self { scheme, data: raw.to_vec() })
+        Self::from_scheme_and_bytes(scheme, raw)
     }
 
     /// Returns the scheme this key belongs to.
@@ -131,6 +81,18 @@ impl PqSignature {
         pk: &PqPublicKey,
     ) -> Result<(), PqError> {
         self.verify_message_allow_legacy(msg, pk)
+    }
+
+    /// Verifies a 32-byte message digest using the node's Falcon-512 legacy
+    /// verification mode when applicable.
+    pub fn verify_msg32_legacy(&self, msg: &[u8; 32], pk: &PqPublicKey) -> Result<(), PqError> {
+        self.verify_message_legacy(msg, pk)
+    }
+
+    /// Verifies a 64-byte message digest using the node's Falcon-512 legacy
+    /// verification mode when applicable.
+    pub fn verify_msg64_legacy(&self, msg: &[u8; 64], pk: &PqPublicKey) -> Result<(), PqError> {
+        self.verify_message_legacy(msg, pk)
     }
 
     /// Verifies a 64-byte message digest, accepting either strict or legacy

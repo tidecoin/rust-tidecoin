@@ -4,8 +4,8 @@
   <p>Library and crate stack for Tidecoin protocol data, scripting, validation, and network messages.</p>
 
   <p>
-    <a href="https://github.com/nicenemo/rust-tidecoin/blob/master/LICENSE"><img alt="CC0 1.0 Universal Licensed" src="https://img.shields.io/badge/license-CC0--1.0-blue.svg"/></a>
-    <a href="https://github.com/nicenemo/rust-tidecoin/actions"><img alt="CI Status" src="https://github.com/nicenemo/rust-tidecoin/actions/workflows/rust.yml/badge.svg"></a>
+    <a href="https://github.com/tidecoin/rust-tidecoin/blob/master/LICENSE"><img alt="CC0 1.0 Universal Licensed" src="https://img.shields.io/badge/license-CC0--1.0-blue.svg"/></a>
+    <a href="https://github.com/tidecoin/rust-tidecoin/actions"><img alt="CI Status" src="https://github.com/tidecoin/rust-tidecoin/actions/workflows/rust.yml/badge.svg"></a>
     <a href="https://www.rust-lang.org/tools/install"><img alt="Rustc Version 1.94.1+" src="https://img.shields.io/badge/rustc-1.94.1%2B-lightgrey.svg"/></a>
   </p>
 </div>

@@ -1,5 +1,8 @@
 # Rust-Tidecoin Migration Handoff
 
+> Archived historical migration note. This document describes an earlier migration state and must
+> not be used as the current Tidecoin consensus architecture source of truth.
+
 This document captures the architectural conclusions and migration guidance discussed before moving the Tidecoin consensus work into the `rust-tidecoin` monorepo.
 
 Related planning document:

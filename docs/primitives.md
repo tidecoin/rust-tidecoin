@@ -20,6 +20,5 @@ wrapper types are useful, but their public shape should remain stable and intent
 
 Usage of `hash_newtype` outside of `primitives` should stay intentionally narrow:
 
-- `bip158::{FilterHash, FilterHeader}`
 - `crypto::key::{PubkeyHash, WPubkeyHash}`
-- `crypto::sighash::{LegacySighash, SegwitV0Sighash}`
+- `consensus_core::{LegacySighash, SegwitV0Sighash, Sighash512}`

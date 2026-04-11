@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Various macros used by the Rust Bitcoin ecosystem.
+//! Various macros used by the Rust Tidecoin workspace.
 
 /// Asserts a boolean expression at compile time.
 #[macro_export]

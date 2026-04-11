@@ -38,20 +38,6 @@ impl<T> FromStd<T> {
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.0
     }
-
-    /// Returns a reference to the wrapped value.
-    #[inline]
-    #[deprecated(since = "0.3.0", note = "use `get_ref()` instead")]
-    pub fn inner(&self) -> &T {
-        &self.0
-    }
-
-    /// Returns a mutable reference to the wrapped value.
-    #[inline]
-    #[deprecated(since = "0.3.0", note = "use `get_mut()` instead")]
-    pub fn inner_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
 }
 
 impl<T: std::io::Read> super::Read for FromStd<T> {

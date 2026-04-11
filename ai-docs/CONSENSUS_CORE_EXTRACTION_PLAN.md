@@ -2,7 +2,8 @@
 
 This note turns the shared-core idea into a concrete extraction map.
 
-It is the working architecture note for the next implementation phase.
+It is now a current-state architecture note. The extraction itself is complete; remaining work is
+cleanup, narrowing, and proof-surface reconciliation.
 
 Priority for the next implementation pass:
 
@@ -442,32 +443,34 @@ This is the smallest safe first slice.
 
 ### Step 5: Rewire `tidecoin`
 
-- [~] Make [`tidecoin/src/consensus_validation.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation.rs)
+- [x] Make [`tidecoin/src/consensus_validation.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation.rs)
   a wrapper over the shared core.
-  - done: the pure-Rust fallback path is now routed through
-    `consensus-core` via
+  - the pure-Rust fallback path is routed through `consensus-core` via
     [tidecoin/src/consensus_validation_tidecoin.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_tidecoin.rs)
-  - open: simplify the remaining error/wrapper seam where possible
-- [ ] Keep the node bridge optional and outside the shared core.
-- [ ] Preserve the current public API shape where practical.
+  - any remaining wrapper/error cleanup is normal facade narrowing, not an
+    extraction blocker
+- [x] Keep the node bridge optional and outside the shared core.
+- [x] Delete compatibility-only public API shape where it conflicts with
+  Tidecoin-native ownership; retain only current Tidecoin ergonomic wrappers.
 
 ### Step 6: Rebase `consensus/`
 
-- [ ] Replace direct interpreter logic with calls into `tidecoin-consensus-core`.
-- [ ] Keep only the byte-oriented compatibility surface that is still useful.
-- [ ] Remove Bitcoin/Taproot/Core-diff assumptions after the core is wired in.
+- [x] Replace direct interpreter logic with calls into `tidecoin-consensus-core`.
+- [x] Keep the standalone byte-oriented surface as a Tidecoin-native API choice,
+  not as a Bitcoin compatibility promise.
+- [x] Remove live Bitcoin/Taproot/Core-diff assumptions after the core is wired
+  in; archived historical proof material remains separated until explicitly
+  deleted.
 
-## Immediate Coding Slice
+## Next Cleanup Slice
 
-The best first implementation slice is:
+The extraction boundary now exists. The remaining work is narrower:
 
-1. create `consensus-core/`
-2. move flags and shared errors
-3. move or split the consensus-critical sighash layer
-4. leave the node bridge untouched
-
-That sequence gives a real crate boundary without immediately forcing the whole
-interpreter migration in one patch.
+1. keep lowering reusable consensus/protocol logic into `primitives` or
+   `consensus-core`
+2. reconcile coverage matrices against the live Tidecoin-node parity tests
+3. delete archived historical corpora when the project no longer wants the
+   reference material
 
 ## Success Criteria
 

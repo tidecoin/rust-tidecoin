@@ -79,7 +79,7 @@ fn build_version_message(address: SocketAddr) -> message::NetworkMessage {
     let my_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
 
     // The version of the p2p protocol this client will use
-    let protocol_version = ProtocolVersion::BIP0031_VERSION;
+    let protocol_version = ProtocolVersion::PONG_VERSION;
 
     // "bitfield of features to be enabled for this connection"
     let services = ServiceFlags::NONE;

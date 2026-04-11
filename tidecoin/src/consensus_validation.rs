@@ -265,7 +265,10 @@ mod tests {
         ScriptPubKeyExt, TransactionExt, TxVerifyError, VERIFY_NONE,
     };
     use crate::absolute;
-    use crate::crypto::pq::{PqPublicKey, PqScheme, PqSecretKey, PqSignature};
+    use crate::crypto::pq::{
+        DeterministicTestRng, PqPublicKey, PqScheme, PqSchemeCryptoExt as _, PqSecretKey,
+        PqSignature,
+    };
     use crate::opcodes::all::{OP_CHECKSIG, OP_DUP, OP_EQUALVERIFY, OP_HASH160};
     use crate::prelude::Vec;
     use crate::script::{PushBytesBuf, ScriptBufExt as _, ScriptPubKeyBuf, ScriptSigBuf};
@@ -303,6 +306,16 @@ mod tests {
     fn deterministic_keypair(scheme: PqScheme, tag: u8) -> (PqPublicKey, PqSecretKey) {
         let seed = tagged_seed(tag, scheme.deterministic_seed_len());
         scheme.generate_keypair_from_seed(&seed).unwrap()
+    }
+
+    fn deterministic_sig32(msg: &[u8; 32], sk: &PqSecretKey, tag: u64) -> PqSignature {
+        let mut rng = DeterministicTestRng::new(tag);
+        PqSignature::sign_msg32_with_rng(msg, sk, &mut rng).unwrap()
+    }
+
+    fn deterministic_sig32_legacy(msg: &[u8; 32], sk: &PqSecretKey, tag: u64) -> PqSignature {
+        let mut rng = DeterministicTestRng::new(tag);
+        PqSignature::sign_msg32_legacy_with_rng(msg, sk, &mut rng).unwrap()
     }
 
     fn push_bytes(data: &[u8]) -> PushBytesBuf {
@@ -346,7 +359,7 @@ mod tests {
                 TxSighashType::All.to_u32(),
             )
             .unwrap();
-        let sig = PqSignature::sign_msg32_legacy(sighash.as_byte_array(), &seckey).unwrap();
+        let sig = deterministic_sig32_legacy(sighash.as_byte_array(), &seckey, 0x31);
         let mut sig_bytes = sig.as_bytes().to_vec();
         sig_bytes.push(TxSighashType::All.to_u32() as u8);
 
@@ -384,7 +397,7 @@ mod tests {
                 TxSighashType::All.to_u32(),
             )
             .unwrap();
-        let sig = PqSignature::sign_msg32(sighash.as_byte_array(), &seckey).unwrap();
+        let sig = deterministic_sig32(sighash.as_byte_array(), &seckey, tag as u64);
         let mut sig_bytes = sig.as_bytes().to_vec();
         sig_bytes.push(TxSighashType::All.to_u32() as u8);
 
@@ -433,10 +446,8 @@ mod tests {
                 TxSighashType::All.to_u32(),
             )
             .unwrap();
-        let mut sig_a = PqSignature::sign_msg32(sighash_a.as_byte_array(), &seckey_a)
-            .unwrap()
-            .as_bytes()
-            .to_vec();
+        let mut sig_a =
+            deterministic_sig32(sighash_a.as_byte_array(), &seckey_a, 0x41).as_bytes().to_vec();
         sig_a.push(TxSighashType::All.to_u32() as u8);
         tx.inputs[0].script_sig = ScriptSigBuf::builder()
             .push_slice(push_bytes(&sig_a))
@@ -450,10 +461,8 @@ mod tests {
                 TxSighashType::All.to_u32(),
             )
             .unwrap();
-        let mut sig_b = PqSignature::sign_msg32(sighash_b.as_byte_array(), &seckey_b)
-            .unwrap()
-            .as_bytes()
-            .to_vec();
+        let mut sig_b =
+            deterministic_sig32(sighash_b.as_byte_array(), &seckey_b, 0x42).as_bytes().to_vec();
         sig_b.push(TxSighashType::All.to_u32() as u8);
         tx.inputs[1].script_sig = ScriptSigBuf::builder()
             .push_slice(push_bytes(&sig_b))
@@ -509,10 +518,8 @@ mod tests {
                 TxSighashType::All.to_u32(),
             )
             .unwrap();
-        let mut sig_0 = PqSignature::sign_msg32(sighash_0.as_byte_array(), &seckey)
-            .unwrap()
-            .as_bytes()
-            .to_vec();
+        let mut sig_0 =
+            deterministic_sig32(sighash_0.as_byte_array(), &seckey, 0x43).as_bytes().to_vec();
         sig_0.push(TxSighashType::All.to_u32() as u8);
         tx.inputs[0].script_sig = ScriptSigBuf::builder()
             .push_slice(push_bytes(&sig_0))
@@ -526,10 +533,8 @@ mod tests {
                 TxSighashType::All.to_u32(),
             )
             .unwrap();
-        let mut sig_1 = PqSignature::sign_msg32(sighash_1.as_byte_array(), &seckey)
-            .unwrap()
-            .as_bytes()
-            .to_vec();
+        let mut sig_1 =
+            deterministic_sig32(sighash_1.as_byte_array(), &seckey, 0x44).as_bytes().to_vec();
         sig_1.push(TxSighashType::All.to_u32() as u8);
         tx.inputs[1].script_sig = ScriptSigBuf::builder()
             .push_slice(push_bytes(&sig_1))

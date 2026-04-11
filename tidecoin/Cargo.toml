@@ -15,10 +15,10 @@ exclude = ["tests", "contrib"]
 
 # If you change features or optional dependencies in any way please update the "# Cargo features" section in lib.rs as well.
 [features]
-default = [ "std" ]
-std = ["base58/std", "bech32/std", "consensus_core/std", "encoding/std", "hashes/std", "hex-stable/std", "hex-unstable/std", "internals/std", "io/std", "network/std", "primitives/std", "units/std", "ml-kem/std"]
-tidecoin-node-validation = ["std", "dep:node_parity"]
-rand = []
+default = [ "std", "rand" ]
+std = ["base58/std", "bech32/std", "consensus_core/std", "encoding/std", "hashes/std", "hex-stable/std", "internals/std", "io/std", "network/std", "primitives/std", "units/std", "ml-kem/std"]
+tidecoin-node-validation = ["std", "rand", "dep:node_parity"]
+rand = ["rand_core/getrandom"]
 serde = ["dep:serde", "consensus_core/serde", "hashes/serde", "internals/serde", "network/serde", "primitives/serde", "units/serde"]
 arbitrary = ["dep:arbitrary", "units/arbitrary", "primitives/arbitrary", "hashes/arbitrary", "network/arbitrary"]
 
@@ -29,7 +29,6 @@ consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-cor
 hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.20.0", default-features = false, features = ["alloc", "hex"] }
 encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", version = "0.1.0", default-features = false, features = ["alloc"] }
 hex-stable = { package = "hex-conservative", version = "1.0.0", default-features = false, features = ["alloc"] }
-hex-unstable = { package = "hex-conservative", version = "0.3.2", default-features = false, features = ["alloc"] }
 internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", features = ["alloc", "hex"] }
 io = { package = "tidecoin-io", path = "../io", version = "0.5.0", default-features = false, features = ["alloc", "hashes"] }
 network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.0", default-features = false, features = ["alloc"]}
@@ -37,7 +36,7 @@ primitives = { package = "tidecoin-primitives", path = "../primitives", version 
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = ["alloc"] }
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity", version = "0.1.0", optional = true }
 tide-fn-dsa = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "27f47ec28af52ceb650f5cd93eba0a8c4ac5ea45" }
-rand_core = { version = "0.6", features = ["getrandom"] }
+rand_core = { version = "0.6", default-features = false }
 ml-kem = { version = "0.2.3", default-features = false, features = ["deterministic", "zeroize"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
 zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
@@ -80,11 +79,6 @@ examples = [
 ]
 exact_features = [
     ["std", "serde"],
-]
-
-[package.metadata.rbmt.lint]
-allowed_duplicates = [
-    "hex-conservative",
 ]
 
 [package.metadata.rbmt.prerelease]

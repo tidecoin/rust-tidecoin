@@ -1,4 +1,4 @@
-use hex::BytesToHexIter;
+use internals::hex::{BytesToHexIter, Case};
 use tidecoin_consensus_encoding::{ArrayEncoder, Encodable, EncodableByteIter, Encoder2};
 
 struct TestArray<const N: usize>([u8; N]);
@@ -34,7 +34,7 @@ impl<const N: usize, const M: usize> Encodable for TestCatArray<N, M> {
 fn hex_iter() {
     let data = TestArray([255u8, 240, 9, 135]);
     let byte_iter = EncodableByteIter::new(&data);
-    let mut iter = BytesToHexIter::new(byte_iter, hex::Case::Upper);
+    let mut iter = BytesToHexIter::new(byte_iter, Case::Upper);
 
     let expect_str = "FFF00987";
     for byte in expect_str.chars() {
@@ -49,7 +49,7 @@ fn hex_iter() {
 fn hex_iter_cat_encoder() {
     let data = TestCatArray([222u8, 173], [190u8, 239]);
     let byte_iter = EncodableByteIter::new(&data);
-    let mut iter = BytesToHexIter::new(byte_iter, hex::Case::Lower);
+    let mut iter = BytesToHexIter::new(byte_iter, Case::Lower);
 
     let expect_str = "deadbeef";
     for byte in expect_str.chars() {

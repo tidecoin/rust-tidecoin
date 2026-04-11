@@ -4,8 +4,8 @@
 #
 # Used by labeler.yaml
 #
-# Not to be confused with the per crate `test_vars.sh` used by
-# `rust-bitcoin-maintainer-tools-run_task.sh`.
+# Not to be confused with the per-crate `test_vars.sh` used by the
+# maintainer-tools task runner.
 # disable verify unused vars, despite the fact that they are used when sourced
 # shellcheck disable=SC2034
 

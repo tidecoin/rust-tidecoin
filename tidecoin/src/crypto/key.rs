@@ -433,10 +433,11 @@ impl std::error::Error for MismatchedPqPublicKeyError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::pq::PqSchemeCryptoExt as _;
 
     #[test]
     fn pq_wif_roundtrip_prefixed() {
-        let (pk, sk) = PqScheme::Falcon512.generate_keypair();
+        let (pk, sk) = PqScheme::Falcon512.generate_keypair_from_seed(&[0x42; 48]).unwrap();
         let encoded = PqWifKey::new(sk.clone(), Network::Tidecoin).unwrap().to_wif();
         let decoded = PqWifKey::from_wif(&encoded).unwrap();
         assert_eq!(decoded.secret_key, sk);

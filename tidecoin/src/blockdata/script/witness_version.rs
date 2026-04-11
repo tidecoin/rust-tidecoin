@@ -1,9 +1,8 @@
 //! The Tidecoin segregated witness version byte.
 //!
-//! > A scriptPubKey (or redeemScript as defined in BIP-0016/P2SH) that consists of a 1-byte push
-//! > opcode (for 0 to 16) followed by a data push between 2 and 40 bytes gets a new special
-//! > meaning. The value of the first push is called the "version byte". The following byte
-//! > vector pushed is called the "witness program".
+//! > A script pubkey consisting of a 1-byte push opcode (for 0 to 16) followed by a data push
+//! > between 2 and 40 bytes is a witness program. The value of the first push is the "version
+//! > byte"; the following byte vector is the witness program.
 //!
 use core::convert::Infallible;
 use core::fmt;

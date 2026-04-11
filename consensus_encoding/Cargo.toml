@@ -1,11 +1,11 @@
 [package]
 name = "tidecoin-consensus-encoding"
 version = "0.1.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>", "Nick Johnson <nick@yonson.dev>", "Tobin C. Harding <me@tobin.cc>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-homepage = "https://github.com/nicenemo/rust-tidecoin/"
+homepage = "https://github.com/tidecoin/rust-tidecoin"
 documentation = "https://docs.rs/tidecoin-consensus-encoding/"
-repository = "https://github.com/nicenemo/rust-tidecoin/"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 description = "Consensus encoding and decoding"
 categories = ["cryptography::cryptocurrencies"]
 keywords = ["tidecoin", "no-std"]
@@ -23,7 +23,7 @@ alloc = ["internals/alloc"]
 internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0" }
 
 [dev-dependencies]
-hex = { package = "hex-conservative", version = "0.3.2" }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", features = ["hex"] }
 
 [package.metadata.docs.rs]
 all-features = true

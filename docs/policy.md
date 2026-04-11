@@ -262,9 +262,9 @@ types.
 ///
 /// </details>
 ///
-/// ### Relevant BIPs
+/// ### Tidecoin Protocol References
 ///
-/// * BIP-XXXX-style FooBar encoding, if that standard is still part of Tidecoin semantics.
+/// * Tidecoin foobar relay encoding.
 pub struct FooBar {
     /// The version in use.
     pub version: Version
@@ -345,25 +345,29 @@ See [Errors](#errors) section.
   version attributes may be added as needed.
 
 
-## BIP References
+## External Standards References
 
-When referring to BIP-derived rules in documentation, comments, and error messages, use the
-standardized notation `BIP-XXXX` where `XXXX` is the 4-digit BIP number with leading zeros.
+Live documentation should describe Tidecoin active semantics first. Reference an external standard
+only when the standard is part of the active Tidecoin rule, or when a short provenance note is
+needed to explain inherited terminology.
 
 ### Examples
 
-- Correct: `BIP-0032`, `BIP-0341`, `BIP-0014`
-- Incorrect: `BIP32`, `BIP 341`, `Bip14`, `bip_341`
+- Correct: `Tidecoin PQHD v1 hardened derivation`
+- Correct: `Tidecoin witness-v1 512-bit script-hash program`
+- Correct: `Tidecoin compact block relay`
+- Incorrect: presenting upstream protocol or wallet standards as active Tidecoin goals
 
 ### Exceptions
 
 Module names, function names, variable names, and file names must keep their existing
-lowercase/underscore format. Do not rename them to match the formal BIP style when the item still
-exists in the codebase.
+lowercase/underscore format when the protocol surface still uses that name. If a module name exists
+only because of inherited organization and is not active Tidecoin terminology, rename or archive it
+as part of the relevant cleanup instead of documenting it as a compatibility target.
 
 Examples:
-- Module names: `bip152`
-- Function names: `bip_341_tests`
+- Module names: `compact_blocks` for compact-block relay and `compact_filter` for compact block filters.
+- Function names: `pqhd_hardened_path_roundtrip`, `witness_v1_512_program_roundtrip`.
 
 ## Licensing
 

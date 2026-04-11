@@ -10,12 +10,6 @@ target_features="$(rustc --print target-features | awk '{ if ($1 == "") { exit 0
 
 for crate in $CRATES;
 do
-	# The secp256k1 crate cannot be miri-checked because of FFI, so we have to exclude it
-	if cargo tree --manifest-path "$crate/Cargo.toml" | grep -q secp256k1;
-	then
-		echo "$crate depends on secp256k1, skipping..." >&2
-		continue
-	fi
 	# Running miri is expensive and not needed for crates that don't contain unsafe
 	if RUSTFLAGS="-C target-feature=$target_features -F unsafe-code" cargo check -q --all-features --target x86_64-unknown-linux-gnu 2>/dev/null;
 	then

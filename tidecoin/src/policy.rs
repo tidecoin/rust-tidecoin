@@ -8,13 +8,13 @@
 use core::cmp;
 use core::fmt;
 
+use encoding::CompactSizeEncoder;
+
 use super::constants::{MAX_BLOCK_SIGOPS_COST, WITNESS_SCALE_FACTOR};
-use crate::blockdata::transaction::TransactionExt as _;
-use crate::crypto::pq::PqScheme;
 use crate::script::{
     Instruction, ScriptExt as _, ScriptPubKey, ScriptPubKeyExt as _, ScriptSigExt as _,
 };
-use crate::transaction::{OutPoint, Transaction, TxOut, Version};
+use crate::transaction::{InputWeightPrediction, OutPoint, Transaction, TxOut, Version};
 use crate::{Amount, FeeRate, Witness, WitnessVersion};
 
 /// Maximum weight of a transaction for it to be relayed by most nodes on the network.
@@ -125,86 +125,6 @@ enum StandardScriptType {
     Standard,
 }
 
-const fn compact_size_len(size: usize) -> usize {
-    if size < 253 {
-        1
-    } else if size <= u16::MAX as usize {
-        3
-    } else if size <= u32::MAX as usize {
-        5
-    } else {
-        9
-    }
-}
-
-const fn script_push_len(payload_size: usize) -> usize {
-    if payload_size < 0x4c {
-        1 + payload_size
-    } else if payload_size <= u8::MAX as usize {
-        2 + payload_size
-    } else if payload_size <= u16::MAX as usize {
-        3 + payload_size
-    } else {
-        5 + payload_size
-    }
-}
-
-fn max_known_sig_bytes_in_script() -> usize {
-    [
-        PqScheme::Falcon512,
-        PqScheme::Falcon1024,
-        PqScheme::MlDsa44,
-        PqScheme::MlDsa65,
-        PqScheme::MlDsa87,
-    ]
-    .into_iter()
-    .map(|scheme| scheme.max_sig_len())
-    .max()
-    .expect("known PQ schemes present")
-        + 1
-}
-
-fn max_known_pubkey_bytes_in_script() -> usize {
-    [
-        PqScheme::Falcon512,
-        PqScheme::Falcon1024,
-        PqScheme::MlDsa44,
-        PqScheme::MlDsa65,
-        PqScheme::MlDsa87,
-    ]
-    .into_iter()
-    .map(|scheme| scheme.prefixed_pubkey_len())
-    .max()
-    .expect("known PQ schemes present")
-}
-
-fn non_witness_pq_scriptsig_bytes() -> usize {
-    let sig_len = max_known_sig_bytes_in_script();
-    let pubkey_len = max_known_pubkey_bytes_in_script();
-    compact_size_len(sig_len) + sig_len + compact_size_len(pubkey_len) + pubkey_len
-}
-
-fn p2wpkh_pq_witness_bytes() -> usize {
-    let sig_len = max_known_sig_bytes_in_script();
-    let pubkey_len = max_known_pubkey_bytes_in_script();
-    compact_size_len(2)
-        + compact_size_len(sig_len)
-        + sig_len
-        + compact_size_len(pubkey_len)
-        + pubkey_len
-}
-
-fn p2wsh_pq_witness_bytes() -> usize {
-    let sig_len = max_known_sig_bytes_in_script();
-    let pubkey_len = max_known_pubkey_bytes_in_script();
-    let witness_script_len = script_push_len(pubkey_len) + 1;
-    compact_size_len(2)
-        + compact_size_len(sig_len)
-        + sig_len
-        + compact_size_len(witness_script_len)
-        + witness_script_len
-}
-
 pub(crate) fn dust_threshold(
     script_pubkey: &ScriptPubKey,
     dust_relay_fee: FeeRate,
@@ -214,18 +134,20 @@ pub(crate) fn dust_threshold(
     }
 
     let mut size = 8usize
-        .checked_add(compact_size_len(script_pubkey.len()))?
+        .checked_add(CompactSizeEncoder::encoded_size(script_pubkey.len()))?
         .checked_add(script_pubkey.len())?;
 
     if script_pubkey.is_witness_program() {
         let witness_cost = if script_pubkey.is_p2wpkh() {
-            p2wpkh_pq_witness_bytes() / WITNESS_SCALE_FACTOR
+            InputWeightPrediction::MAX_KNOWN_PQ_P2WPKH.witness_stack_size() / WITNESS_SCALE_FACTOR
         } else {
-            p2wsh_pq_witness_bytes() / WITNESS_SCALE_FACTOR
+            InputWeightPrediction::MAX_KNOWN_PQ_WITNESS_SCRIPT_KEY_SPEND.witness_stack_size()
+                / WITNESS_SCALE_FACTOR
         };
         size = size.checked_add(32 + 4 + 1 + witness_cost + 4)?;
     } else {
-        size = size.checked_add(32 + 4 + 1 + non_witness_pq_scriptsig_bytes() + 4)?;
+        let script_sig_size = InputWeightPrediction::MAX_KNOWN_PQ_NON_WITNESS_DUST_SCRIPT_SIG_SIZE;
+        size = size.checked_add(32 + 4 + script_sig_size + 4)?;
     }
 
     Amount::from_sat((dust_relay_fee.to_sat_per_kvb_ceil()).checked_mul(size as u64)? / 1000).ok()
@@ -481,29 +403,16 @@ pub fn get_virtual_tx_size(weight: i64, n_sigops: i64) -> i64 {
         / WITNESS_SCALE_FACTOR as i64
 }
 
-/// Returns the virtual size of a native P2WPKH input for the provided signature and pubkey sizes.
-pub fn p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64 {
-    let witness_bytes = compact_size_len(2)
-        + compact_size_len(sig_len)
-        + sig_len
-        + compact_size_len(pubkey_len)
-        + pubkey_len;
-    let weight = ((32 + 4 + 1 + 4) * WITNESS_SCALE_FACTOR + witness_bytes) as i64;
-    get_virtual_tx_size(weight, 0)
+/// Returns the virtual size of a native PQ P2WPKH input for the provided signature and pubkey sizes.
+pub fn pq_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64 {
+    let prediction = InputWeightPrediction::pq_p2wpkh_with_sizes(sig_len, pubkey_len);
+    get_virtual_tx_size(prediction.total_weight().to_wu() as i64, 0)
 }
 
-/// Returns the virtual size of a P2SH-wrapped P2WPKH input for the provided signature and pubkey sizes.
-pub fn p2sh_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64 {
-    let witness_bytes = compact_size_len(2)
-        + compact_size_len(sig_len)
-        + sig_len
-        + compact_size_len(pubkey_len)
-        + pubkey_len;
-    let redeem_script_len = 22usize;
-    let script_sig_len = script_push_len(redeem_script_len);
-    let non_witness_bytes = 32 + 4 + compact_size_len(script_sig_len) + script_sig_len + 4;
-    let weight = (non_witness_bytes * WITNESS_SCALE_FACTOR + witness_bytes) as i64;
-    get_virtual_tx_size(weight, 0)
+/// Returns the virtual size of a P2SH-wrapped PQ P2WPKH input for the provided signature and pubkey sizes.
+pub fn pq_p2sh_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64 {
+    let prediction = InputWeightPrediction::pq_nested_p2wpkh_with_sizes(sig_len, pubkey_len);
+    get_virtual_tx_size(prediction.total_weight().to_wu() as i64, 0)
 }
 
 fn witness_standard_for_program<T: crate::script::ScriptHashableTag>(
@@ -545,7 +454,7 @@ mod tests {
 
     use super::*;
     use crate::blockdata::script::{Builder, PushBytesBuf, ScriptBufExt as _};
-    use crate::crypto::pq::PqScheme;
+    use crate::crypto::pq::{PqScheme, PqSchemeCryptoExt as _};
     use crate::prelude::Vec;
     use crate::script::{RedeemScriptBuf, ScriptPubKeyBuf, ScriptSigBuf, WitnessScriptBuf};
     use crate::transaction::{Transaction, TxIn, TxOut, Txid};
@@ -570,8 +479,15 @@ mod tests {
         }
     }
 
+    fn deterministic_pubkey(scheme: PqScheme, tag: u8) -> crate::crypto::pq::PqPublicKey {
+        let seed: Vec<u8> = (0..scheme.deterministic_seed_len())
+            .map(|i| tag ^ (i as u8).wrapping_mul(131))
+            .collect();
+        scheme.generate_keypair_from_seed(&seed).unwrap().0
+    }
+
     fn pq_p2pk_script() -> ScriptPubKeyBuf {
-        let (pubkey, _) = PqScheme::MlDsa87.generate_keypair();
+        let pubkey = deterministic_pubkey(PqScheme::MlDsa87, 0x87);
         ScriptPubKeyBuf::builder()
             .push_slice(PushBytesBuf::try_from(pubkey.to_prefixed_bytes()).unwrap())
             .push_opcode(crate::opcodes::all::OP_CHECKSIG)
@@ -706,7 +622,7 @@ mod tests {
 
     #[test]
     fn spends_non_anchor_witness_program_covers_node_output_types() {
-        let (pubkey, _) = PqScheme::Falcon512.generate_keypair();
+        let pubkey = deterministic_pubkey(PqScheme::Falcon512, 0x51);
         let p2pk = ScriptPubKeyBuf::builder()
             .push_slice(PushBytesBuf::try_from(pubkey.to_prefixed_bytes()).unwrap())
             .push_opcode(crate::opcodes::all::OP_CHECKSIG)
@@ -1071,26 +987,46 @@ mod tests {
 
     #[test]
     fn pq_input_vsize_matches_node_formulas_all_schemes() {
-        for scheme in [
-            PqScheme::Falcon512,
-            PqScheme::Falcon1024,
-            PqScheme::MlDsa44,
-            PqScheme::MlDsa65,
-            PqScheme::MlDsa87,
-        ] {
-            let sig_len = scheme.max_sig_len() + 1;
+        for scheme in PqScheme::KNOWN {
+            let sig_len = scheme.max_sig_len_in_script();
             let pubkey_len = scheme.prefixed_pubkey_len();
 
-            let witness_bytes = compact_size_len(2)
-                + compact_size_len(sig_len)
+            let witness_bytes = CompactSizeEncoder::encoded_size(2)
+                + CompactSizeEncoder::encoded_size(sig_len)
                 + sig_len
-                + compact_size_len(pubkey_len)
+                + CompactSizeEncoder::encoded_size(pubkey_len)
                 + pubkey_len;
             let native_weight = (41 * WITNESS_SCALE_FACTOR + witness_bytes) as i64;
             let nested_weight = (64 * WITNESS_SCALE_FACTOR + witness_bytes) as i64;
 
-            assert_eq!(p2wpkh_input_vsize(sig_len, pubkey_len), (native_weight + 3) / 4);
-            assert_eq!(p2sh_p2wpkh_input_vsize(sig_len, pubkey_len), (nested_weight + 3) / 4);
+            assert_eq!(pq_p2wpkh_input_vsize(sig_len, pubkey_len), (native_weight + 3) / 4);
+            assert_eq!(pq_p2sh_p2wpkh_input_vsize(sig_len, pubkey_len), (nested_weight + 3) / 4);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn pq_input_vsize_matches_tidecoin_node_bridge_all_schemes() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed txsize test: {err}");
+                return;
+            }
+        };
+
+        for scheme in PqScheme::KNOWN {
+            let sig_len = scheme.max_sig_len_in_script();
+            let pubkey_len = scheme.prefixed_pubkey_len();
+
+            assert_eq!(
+                pq_p2wpkh_input_vsize(sig_len, pubkey_len),
+                harness.pq_p2wpkh_input_vsize(sig_len, pubkey_len).unwrap()
+            );
+            assert_eq!(
+                pq_p2sh_p2wpkh_input_vsize(sig_len, pubkey_len),
+                harness.pq_p2sh_p2wpkh_input_vsize(sig_len, pubkey_len).unwrap()
+            );
         }
     }
 
@@ -1158,7 +1094,7 @@ mod tests {
             tx_with_single_input(ScriptSigBuf::new(), vec![prevout(output_script, 30_000)]);
         tx.inputs[0].witness.push(Vec::<u8>::new());
         for _ in 0..20 {
-            tx.inputs[0].witness.push(vec![0x30; scheme.max_sig_len() + 1]);
+            tx.inputs[0].witness.push(vec![0x30; scheme.max_sig_len_in_script()]);
         }
         tx.inputs[0].witness.push(witness_script.as_bytes());
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: CC0-1.0
 
-use core::fmt;
+use primitives::script::{
+    ParsedWitnessProgram, WitnessProgramClass as PrimitiveWitnessProgramClass,
+};
 
 use super::witness_version::WitnessVersion;
 use super::{
@@ -12,9 +14,7 @@ use crate::key::WPubkeyHash;
 use crate::opcodes::all::*;
 use crate::opcodes::Opcode;
 use crate::policy::{DUST_RELAY_TX_FEE, MAX_OP_RETURN_RELAY};
-use crate::prelude::{String, ToString};
 use crate::script::{self, ScriptPubKeyBufExt as _};
-use crate::witness_program::P2A_PROGRAM;
 use crate::{internal_macros, Amount, FeeRate, ScriptPubKeyBuf, WitnessScriptBuf};
 
 internal_macros::define_extension_trait! {
@@ -116,20 +116,6 @@ internal_macros::define_extension_trait! {
             primitives::script::Script::instruction_indices_minimal(self)
         }
 
-        /// Writes the human-readable assembly representation of the script to the formatter.
-        #[deprecated(since = "TBD", note = "use the script's `Display` impl instead")]
-        fn fmt_asm(&self, f: &mut dyn fmt::Write) -> fmt::Result {
-            write!(f, "{}", self)
-        }
-
-        /// Returns the human-readable assembly representation of the script.
-        #[deprecated(since = "TBD", note = "use `to_string()` instead")]
-        fn to_asm_string(&self) -> String { self.to_string() }
-
-        /// Consensus encodes the script as lower-case hex.
-        #[deprecated(since = "TBD", note = "use `to_hex_string_no_length_prefix` instead")]
-        fn to_hex_string(&self) -> String { self.to_hex_string_no_length_prefix() }
-
         /// Returns the first opcode of the script (if there is any).
         fn first_opcode(&self) -> Option<Opcode> {
             self.as_bytes().first().copied().map(From::from)
@@ -157,7 +143,7 @@ internal_macros::define_extension_trait! {
         /// for a P2WPKH output.
         ///
         /// While the type returned is [`WitnessScriptBuf`], this is **not** a witness script and
-        /// should not be used as one. It is a special template defined in BIP 143 which is used
+        /// should not be used as one. It is the Tidecoin witness-v0 script-code template used
         /// in place of a witness script for purposes of sighash computation.
         fn p2wpkh_script_code(&self) -> Option<WitnessScriptBuf>
         where T: ScriptHashableTag
@@ -176,34 +162,17 @@ internal_macros::define_extension_trait! {
         ///
         /// # Returns
         ///
-        /// The witness version if this script is found to conform to the SegWit rules:
+        /// The witness version if this script is found to conform to the Tidecoin witness rules:
         ///
-        /// > A scriptPubKey (or redeemScript as defined in BIP-0016/P2SH) that consists of a 1-byte
-        /// > push opcode (for 0 to 16) followed by a data push between 2 and 40 bytes gets a new
-        /// > special meaning. The value of the first push is called the "version byte". The following
-        /// > byte vector pushed is called the "witness program".
+        /// > A script pubkey consisting of a 1-byte push opcode (for 0 to 16) followed by a data
+        /// > push between 2 and 40 bytes is a witness program. The value of the first push is the
+        /// > version byte, and the following byte vector is the witness program.
         #[inline]
         fn witness_version(&self) -> Option<WitnessVersion>
         where T: ScriptHashableTag
         {
-            let script_len = self.len();
-            // Tidecoin v1 witness programs can be up to 64 bytes (SHA-512 hash),
-            // giving a total scriptPubKey length of 66 (version + push opcode + 64).
-            if !(4..=66).contains(&script_len) {
-                return None;
-            }
-
-            let ver_opcode = Opcode::from(self.as_bytes()[0]); // Version 0 or PUSHNUM_1-PUSHNUM_16
-            let push_opbyte = self.as_bytes()[1]; // Second byte push opcode 2-64 bytes
-
-            if push_opbyte < OP_PUSHBYTES_2.to_u8() || push_opbyte > OP_PUSHBYTES_64.to_u8() {
-                return None;
-            }
-            if script_len - 2 != push_opbyte as usize {
-                return None;
-            }
-
-            WitnessVersion::try_from(ver_opcode).ok()
+            let program = ParsedWitnessProgram::parse_script_pubkey(self.as_bytes())?;
+            WitnessVersion::try_from(program.version()).ok()
         }
 
         /// Checks whether a script pubkey is a P2WSH output.
@@ -211,9 +180,8 @@ internal_macros::define_extension_trait! {
         fn is_p2wsh(&self) -> bool
         where T: ScriptHashableTag
         {
-            self.len() == 34
-                && self.witness_version() == Some(WitnessVersion::V0)
-                && self.as_bytes()[1] == OP_PUSHBYTES_32.to_u8()
+            ParsedWitnessProgram::parse_script_pubkey(self.as_bytes())
+                .is_some_and(|program| program.class() == PrimitiveWitnessProgramClass::P2wsh)
         }
 
         /// Checks whether a script pubkey is a P2WPKH output.
@@ -221,9 +189,8 @@ internal_macros::define_extension_trait! {
         fn is_p2wpkh(&self) -> bool
         where T: ScriptHashableTag
         {
-            self.len() == 22
-                && self.witness_version() == Some(WitnessVersion::V0)
-                && self.as_bytes()[1] == OP_PUSHBYTES_20.to_u8()
+            ParsedWitnessProgram::parse_script_pubkey(self.as_bytes())
+                .is_some_and(|program| program.class() == PrimitiveWitnessProgramClass::P2wpkh)
         }
 
         /// Checks whether a script pubkey is a P2WSH-512 output (witness v1, 64-byte SHA-512 hash).
@@ -231,9 +198,8 @@ internal_macros::define_extension_trait! {
         fn is_p2wsh512(&self) -> bool
         where T: ScriptHashableTag
         {
-            self.len() == 66
-                && self.witness_version() == Some(WitnessVersion::V1)
-                && self.as_bytes()[1] == OP_PUSHBYTES_64.to_u8()
+            ParsedWitnessProgram::parse_script_pubkey(self.as_bytes())
+                .is_some_and(|program| program.class() == PrimitiveWitnessProgramClass::P2wsh512)
         }
     }
 }
@@ -338,10 +304,8 @@ internal_macros::define_extension_trait! {
         /// Checks whether a script pubkey is a P2A output.
         #[inline]
         fn is_p2a(&self) -> bool {
-            self.len() == 4
-                && self.witness_version() == Some(WitnessVersion::V1)
-                && self.as_bytes()[1] == OP_PUSHBYTES_2.to_u8()
-                && self.as_bytes()[2..] == P2A_PROGRAM
+            ParsedWitnessProgram::parse_script_pubkey(self.as_bytes())
+                .is_some_and(|program| program.class() == PrimitiveWitnessProgramClass::P2a)
         }
 
         /// Check if this is a consensus-valid OP_RETURN output.
@@ -359,31 +323,6 @@ internal_macros::define_extension_trait! {
         /// changes.
         #[inline]
         fn is_standard_op_return(&self) -> bool { self.is_op_return() && self.len() <= MAX_OP_RETURN_RELAY }
-
-        /// Checks whether a script is trivially known to have no satisfying input.
-        ///
-        /// This method has potentially confusing semantics and an unclear purpose, so it's going to be
-        /// removed. Use `is_op_return` if you want `OP_RETURN` semantics.
-        #[deprecated(since = "0.32.0", note = "use `is_op_return` instead")]
-        #[inline]
-        fn is_provably_unspendable(&self) -> bool {
-            use crate::opcodes::Class::{IllegalOp, ReturnOp};
-
-            match self.as_bytes().first() {
-                Some(b) => {
-                    let first = Opcode::from(*b);
-                    let class = first.classify();
-
-                    class == ReturnOp || class == IllegalOp
-                }
-                None => false,
-            }
-        }
-
-        /// Returns the minimum value an output with this script should have in order to be
-        /// broadcastable on today’s Tidecoin network.
-        #[deprecated(since = "0.32.0", note = "use `minimal_non_dust` etc. instead")]
-        fn dust_value(&self) -> Amount { self.minimal_non_dust() }
 
         /// Returns the minimum value an output with this script should have in order to be
         /// broadcastable on today's Tidecoin network.
@@ -479,7 +418,7 @@ internal_macros::define_extension_trait! {
 internal_macros::define_extension_trait! {
     /// Extension functionality for the [`ScriptSig`] type.
     pub trait ScriptSigExt impl for ScriptSig {
-        /// Get redeemScript following BIP-0016 rules regarding P2SH spending.
+        /// Get the redeem script following Tidecoin P2SH spending rules.
         ///
         /// This does not guarantee that this represents a P2SH input [`ScriptSig`].
         /// It merely gets the last push of the script.

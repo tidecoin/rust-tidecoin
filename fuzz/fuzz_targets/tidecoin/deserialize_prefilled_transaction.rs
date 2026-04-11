@@ -9,7 +9,7 @@ fn main() {}
 
 fn do_test(data: &[u8]) {
     // We already fuzz Transactions in `./deserialize_transaction.rs`.
-    let tx_result: Result<p2p::bip152::PrefilledTransaction, _> = decode_from_slice(data);
+    let tx_result: Result<p2p::compact_blocks::PrefilledTransaction, _> = decode_from_slice(data);
 
     match tx_result {
         Err(_) => {}

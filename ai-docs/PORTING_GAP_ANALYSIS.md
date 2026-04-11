@@ -1,7 +1,7 @@
 # Porting Gap Analysis: rust-tidecoin Library
 
 Generated: 2026-04-01
-Revalidated after the AuxPoW, `Sighash512`, PQHD/PSBT, PQ crypto-bridge, ML-KEM-512, `bip324_pq`, and node-backed validation/runtime passes.
+Revalidated after the AuxPoW, `Sighash512`, PQHD/PSBT, PQ crypto-bridge, ML-KEM-512, Tidecoin PQ v2 transport, and node-backed validation/runtime passes.
 
 Node source: `/home/kiel/work/tidecoin-node`
 Rust source: `/home/kiel/work/rust-tidecoin`
@@ -33,7 +33,7 @@ Out of scope:
 - `pqhd(...)` key-expression parsing, deterministic derivation, and wallet descriptor string generation
 - node-compatible PQ base58 secret import/export for prefixed and legacy Falcon-512 WIF paths
 - ML-KEM-512 keypair / deterministic keypair / encapsulate / deterministic encapsulate / decapsulate helpers in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
-- Tidecoin v2 PQ packet cipher parity in [p2p/src/bip324_pq.rs](../p2p/src/bip324_pq.rs), including node-derived FSChaCha20 / FSChaCha20Poly1305 / `bip324_pq` tests
+- Tidecoin v2 PQ packet cipher parity in [p2p/src/pq_v2_transport.rs](../p2p/src/pq_v2_transport.rs), including node-derived FSChaCha20 / FSChaCha20Poly1305 / PQ v2 transport tests
 - Tidecoin-specific validation/runtime surface in [tidecoin/src/consensus_validation.rs](../tidecoin/src/consensus_validation.rs), [tidecoin/src/consensus_validation_node.rs](../tidecoin/src/consensus_validation_node.rs), and [tidecoin/src/consensus_validation_tidecoin.rs](../tidecoin/src/consensus_validation_tidecoin.rs)
 - node PQ execution corpus migration covering `script_tests_pq.json`, `tx_valid_pq.json`, `tx_invalid_pq.json`, `script_assets_test.json`, mixed witness-v0/v1-512 cases, PQ multisig cases, committed-hash cases, and legacy base-signature cases
 - node policy helper parity for dust thresholds, witness-program classification, standard-tx reasons, exact legacy sigop boundaries, and PQ input-vsize formulas

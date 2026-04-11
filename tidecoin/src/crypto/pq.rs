@@ -8,134 +8,121 @@
 
 use core::fmt;
 
-use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
+use consensus_core::{
+    PqError as ConsensusPqError, PqPublicKey as ConsensusPqPublicKey,
+    PqSignature as ConsensusPqSignature,
+};
+use fips204::traits::{KeyGen, SerDes, Signer};
 use hashes::hash160;
 use ml_kem::kem::{Decapsulate, Encapsulate};
 use ml_kem::{EncapsulateDeterministic, EncodedSizeUser, KemCore, MlKem512, B32};
-use rand_core::RngCore;
+use rand_core::{CryptoRng, RngCore};
 use tide_fn_dsa::{
     sign_key_size, vrfy_key_size, FalconProfile, KeyPairGeneratorStandard,
-    SigningKey as TideSigningKey, SigningKeyStandard, VerifyingKey as TideVerifyingKey,
-    VerifyingKeyStandard, FN_DSA_LOGN_1024, FN_DSA_LOGN_512, TIDECOIN_LEGACY_FALCON512_SIG_MAX,
+    SigningKey as TideSigningKey, SigningKeyStandard, FN_DSA_LOGN_1024, FN_DSA_LOGN_512,
+    TIDECOIN_LEGACY_FALCON512_SIG_MAX,
 };
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::network::Params;
 use crate::prelude::Vec;
 
-/// Identifies which post-quantum signature scheme a key or signature belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum PqScheme {
-    /// Falcon-512 (prefix `0x07`).
-    Falcon512 = 0x07,
-    /// Falcon-1024 (prefix `0x08`).
-    Falcon1024 = 0x08,
-    /// ML-DSA-44 / Dilithium2 (prefix `0x09`).
-    MlDsa44 = 0x09,
-    /// ML-DSA-65 / Dilithium3 (prefix `0x0A`).
-    MlDsa65 = 0x0A,
-    /// ML-DSA-87 / Dilithium5 (prefix `0x0B`).
-    MlDsa87 = 0x0B,
+pub use primitives::PqScheme;
+
+#[cfg(test)]
+pub(crate) struct DeterministicTestRng(u64);
+
+#[cfg(test)]
+impl DeterministicTestRng {
+    pub(crate) const fn new(seed: u64) -> Self {
+        Self(seed)
+    }
 }
 
-impl PqScheme {
-    /// Resolves a scheme from its on-wire prefix byte.
-    pub fn from_prefix(byte: u8) -> Option<Self> {
-        match byte {
-            0x07 => Some(Self::Falcon512),
-            0x08 => Some(Self::Falcon1024),
-            0x09 => Some(Self::MlDsa44),
-            0x0A => Some(Self::MlDsa65),
-            0x0B => Some(Self::MlDsa87),
-            _ => None,
+#[cfg(test)]
+impl RngCore for DeterministicTestRng {
+    fn next_u32(&mut self) -> u32 {
+        self.next_u64() as u32
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(0x9e37_79b9_7f4a_7c15).wrapping_add(0xbf58_476d_1ce4_e5b9);
+        self.0 ^ (self.0 >> 29)
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        let mut offset = 0;
+        while offset < dest.len() {
+            let bytes = self.next_u64().to_le_bytes();
+            let n = core::cmp::min(bytes.len(), dest.len() - offset);
+            dest[offset..offset + n].copy_from_slice(&bytes[..n]);
+            offset += n;
         }
     }
 
-    /// Returns the on-wire prefix byte for this scheme.
-    pub fn prefix(self) -> u8 {
-        self as u8
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
+        Ok(())
     }
+}
 
-    /// Raw public key length in bytes (without the scheme prefix).
-    pub fn pubkey_len(self) -> usize {
-        match self {
-            Self::Falcon512 => 897,
-            Self::Falcon1024 => 1793,
-            Self::MlDsa44 => 1312,
-            Self::MlDsa65 => 1952,
-            Self::MlDsa87 => 2592,
-        }
-    }
+#[cfg(test)]
+impl CryptoRng for DeterministicTestRng {}
 
-    /// Secret key length in bytes.
-    pub fn seckey_len(self) -> usize {
-        match self {
-            Self::Falcon512 => 1281,
-            Self::Falcon1024 => 2305,
-            Self::MlDsa44 => 2560,
-            Self::MlDsa65 => 4032,
-            Self::MlDsa87 => 4896,
-        }
-    }
+/// High-level cryptographic operations for Tidecoin PQ schemes.
+pub trait PqSchemeCryptoExt {
+    /// Returns whether this scheme is allowed at the given chain height.
+    fn is_allowed_by_params_at_height(&self, height: u32, params: impl AsRef<Params>) -> bool;
 
-    /// Maximum signature length in bytes.
-    pub fn max_sig_len(self) -> usize {
-        match self {
-            Self::Falcon512 => 752,
-            Self::Falcon1024 => 1462,
-            Self::MlDsa44 => 2420,
-            Self::MlDsa65 => 3309,
-            Self::MlDsa87 => 4627,
-        }
-    }
+    /// Generates a fresh PQ keypair for this scheme using caller-provided randomness.
+    fn generate_keypair_with_rng<R>(
+        self,
+        rng: &mut R,
+    ) -> Result<(PqPublicKey, PqSecretKey), PqError>
+    where
+        R: RngCore + CryptoRng;
 
-    /// Public key length including the one-byte scheme prefix.
-    pub fn prefixed_pubkey_len(self) -> usize {
-        self.pubkey_len() + 1
-    }
+    /// Generates a fresh PQ keypair for this scheme.
+    #[cfg(feature = "rand")]
+    fn generate_keypair(self) -> (PqPublicKey, PqSecretKey);
 
-    /// Secret key length including the one-byte scheme prefix.
-    pub fn prefixed_seckey_len(self) -> usize {
-        self.seckey_len() + 1
-    }
+    /// Generates a deterministic PQ keypair from the scheme-specific seed bytes.
+    fn generate_keypair_from_seed(self, seed: &[u8])
+        -> Result<(PqPublicKey, PqSecretKey), PqError>;
+}
 
-    /// Deterministic keygen seed length used by Tidecoin PQHD v1.
-    pub fn deterministic_seed_len(self) -> usize {
-        match self {
-            Self::Falcon512 | Self::Falcon1024 => 48,
-            Self::MlDsa44 | Self::MlDsa65 | Self::MlDsa87 => 32,
-        }
-    }
-
+impl PqSchemeCryptoExt for PqScheme {
     /// Returns whether this scheme is allowed at the given chain height.
     ///
     /// Tidecoin permits only Falcon-512 before auxpow activation. Once auxpow is active,
     /// all current PQ schemes are allowed.
-    pub fn is_allowed_at_height(self, height: u32, params: impl AsRef<Params>) -> bool {
-        match params.as_ref().auxpow_start_height {
-            Some(start_height) if height >= start_height.to_u32() => true,
-            _ => self == Self::Falcon512,
-        }
+    fn is_allowed_by_params_at_height(&self, height: u32, params: impl AsRef<Params>) -> bool {
+        Self::is_allowed_at_height(
+            *self,
+            height,
+            params.as_ref().auxpow_start_height.map(|height| height.to_u32()),
+        )
     }
 
-    /// Generates a fresh PQ keypair for this scheme.
-    pub fn generate_keypair(self) -> (PqPublicKey, PqSecretKey) {
-        match self {
+    /// Generates a fresh PQ keypair for this scheme using caller-provided randomness.
+    fn generate_keypair_with_rng<R>(
+        self,
+        rng: &mut R,
+    ) -> Result<(PqPublicKey, PqSecretKey), PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
+        Ok(match self {
             Self::Falcon512 => {
                 let mut seed = Zeroizing::new([0u8; 48]);
-                rand_core::OsRng.fill_bytes(seed.as_mut());
+                rng.fill_bytes(seed.as_mut());
                 let mut sk_buf = Zeroizing::new(vec![
                     0u8;
-                    sign_key_size(FN_DSA_LOGN_512).expect(
-                        "known Falcon-512 secret-key size"
-                    )
+                    sign_key_size(FN_DSA_LOGN_512)
+                        .map_err(|_| PqError::BackendFailure)?
                 ]);
-                let mut vk_buf = vec![
-                    0u8;
-                    vrfy_key_size(FN_DSA_LOGN_512)
-                        .expect("known Falcon-512 public-key size")
-                ];
+                let mut vk_buf =
+                    vec![0u8; vrfy_key_size(FN_DSA_LOGN_512).map_err(|_| PqError::BackendFailure)?];
                 KeyPairGeneratorStandard::default()
                     .keygen_from_seed_pqclean(
                         FN_DSA_LOGN_512,
@@ -143,22 +130,21 @@ impl PqScheme {
                         &mut sk_buf[..],
                         &mut vk_buf[..],
                     )
-                    .expect("Falcon-512 keygen");
+                    .map_err(|_| PqError::BackendFailure)?;
                 (PqPublicKey::from_backend(self, &vk_buf), PqSecretKey::from_backend(self, &sk_buf))
             }
             Self::Falcon1024 => {
                 let mut seed = Zeroizing::new([0u8; 48]);
-                rand_core::OsRng.fill_bytes(seed.as_mut());
+                rng.fill_bytes(seed.as_mut());
                 let mut sk_buf = Zeroizing::new(vec![
                     0u8;
-                    sign_key_size(FN_DSA_LOGN_1024).expect(
-                        "known Falcon-1024 secret-key size"
-                    )
+                    sign_key_size(FN_DSA_LOGN_1024)
+                        .map_err(|_| PqError::BackendFailure)?
                 ]);
                 let mut vk_buf = vec![
                     0u8;
                     vrfy_key_size(FN_DSA_LOGN_1024)
-                        .expect("known Falcon-1024 public-key size")
+                        .map_err(|_| PqError::BackendFailure)?
                 ];
                 KeyPairGeneratorStandard::default()
                     .keygen_from_seed_pqclean(
@@ -167,12 +153,12 @@ impl PqScheme {
                         &mut sk_buf[..],
                         &mut vk_buf[..],
                     )
-                    .expect("Falcon-1024 keygen");
+                    .map_err(|_| PqError::BackendFailure)?;
                 (PqPublicKey::from_backend(self, &vk_buf), PqSecretKey::from_backend(self, &sk_buf))
             }
             Self::MlDsa44 => {
-                let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(&mut rand_core::OsRng)
-                    .expect("ML-DSA-44 keygen");
+                let (pk, sk) = fips204::ml_dsa_44::try_keygen_with_rng(rng)
+                    .map_err(|_| PqError::BackendFailure)?;
                 let sk_bytes = Zeroizing::new(sk.into_bytes());
                 (
                     PqPublicKey::from_backend(self, &pk.into_bytes()),
@@ -180,8 +166,8 @@ impl PqScheme {
                 )
             }
             Self::MlDsa65 => {
-                let (pk, sk) = fips204::ml_dsa_65::try_keygen_with_rng(&mut rand_core::OsRng)
-                    .expect("ML-DSA-65 keygen");
+                let (pk, sk) = fips204::ml_dsa_65::try_keygen_with_rng(rng)
+                    .map_err(|_| PqError::BackendFailure)?;
                 let sk_bytes = Zeroizing::new(sk.into_bytes());
                 (
                     PqPublicKey::from_backend(self, &pk.into_bytes()),
@@ -189,19 +175,25 @@ impl PqScheme {
                 )
             }
             Self::MlDsa87 => {
-                let (pk, sk) = fips204::ml_dsa_87::try_keygen_with_rng(&mut rand_core::OsRng)
-                    .expect("ML-DSA-87 keygen");
+                let (pk, sk) = fips204::ml_dsa_87::try_keygen_with_rng(rng)
+                    .map_err(|_| PqError::BackendFailure)?;
                 let sk_bytes = Zeroizing::new(sk.into_bytes());
                 (
                     PqPublicKey::from_backend(self, &pk.into_bytes()),
                     PqSecretKey::from_backend(self, sk_bytes.as_ref()),
                 )
             }
-        }
+        })
+    }
+
+    /// Generates a fresh PQ keypair for this scheme.
+    #[cfg(feature = "rand")]
+    fn generate_keypair(self) -> (PqPublicKey, PqSecretKey) {
+        self.generate_keypair_with_rng(&mut rand_core::OsRng).expect("OS random PQ keygen")
     }
 
     /// Generates a deterministic PQ keypair from a scheme-specific seed.
-    pub fn generate_keypair_from_seed(
+    fn generate_keypair_from_seed(
         self,
         seed: &[u8],
     ) -> Result<(PqPublicKey, PqSecretKey), PqError> {
@@ -392,7 +384,7 @@ impl PqSecretKey {
         if data.len() != expected {
             return Err(PqError::InvalidKeyLength { expected, got: data.len() });
         }
-        if !scheme.is_valid_secret_key_encoding(data) {
+        if !is_valid_secret_key_encoding(scheme, data) {
             return Err(PqError::InvalidSecretKeyEncoding(scheme));
         }
         Ok(Self { scheme, data: data.to_vec() })
@@ -432,7 +424,7 @@ impl PqSecretKey {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            if data.len() == scheme.seckey_len() && scheme.is_valid_secret_key_encoding(data) {
+            if data.len() == scheme.seckey_len() && is_valid_secret_key_encoding(scheme, data) {
                 return Ok(Self { scheme, data: data.to_vec() });
             }
         }
@@ -487,43 +479,101 @@ impl PqSignature {
     }
 
     /// Signs a 32-byte message digest with the given secret key.
+    #[cfg(feature = "rand")]
     pub fn sign_msg32(msg: &[u8; 32], sk: &PqSecretKey) -> Result<Self, PqError> {
-        Self::sign_message(msg, sk)
+        Self::sign_msg32_with_rng(msg, sk, &mut rand_core::OsRng)
     }
 
     /// Signs a 64-byte message digest with the given secret key.
+    #[cfg(feature = "rand")]
     pub fn sign_msg64(msg: &[u8; 64], sk: &PqSecretKey) -> Result<Self, PqError> {
-        Self::sign_message(msg, sk)
+        Self::sign_msg64_with_rng(msg, sk, &mut rand_core::OsRng)
+    }
+
+    /// Signs a 32-byte message digest with caller-provided randomness.
+    pub fn sign_msg32_with_rng<R>(
+        msg: &[u8; 32],
+        sk: &PqSecretKey,
+        rng: &mut R,
+    ) -> Result<Self, PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
+        Self::sign_message_with_rng(msg, sk, rng)
+    }
+
+    /// Signs a 64-byte message digest with caller-provided randomness.
+    pub fn sign_msg64_with_rng<R>(
+        msg: &[u8; 64],
+        sk: &PqSecretKey,
+        rng: &mut R,
+    ) -> Result<Self, PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
+        Self::sign_message_with_rng(msg, sk, rng)
     }
 
     /// Verifies a 32-byte message digest against the given public key.
     pub fn verify_msg32(&self, msg: &[u8; 32], pk: &PqPublicKey) -> Result<(), PqError> {
-        self.verify_message(msg, pk)
+        self.as_consensus_signature().verify_msg32(msg, &pk.as_consensus_key()?).map_err(Into::into)
     }
 
     /// Verifies a 64-byte message digest against the given public key.
     pub fn verify_msg64(&self, msg: &[u8; 64], pk: &PqPublicKey) -> Result<(), PqError> {
-        self.verify_message(msg, pk)
+        self.as_consensus_signature().verify_msg64(msg, &pk.as_consensus_key()?).map_err(Into::into)
     }
 
     /// Signs a 32-byte message digest using the node's Falcon-512 legacy format when applicable.
+    #[cfg(feature = "rand")]
     pub fn sign_msg32_legacy(msg: &[u8; 32], sk: &PqSecretKey) -> Result<Self, PqError> {
-        Self::sign_message_legacy(msg, sk)
+        Self::sign_msg32_legacy_with_rng(msg, sk, &mut rand_core::OsRng)
     }
 
     /// Signs a 64-byte message digest using the node's Falcon-512 legacy format when applicable.
+    #[cfg(feature = "rand")]
     pub fn sign_msg64_legacy(msg: &[u8; 64], sk: &PqSecretKey) -> Result<Self, PqError> {
-        Self::sign_message_legacy(msg, sk)
+        Self::sign_msg64_legacy_with_rng(msg, sk, &mut rand_core::OsRng)
+    }
+
+    /// Signs a 32-byte message digest using caller-provided randomness and the node's
+    /// Falcon-512 legacy format when applicable.
+    pub fn sign_msg32_legacy_with_rng<R>(
+        msg: &[u8; 32],
+        sk: &PqSecretKey,
+        rng: &mut R,
+    ) -> Result<Self, PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
+        Self::sign_message_legacy_with_rng(msg, sk, rng)
+    }
+
+    /// Signs a 64-byte message digest using caller-provided randomness and the node's
+    /// Falcon-512 legacy format when applicable.
+    pub fn sign_msg64_legacy_with_rng<R>(
+        msg: &[u8; 64],
+        sk: &PqSecretKey,
+        rng: &mut R,
+    ) -> Result<Self, PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
+        Self::sign_message_legacy_with_rng(msg, sk, rng)
     }
 
     /// Verifies a 32-byte message digest using the node's Falcon-512 legacy format when applicable.
     pub fn verify_msg32_legacy(&self, msg: &[u8; 32], pk: &PqPublicKey) -> Result<(), PqError> {
-        self.verify_message_legacy(msg, pk)
+        self.as_consensus_signature()
+            .verify_msg32_legacy(msg, &pk.as_consensus_key()?)
+            .map_err(Into::into)
     }
 
     /// Verifies a 64-byte message digest using the node's Falcon-512 legacy format when applicable.
     pub fn verify_msg64_legacy(&self, msg: &[u8; 64], pk: &PqPublicKey) -> Result<(), PqError> {
-        self.verify_message_legacy(msg, pk)
+        self.as_consensus_signature()
+            .verify_msg64_legacy(msg, &pk.as_consensus_key()?)
+            .map_err(Into::into)
     }
 
     /// Verifies a 32-byte message digest, accepting either strict or legacy Falcon-512 signatures.
@@ -532,7 +582,9 @@ impl PqSignature {
         msg: &[u8; 32],
         pk: &PqPublicKey,
     ) -> Result<(), PqError> {
-        self.verify_message_allow_legacy(msg, pk)
+        self.as_consensus_signature()
+            .verify_msg32_allow_legacy(msg, &pk.as_consensus_key()?)
+            .map_err(Into::into)
     }
 
     /// Verifies a 64-byte message digest, accepting either strict or legacy Falcon-512 signatures.
@@ -541,17 +593,22 @@ impl PqSignature {
         msg: &[u8; 64],
         pk: &PqPublicKey,
     ) -> Result<(), PqError> {
-        self.verify_message_allow_legacy(msg, pk)
+        self.as_consensus_signature()
+            .verify_msg64_allow_legacy(msg, &pk.as_consensus_key()?)
+            .map_err(Into::into)
     }
 
-    fn sign_message(msg: &[u8], sk: &PqSecretKey) -> Result<Self, PqError> {
+    fn sign_message_with_rng<R>(msg: &[u8], sk: &PqSecretKey, rng: &mut R) -> Result<Self, PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
         Ok(match sk.scheme() {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
                 let mut signing_key =
                     SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
                 let mut sig = vec![0u8; sk.scheme().max_sig_len()];
                 let sig_len = signing_key
-                    .sign_falcon(&mut rand_core::OsRng, FalconProfile::PqClean, msg, &mut sig)
+                    .sign_falcon(rng, FalconProfile::PqClean, msg, &mut sig)
                     .map_err(|_| PqError::BackendFailure)?;
                 sig.truncate(sig_len);
                 Self::from_slice(&sig)
@@ -561,9 +618,8 @@ impl PqSignature {
                     Zeroizing::new(sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?);
                 let sk_obj = fips204::ml_dsa_44::PrivateKey::try_from_bytes(*sk_arr)
                     .map_err(|_| PqError::BackendFailure)?;
-                let sig = sk_obj
-                    .try_sign_with_rng(&mut rand_core::OsRng, msg, &[])
-                    .map_err(|_| PqError::BackendFailure)?;
+                let sig =
+                    sk_obj.try_sign_with_rng(rng, msg, &[]).map_err(|_| PqError::BackendFailure)?;
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa65 => {
@@ -571,9 +627,8 @@ impl PqSignature {
                     Zeroizing::new(sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?);
                 let sk_obj = fips204::ml_dsa_65::PrivateKey::try_from_bytes(*sk_arr)
                     .map_err(|_| PqError::BackendFailure)?;
-                let sig = sk_obj
-                    .try_sign_with_rng(&mut rand_core::OsRng, msg, &[])
-                    .map_err(|_| PqError::BackendFailure)?;
+                let sig =
+                    sk_obj.try_sign_with_rng(rng, msg, &[]).map_err(|_| PqError::BackendFailure)?;
                 Self::from_slice(&sig)
             }
             PqScheme::MlDsa87 => {
@@ -581,106 +636,36 @@ impl PqSignature {
                     Zeroizing::new(sk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?);
                 let sk_obj = fips204::ml_dsa_87::PrivateKey::try_from_bytes(*sk_arr)
                     .map_err(|_| PqError::BackendFailure)?;
-                let sig = sk_obj
-                    .try_sign_with_rng(&mut rand_core::OsRng, msg, &[])
-                    .map_err(|_| PqError::BackendFailure)?;
+                let sig =
+                    sk_obj.try_sign_with_rng(rng, msg, &[]).map_err(|_| PqError::BackendFailure)?;
                 Self::from_slice(&sig)
             }
         })
     }
 
-    fn sign_message_legacy(msg: &[u8], sk: &PqSecretKey) -> Result<Self, PqError> {
+    fn sign_message_legacy_with_rng<R>(
+        msg: &[u8],
+        sk: &PqSecretKey,
+        rng: &mut R,
+    ) -> Result<Self, PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
         if sk.scheme() != PqScheme::Falcon512 {
-            return Self::sign_message(msg, sk);
+            return Self::sign_message_with_rng(msg, sk, rng);
         }
         let mut signing_key =
             SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
         let mut sig = vec![0u8; TIDECOIN_LEGACY_FALCON512_SIG_MAX];
         let sig_len = signing_key
-            .sign_falcon(
-                &mut rand_core::OsRng,
-                FalconProfile::TidecoinLegacyFalcon512,
-                msg,
-                &mut sig,
-            )
+            .sign_falcon(rng, FalconProfile::TidecoinLegacyFalcon512, msg, &mut sig)
             .map_err(|_| PqError::BackendFailure)?;
         sig.truncate(sig_len);
         Ok(Self { data: sig })
     }
 
-    fn verify_message(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
-        match pk.scheme() {
-            PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                let vk =
-                    VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-                if vk.verify_falcon(FalconProfile::PqClean, self.as_bytes(), msg) {
-                    Ok(())
-                } else {
-                    Err(PqError::VerificationFailed)
-                }
-            }
-            PqScheme::MlDsa44 => {
-                let pk_arr: [u8; 1312] =
-                    pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let pk_obj = fips204::ml_dsa_44::PublicKey::try_from_bytes(pk_arr)
-                    .map_err(|_| PqError::BackendFailure)?;
-                let sig_arr: [u8; 2420] =
-                    self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
-                if pk_obj.verify(msg, &sig_arr, &[]) {
-                    Ok(())
-                } else {
-                    Err(PqError::VerificationFailed)
-                }
-            }
-            PqScheme::MlDsa65 => {
-                let pk_arr: [u8; 1952] =
-                    pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let pk_obj = fips204::ml_dsa_65::PublicKey::try_from_bytes(pk_arr)
-                    .map_err(|_| PqError::BackendFailure)?;
-                let sig_arr: [u8; 3309] =
-                    self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
-                if pk_obj.verify(msg, &sig_arr, &[]) {
-                    Ok(())
-                } else {
-                    Err(PqError::VerificationFailed)
-                }
-            }
-            PqScheme::MlDsa87 => {
-                let pk_arr: [u8; 2592] =
-                    pk.as_bytes().try_into().map_err(|_| PqError::BackendFailure)?;
-                let pk_obj = fips204::ml_dsa_87::PublicKey::try_from_bytes(pk_arr)
-                    .map_err(|_| PqError::BackendFailure)?;
-                let sig_arr: [u8; 4627] =
-                    self.as_bytes().try_into().map_err(|_| PqError::VerificationFailed)?;
-                if pk_obj.verify(msg, &sig_arr, &[]) {
-                    Ok(())
-                } else {
-                    Err(PqError::VerificationFailed)
-                }
-            }
-        }
-    }
-
-    fn verify_message_legacy(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
-        if pk.scheme() != PqScheme::Falcon512 {
-            return self.verify_message(msg, pk);
-        }
-        let vk = VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-        if vk.verify_falcon(FalconProfile::TidecoinLegacyFalcon512, self.as_bytes(), msg) {
-            Ok(())
-        } else {
-            Err(PqError::VerificationFailed)
-        }
-    }
-
-    fn verify_message_allow_legacy(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
-        match self.verify_message(msg, pk) {
-            Ok(()) => Ok(()),
-            Err(PqError::VerificationFailed) if pk.scheme() == PqScheme::Falcon512 => {
-                self.verify_message_legacy(msg, pk)
-            }
-            Err(err) => Err(err),
-        }
+    fn as_consensus_signature(&self) -> ConsensusPqSignature {
+        ConsensusPqSignature::from_slice(self.as_bytes())
     }
 }
 
@@ -826,8 +811,17 @@ pub struct MlKem512Keypair {
 
 impl MlKem512Keypair {
     /// Generates a fresh random ML-KEM-512 keypair.
+    #[cfg(feature = "rand")]
     pub fn generate() -> Self {
-        let (dk, ek) = MlKem512::generate(&mut rand_core::OsRng);
+        Self::generate_with_rng(&mut rand_core::OsRng)
+    }
+
+    /// Generates a fresh ML-KEM-512 keypair using caller-provided randomness.
+    pub fn generate_with_rng<R>(rng: &mut R) -> Self
+    where
+        R: RngCore + CryptoRng,
+    {
+        let (dk, ek) = MlKem512::generate(rng);
         let mut dk_bytes = dk.as_bytes();
         let secret_key = MlKem512SecretKey { data: dk_bytes.as_slice().to_vec() };
         dk_bytes.as_mut_slice().zeroize();
@@ -886,13 +880,24 @@ impl MlKem512Keypair {
 
 impl MlKem512PublicKey {
     /// Encapsulates to this public key.
+    #[cfg(feature = "rand")]
     pub fn encapsulate(&self) -> Result<(MlKem512Ciphertext, MlKem512SharedSecret), PqError> {
+        self.encapsulate_with_rng(&mut rand_core::OsRng)
+    }
+
+    /// Encapsulates to this public key using caller-provided randomness.
+    pub fn encapsulate_with_rng<R>(
+        &self,
+        rng: &mut R,
+    ) -> Result<(MlKem512Ciphertext, MlKem512SharedSecret), PqError>
+    where
+        R: RngCore + CryptoRng,
+    {
         let ek_arr =
             <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
                 .map_err(|_| PqError::BackendFailure)?;
         let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
-        let (ct, ss) =
-            ek.encapsulate(&mut rand_core::OsRng).map_err(|_| PqError::BackendFailure)?;
+        let (ct, ss) = ek.encapsulate(rng).map_err(|_| PqError::BackendFailure)?;
         let mut ss = ss;
         let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
         ss.as_mut_slice().zeroize();
@@ -1012,16 +1017,35 @@ impl fmt::Display for PqError {
     }
 }
 
-impl PqScheme {
-    fn is_valid_secret_key_encoding(self, data: &[u8]) -> bool {
-        if data.len() != self.seckey_len() {
-            return false;
+impl From<ConsensusPqError> for PqError {
+    fn from(err: ConsensusPqError) -> Self {
+        match err {
+            ConsensusPqError::UnknownScheme(prefix) => Self::UnknownScheme(prefix),
+            ConsensusPqError::InvalidKeyLength { expected, got } => {
+                Self::InvalidKeyLength { expected, got }
+            }
+            ConsensusPqError::VerificationFailed => Self::VerificationFailed,
+            ConsensusPqError::BackendFailure => Self::BackendFailure,
+            ConsensusPqError::EmptyData => Self::EmptyData,
         }
-        match self {
-            Self::Falcon512 => data.first().copied() == Some(0x59),
-            Self::Falcon1024 => data.first().copied() == Some(0x5A),
-            Self::MlDsa44 | Self::MlDsa65 | Self::MlDsa87 => true,
-        }
+    }
+}
+
+impl PqPublicKey {
+    fn as_consensus_key(&self) -> Result<ConsensusPqPublicKey, PqError> {
+        ConsensusPqPublicKey::from_scheme_and_bytes(self.scheme, self.as_bytes())
+            .map_err(Into::into)
+    }
+}
+
+fn is_valid_secret_key_encoding(scheme: PqScheme, data: &[u8]) -> bool {
+    if data.len() != scheme.seckey_len() {
+        return false;
+    }
+    match scheme {
+        PqScheme::Falcon512 => data.first().copied() == Some(0x59),
+        PqScheme::Falcon1024 => data.first().copied() == Some(0x5A),
+        PqScheme::MlDsa44 | PqScheme::MlDsa65 | PqScheme::MlDsa87 => true,
     }
 }
 
@@ -1033,6 +1057,18 @@ mod tests {
     use alloc::string::ToString;
 
     use super::*;
+
+    fn tagged_seed(scheme: PqScheme, tag: u8) -> Vec<u8> {
+        (0..scheme.deterministic_seed_len()).map(|i| tag ^ (i as u8).wrapping_mul(131)).collect()
+    }
+
+    fn deterministic_keypair(scheme: PqScheme, tag: u8) -> (PqPublicKey, PqSecretKey) {
+        scheme.generate_keypair_from_seed(&tagged_seed(scheme, tag)).unwrap()
+    }
+
+    fn test_rng(tag: u64) -> DeterministicTestRng {
+        DeterministicTestRng::new(tag)
+    }
 
     #[test]
     fn scheme_round_trip() {
@@ -1165,7 +1201,7 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let (_, sk) = scheme.generate_keypair();
+            let (_, sk) = deterministic_keypair(scheme, scheme.prefix());
             let prefixed = sk.to_prefixed_bytes();
             let reparsed = PqSecretKey::from_prefixed_slice(&prefixed).unwrap();
             assert_eq!(reparsed, sk);
@@ -1182,7 +1218,7 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let (_, sk) = scheme.generate_keypair();
+            let (_, sk) = deterministic_keypair(scheme, scheme.prefix());
             let reparsed = PqSecretKey::decode_slice(sk.as_bytes(), true).unwrap();
             assert_eq!(reparsed, sk);
         }
@@ -1190,7 +1226,7 @@ mod tests {
 
     #[test]
     fn seckey_legacy_decode_disallowed_when_prefix_missing() {
-        let (_, sk) = PqScheme::Falcon512.generate_keypair();
+        let (_, sk) = deterministic_keypair(PqScheme::Falcon512, 0x51);
         assert_eq!(
             PqSecretKey::decode_slice(sk.as_bytes(), false).unwrap_err(),
             PqError::InvalidKeyLength { expected: 0, got: sk.as_bytes().len() }
@@ -1199,7 +1235,7 @@ mod tests {
 
     #[test]
     fn falcon_seckey_validates_scheme_header_byte() {
-        let (_, sk_512) = PqScheme::Falcon512.generate_keypair();
+        let (_, sk_512) = deterministic_keypair(PqScheme::Falcon512, 0x52);
         let mut bad_512 = sk_512.as_bytes().to_vec();
         bad_512[0] = 0x58;
         assert_eq!(
@@ -1207,7 +1243,7 @@ mod tests {
             PqError::InvalidSecretKeyEncoding(PqScheme::Falcon512)
         );
 
-        let (_, sk_1024) = PqScheme::Falcon1024.generate_keypair();
+        let (_, sk_1024) = deterministic_keypair(PqScheme::Falcon1024, 0x53);
         let mut bad_1024 = sk_1024.as_bytes().to_vec();
         bad_1024[0] = 0x59;
         assert_eq!(
@@ -1251,7 +1287,8 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let (pk, sk) = scheme.generate_keypair();
+            let mut rng = test_rng(u64::from(scheme.prefix()));
+            let (pk, sk) = scheme.generate_keypair_with_rng(&mut rng).unwrap();
             assert_eq!(pk.scheme(), scheme);
             assert_eq!(sk.scheme(), scheme);
             assert_eq!(pk.as_bytes().len(), scheme.pubkey_len());
@@ -1268,7 +1305,7 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let (pk, sk) = scheme.generate_keypair();
+            let (pk, sk) = deterministic_keypair(scheme, scheme.prefix());
             let derived = PqPublicKey::from_secret_key(&sk).unwrap();
             assert_eq!(derived, pk);
         }
@@ -1311,8 +1348,9 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let (pk, sk) = scheme.generate_keypair();
-            let sig = PqSignature::sign_msg32(&msg, &sk).unwrap();
+            let (pk, sk) = deterministic_keypair(scheme, scheme.prefix());
+            let mut rng = test_rng(u64::from(scheme.prefix()));
+            let sig = PqSignature::sign_msg32_with_rng(&msg, &sk, &mut rng).unwrap();
             assert!(sig.len() <= scheme.max_sig_len());
             sig.verify_msg32(&msg, &pk).unwrap();
 
@@ -1332,8 +1370,9 @@ mod tests {
             PqScheme::MlDsa65,
             PqScheme::MlDsa87,
         ] {
-            let (pk, sk) = scheme.generate_keypair();
-            let sig = PqSignature::sign_msg64(&msg, &sk).unwrap();
+            let (pk, sk) = deterministic_keypair(scheme, scheme.prefix());
+            let mut rng = test_rng(0x64 + u64::from(scheme.prefix()));
+            let sig = PqSignature::sign_msg64_with_rng(&msg, &sk, &mut rng).unwrap();
             assert!(sig.len() <= scheme.max_sig_len());
             sig.verify_msg64(&msg, &pk).unwrap();
 
@@ -1345,10 +1384,11 @@ mod tests {
     #[test]
     fn falcon512_legacy_signatures_roundtrip_for_msg32() {
         let msg = [0x42_u8; 32];
-        let (pk, sk) = PqScheme::Falcon512.generate_keypair();
+        let (pk, sk) = deterministic_keypair(PqScheme::Falcon512, 0x54);
 
-        let strict = PqSignature::sign_msg32(&msg, &sk).unwrap();
-        let legacy = PqSignature::sign_msg32_legacy(&msg, &sk).unwrap();
+        let strict = PqSignature::sign_msg32_with_rng(&msg, &sk, &mut test_rng(0x54)).unwrap();
+        let legacy =
+            PqSignature::sign_msg32_legacy_with_rng(&msg, &sk, &mut test_rng(0x55)).unwrap();
 
         assert_eq!(legacy.as_bytes().first().copied(), Some(0x39));
         assert!(legacy.len() <= 690);
@@ -1360,9 +1400,10 @@ mod tests {
     #[test]
     fn falcon512_legacy_signatures_roundtrip_for_msg64() {
         let msg = [0x24_u8; 64];
-        let (pk, sk) = PqScheme::Falcon512.generate_keypair();
+        let (pk, sk) = deterministic_keypair(PqScheme::Falcon512, 0x56);
 
-        let legacy = PqSignature::sign_msg64_legacy(&msg, &sk).unwrap();
+        let legacy =
+            PqSignature::sign_msg64_legacy_with_rng(&msg, &sk, &mut test_rng(0x56)).unwrap();
 
         assert_eq!(legacy.as_bytes().first().copied(), Some(0x39));
         assert!(legacy.len() <= 690);
@@ -1375,19 +1416,20 @@ mod tests {
         let mut params = Params::MAINNET;
         params.auxpow_start_height = Some(crate::BlockHeight::from_u32(100));
 
-        assert!(PqScheme::Falcon512.is_allowed_at_height(0, &params));
-        assert!(!PqScheme::MlDsa44.is_allowed_at_height(0, &params));
-        assert!(PqScheme::MlDsa44.is_allowed_at_height(100, &params));
+        assert!(PqScheme::Falcon512.is_allowed_by_params_at_height(0, &params));
+        assert!(!PqScheme::MlDsa44.is_allowed_by_params_at_height(0, &params));
+        assert!(PqScheme::MlDsa44.is_allowed_by_params_at_height(100, &params));
 
         let no_auxpow = Params::MAINNET;
-        assert!(PqScheme::Falcon512.is_allowed_at_height(1_000_000, &no_auxpow));
-        assert!(!PqScheme::MlDsa87.is_allowed_at_height(1_000_000, &no_auxpow));
+        assert!(PqScheme::Falcon512.is_allowed_by_params_at_height(1_000_000, &no_auxpow));
+        assert!(!PqScheme::MlDsa87.is_allowed_by_params_at_height(1_000_000, &no_auxpow));
     }
 
     #[test]
     fn mlkem512_roundtrip() {
-        let keypair = MlKem512Keypair::generate();
-        let (ciphertext, shared_secret) = keypair.public_key().encapsulate().unwrap();
+        let keypair = MlKem512Keypair::generate_with_rng(&mut test_rng(0x57));
+        let (ciphertext, shared_secret) =
+            keypair.public_key().encapsulate_with_rng(&mut test_rng(0x58)).unwrap();
         let recovered = keypair.secret_key().decapsulate(&ciphertext).unwrap();
         assert_eq!(recovered, shared_secret);
         assert_eq!(shared_secret.as_bytes().len(), MLKEM512_SHARED_SECRET_BYTES);

@@ -27,24 +27,22 @@ pub use self::error::{
 #[cfg(feature = "encoding")]
 pub use self::error::LockTimeDecoderError;
 
-/// The Threshold for deciding whether a lock time value is a height or a time (see [Bitcoin Core]).
+/// The threshold for deciding whether a lock time value is a height or a time.
 ///
 /// `LockTime` values _below_ the threshold are interpreted as block heights, values _above_ (or
 /// equal to) the threshold are interpreted as block times (UNIX timestamp, seconds since epoch).
 ///
-/// Bitcoin is able to safely use this value because a block height greater than 500,000,000 would
-/// never occur because it would represent a height in approximately 9500 years. Conversely, block
-/// times under 500,000,000 will never happen because they would represent times before 1986 which
-/// are, for obvious reasons, not useful within the Bitcoin network.
-///
-/// [Bitcoin Core]: https://github.com/bitcoin/bitcoin/blob/9ccaee1d5e2e4b79b0a7c29aadb41b97e4741332/src/script/script.h#L39
+/// Tidecoin uses this inherited consensus threshold because block height
+/// 500,000,000 is not realistically reachable on the network, while timestamps
+/// below the threshold represent dates before the chain can usefully lock to
+/// median-time-past.
 pub const LOCK_TIME_THRESHOLD: u32 = 500_000_000;
 
 /// An absolute lock time value, representing either a block height or a UNIX timestamp (seconds
 /// since epoch).
 ///
-/// Used for transaction lock time (`nLockTime` in Bitcoin Core and `Transaction::lock_time`
-/// in `rust-tidecoin`) and also for the argument to opcode `OP_CHECKLOCKTIMEVERIFY`.
+/// Used for transaction lock time (`Transaction::lock_time`) and also for the
+/// argument to opcode `OP_CHECKLOCKTIMEVERIFY`.
 ///
 /// # Note on ordering
 ///
@@ -56,10 +54,11 @@ pub const LOCK_TIME_THRESHOLD: u32 = 500_000_000;
 /// it easy to store transactions in sorted data structures, and use the locktime's 32-bit integer
 /// consensus encoding to order it.
 ///
-/// # Relevant BIPs
+/// # Tidecoin Consensus Rules
 ///
-/// * [BIP-0065 OP_CHECKLOCKTIMEVERIFY](https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki)
-/// * [BIP-0113 Median time-past as endpoint for lock-time calculations](https://github.com/bitcoin/bips/blob/master/bip-0113.mediawiki)
+/// Absolute lock-time values are interpreted as either block heights or
+/// median-time-past timestamps using [`LOCK_TIME_THRESHOLD`]. Script evaluation
+/// uses the same rule for `OP_CHECKLOCKTIMEVERIFY`.
 ///
 /// # Examples
 ///
@@ -207,13 +206,6 @@ impl LockTime {
         Ok(Self::Blocks(height))
     }
 
-    #[inline]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `from_mtp` instead")]
-    #[doc(hidden)]
-    pub fn from_time(n: u32) -> Result<Self, ConversionError> {
-        Self::from_mtp(n)
-    }
-
     /// Constructs a new `LockTime` from `n`, expecting `n` to be a median-time-past (MTP)
     /// which is in range for a locktime.
     ///
@@ -222,9 +214,7 @@ impl LockTime {
     /// If the locktime is set to an MTP `T`, the transaction can be included in a block only if
     /// the MTP of last recent 11 blocks is greater than `T`.
     ///
-    /// It is possible to broadcast the transaction once the MTP is greater than `T`. See BIP-0113.
-    ///
-    /// [BIP-0113 Median time-past as endpoint for lock-time calculations](https://github.com/bitcoin/bips/blob/master/bip-0113.mediawiki)
+    /// It is possible to broadcast the transaction once the MTP is greater than `T`.
     ///
     /// See [`LOCK_TIME_THRESHOLD`] for definition of a valid time value.
     ///
@@ -567,18 +557,6 @@ impl Height {
         Ok(Self::from_u32(height).map_err(|_| ParseError::Conversion(height.into()))?)
     }
 
-    #[deprecated(since = "1.0.0-rc.0", note = "use `from_u32` instead")]
-    #[doc(hidden)]
-    pub const fn from_consensus(n: u32) -> Result<Self, ConversionError> {
-        Self::from_u32(n)
-    }
-
-    #[deprecated(since = "1.0.0-rc.0", note = "use `to_u32` instead")]
-    #[doc(hidden)]
-    pub const fn to_consensus_u32(self) -> u32 {
-        self.to_u32()
-    }
-
     /// Constructs a new block height directly from a `u32` value.
     ///
     /// # Errors
@@ -641,10 +619,6 @@ impl fmt::Display for Height {
 
 parse_int::impl_parse_str!(Height, ParseHeightError, parser(Height::from_u32));
 
-#[deprecated(since = "1.0.0-rc.0", note = "use `MedianTimePast` instead")]
-#[doc(hidden)]
-pub type Time = MedianTimePast;
-
 /// The median timestamp of 11 consecutive blocks, representing "the timestamp" of the
 /// final block for locktime-checking purposes.
 ///
@@ -702,18 +676,6 @@ impl MedianTimePast {
     pub fn from_unprefixed_hex(s: &str) -> Result<Self, ParseTimeError> {
         let height = parse_int::hex_u32_unprefixed(s).map_err(ParseError::UnprefixedHex)?;
         Ok(Self::from_u32(height).map_err(|_| ParseError::Conversion(height.into()))?)
-    }
-
-    #[deprecated(since = "1.0.0-rc.0", note = "use `from_u32` instead")]
-    #[doc(hidden)]
-    pub const fn from_consensus(n: u32) -> Result<Self, ConversionError> {
-        Self::from_u32(n)
-    }
-
-    #[deprecated(since = "1.0.0-rc.0", note = "use `to_u32` instead")]
-    #[doc(hidden)]
-    pub const fn to_consensus_u32(self) -> u32 {
-        self.to_u32()
     }
 
     /// Constructs a new MTP directly from a `u32` value.

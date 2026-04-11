@@ -48,10 +48,6 @@ pub mod locktime {
             ConversionError, IncompatibleHeightError, IncompatibleTimeError, ParseHeightError,
             ParseTimeError,
         };
-
-        #[deprecated(since = "TBD", note = "use `MedianTimePast` instead")]
-        #[doc(hidden)]
-        pub type Time = MedianTimePast;
     }
 
     pub mod relative {
@@ -68,14 +64,6 @@ pub mod locktime {
             DisabledLockTimeError, InvalidHeightError, InvalidTimeError, IsSatisfiedByError,
             IsSatisfiedByHeightError, IsSatisfiedByTimeError, TimeOverflowError,
         };
-
-        #[deprecated(since = "TBD", note = "use `NumberOfBlocks` instead")]
-        #[doc(hidden)]
-        pub type Height = NumberOfBlocks;
-
-        #[deprecated(since = "TBD", note = "use `NumberOf512Seconds` instead")]
-        #[doc(hidden)]
-        pub type Time = NumberOf512Seconds;
     }
 }
 

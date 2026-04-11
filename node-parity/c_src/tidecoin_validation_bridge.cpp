@@ -5,6 +5,7 @@
 #include <core_io.h>
 #include <logging.h>
 #include <pq/pq_api.h>
+#include <pq/pq_txsize.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
@@ -257,6 +258,16 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_transaction(const char* tx_hex)
     } catch (const std::exception&) {
         return 0;
     }
+}
+
+TIDECOIN_BRIDGE_EXPORT int64_t tidecoin_node_pq_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
+{
+    return pq::VSizeP2WPKHInput(sig_len, pubkey_len);
+}
+
+TIDECOIN_BRIDGE_EXPORT int64_t tidecoin_node_pq_p2sh_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
+{
+    return pq::VSizeP2SH_P2WPKHInput(sig_len, pubkey_len);
 }
 
 TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pq_keygen_from_seed(

@@ -39,7 +39,7 @@ pub trait ArrayExt {
     /// This is almost equivalent to just calling [`sub_array`](Self::sub_array) twice, except it also
     /// checks that the arrays don't overlap and that they cover the full range. This is very useful
     /// for demonstrating correctness, especially when chained. Using this technique even revealed
-    /// a bug in the past. ([#4195](https://github.com/rust-bitcoin/rust-bitcoin/issues/4195))
+    /// a historical array-conversion bug.
     fn split_array<const LEFT: usize, const RIGHT: usize>(
         &self,
     ) -> (&[Self::Item; LEFT], &[Self::Item; RIGHT]);

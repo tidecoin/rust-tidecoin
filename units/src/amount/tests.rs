@@ -419,50 +419,50 @@ fn floating_point() {
 }
 
 #[test]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
 fn parsing() {
     use super::ParseAmountError as E;
 
-    let den_btc = Denomination::Tidecoin;
+    let den_tdc = Denomination::Tidecoin;
     let den_sat = Denomination::Tidoshi;
     let p = Amount::from_str_in;
     let sp = SignedAmount::from_str_in;
 
     assert_eq!(
-        p("x", den_btc),
+        p("x", den_tdc),
         Err(amt_err(ParseAmountErrorInner::InvalidCharacter(InvalidCharacterError {
             invalid_char: 'x',
             position: 0
         })))
     );
     assert_eq!(
-        p("-", den_btc),
+        p("-", den_tdc),
         Err(amt_err(ParseAmountErrorInner::MissingDigits(MissingDigitsError {
             kind: MissingDigitsKind::OnlyMinusSign
         })))
     );
     assert_eq!(
-        sp("-", den_btc),
+        sp("-", den_tdc),
         Err(amt_err(ParseAmountErrorInner::MissingDigits(MissingDigitsError {
             kind: MissingDigitsKind::OnlyMinusSign
         })))
     );
     assert_eq!(
-        p("-1.0x", den_btc),
+        p("-1.0x", den_tdc),
         Err(amt_err(ParseAmountErrorInner::InvalidCharacter(InvalidCharacterError {
             invalid_char: 'x',
             position: 4
         })))
     );
     assert_eq!(
-        p("0.0 ", den_btc),
+        p("0.0 ", den_tdc),
         Err(amt_err(ParseAmountErrorInner::InvalidCharacter(InvalidCharacterError {
             invalid_char: ' ',
             position: 3
         })))
     );
     assert_eq!(
-        p("0.000.000", den_btc),
+        p("0.000.000", den_tdc),
         Err(amt_err(ParseAmountErrorInner::InvalidCharacter(InvalidCharacterError {
             invalid_char: '.',
             position: 5
@@ -472,11 +472,11 @@ fn parsing() {
     let more_than_max = format!("{}", Amount::MAX.to_sat() + 1);
     #[cfg(feature = "alloc")]
     assert_eq!(
-        p(&more_than_max, den_btc),
+        p(&more_than_max, den_tdc),
         Err(amt_err(ParseAmountErrorInner::OutOfRange(OutOfRangeError::too_big(false))))
     );
     assert_eq!(
-        p("0.000000042", den_btc),
+        p("0.000000042", den_tdc),
         Err(amt_err(ParseAmountErrorInner::TooPrecise(TooPreciseError { position: 10 })))
     );
     assert_eq!(p("1.0000000", den_sat), Ok(sat(1)));
@@ -494,16 +494,16 @@ fn parsing() {
         Err(amt_err(ParseAmountErrorInner::TooPrecise(TooPreciseError { position: 11 })))
     );
 
-    assert_eq!(p("1", den_btc), Ok(sat(1_000_000_00)));
-    assert_eq!(sp("-.5", den_btc), Ok(ssat(-500_000_00)));
+    assert_eq!(p("1", den_tdc), Ok(sat(1_000_000_00)));
+    assert_eq!(sp("-.5", den_tdc), Ok(ssat(-500_000_00)));
     #[cfg(feature = "alloc")]
     assert_eq!(sp(&SignedAmount::MIN.to_sat().to_string(), den_sat), Ok(SignedAmount::MIN));
-    assert_eq!(p("1.1", den_btc), Ok(sat(1_100_000_00)));
+    assert_eq!(p("1.1", den_tdc), Ok(sat(1_100_000_00)));
     assert_eq!(p("100", den_sat), Ok(sat(100)));
     assert_eq!(p("55", den_sat), Ok(sat(55)));
     assert_eq!(p("2100000000000000", den_sat), Ok(sat(21_000_000__000_000_00)));
     assert_eq!(p("2100000000000000.", den_sat), Ok(sat(21_000_000__000_000_00)));
-    assert_eq!(p("21000000", den_btc), Ok(sat(21_000_000__000_000_00)));
+    assert_eq!(p("21000000", den_tdc), Ok(sat(21_000_000__000_000_00)));
 
     // exactly 50 chars.
     assert_eq!(
@@ -630,80 +630,80 @@ check_format_non_negative_show_denom! {
 
 check_format_non_negative! {
     Tidecoin;
-    btc_check_fmt_non_negative_0, 0, "{}", "0";
-    btc_check_fmt_non_negative_1, 0, "{:2}", " 0";
-    btc_check_fmt_non_negative_2, 0, "{:02}", "00";
-    btc_check_fmt_non_negative_3, 0, "{:.1}", "0.0";
-    btc_check_fmt_non_negative_4, 0, "{:4.1}", " 0.0";
-    btc_check_fmt_non_negative_5, 0, "{:04.1}", "00.0";
-    btc_check_fmt_non_negative_6, 1, "{}", "0.00000001";
-    btc_check_fmt_non_negative_7, 1, "{:2}", "0.00000001";
-    btc_check_fmt_non_negative_8, 1, "{:02}", "0.00000001";
-    btc_check_fmt_non_negative_9, 1, "{:.1}", "0.0";
-    btc_check_fmt_non_negative_10, 1, "{:11}", " 0.00000001";
-    btc_check_fmt_non_negative_11, 1, "{:11.1}", "        0.0";
-    btc_check_fmt_non_negative_12, 1, "{:011.1}", "000000000.0";
-    btc_check_fmt_non_negative_13, 1, "{:.9}", "0.000000010";
-    btc_check_fmt_non_negative_14, 1, "{:11.9}", "0.000000010";
-    btc_check_fmt_non_negative_15, 1, "{:011.9}", "0.000000010";
-    btc_check_fmt_non_negative_16, 1, "{:12.9}", " 0.000000010";
-    btc_check_fmt_non_negative_17, 1, "{:012.9}", "00.000000010";
-    btc_check_fmt_non_negative_18, 100_000_000, "{}", "1";
-    btc_check_fmt_non_negative_19, 100_000_000, "{:2}", " 1";
-    btc_check_fmt_non_negative_20, 100_000_000, "{:02}", "01";
-    btc_check_fmt_non_negative_21, 100_000_000, "{:.1}", "1.0";
-    btc_check_fmt_non_negative_22, 100_000_000, "{:4.1}", " 1.0";
-    btc_check_fmt_non_negative_23, 100_000_000, "{:04.1}", "01.0";
-    btc_check_fmt_non_negative_24, 110_000_000, "{}", "1.1";
-    btc_check_fmt_non_negative_25, 100_000_001, "{}", "1.00000001";
-    btc_check_fmt_non_negative_26, 100_000_001, "{:1}", "1.00000001";
-    btc_check_fmt_non_negative_27, 100_000_001, "{:.1}", "1.0";
-    btc_check_fmt_non_negative_28, 100_000_001, "{:10}", "1.00000001";
-    btc_check_fmt_non_negative_29, 100_000_001, "{:11}", " 1.00000001";
-    btc_check_fmt_non_negative_30, 100_000_001, "{:011}", "01.00000001";
-    btc_check_fmt_non_negative_31, 100_000_001, "{:.8}", "1.00000001";
-    btc_check_fmt_non_negative_32, 100_000_001, "{:.9}", "1.000000010";
-    btc_check_fmt_non_negative_33, 100_000_001, "{:11.9}", "1.000000010";
-    btc_check_fmt_non_negative_34, 100_000_001, "{:12.9}", " 1.000000010";
-    btc_check_fmt_non_negative_35, 100_000_001, "{:012.9}", "01.000000010";
-    btc_check_fmt_non_negative_36, 100_000_001, "{:+011.8}", "+1.00000001";
-    btc_check_fmt_non_negative_37, 100_000_001, "{:+12.8}", " +1.00000001";
-    btc_check_fmt_non_negative_38, 100_000_001, "{:+012.8}", "+01.00000001";
-    btc_check_fmt_non_negative_39, 100_000_001, "{:+12.9}", "+1.000000010";
-    btc_check_fmt_non_negative_40, 100_000_001, "{:+012.9}", "+1.000000010";
-    btc_check_fmt_non_negative_41, 100_000_001, "{:+13.9}", " +1.000000010";
-    btc_check_fmt_non_negative_42, 100_000_001, "{:+013.9}", "+01.000000010";
-    btc_check_fmt_non_negative_43, 100_000_001, "{:<10}", "1.00000001";
-    btc_check_fmt_non_negative_44, 100_000_001, "{:<11}", "1.00000001 ";
-    btc_check_fmt_non_negative_45, 100_000_001, "{:<011}", "01.00000001";
-    btc_check_fmt_non_negative_46, 100_000_001, "{:<11.9}", "1.000000010";
-    btc_check_fmt_non_negative_47, 100_000_001, "{:<12.9}", "1.000000010 ";
-    btc_check_fmt_non_negative_48, 100_000_001, "{:<12}", "1.00000001  ";
-    btc_check_fmt_non_negative_49, 100_000_001, "{:^11}", "1.00000001 ";
-    btc_check_fmt_non_negative_50, 100_000_001, "{:^11.9}", "1.000000010";
-    btc_check_fmt_non_negative_51, 100_000_001, "{:^12.9}", "1.000000010 ";
-    btc_check_fmt_non_negative_52, 100_000_001, "{:^12}", " 1.00000001 ";
-    btc_check_fmt_non_negative_53, 100_000_001, "{:^12.9}", "1.000000010 ";
-    btc_check_fmt_non_negative_54, 100_000_001, "{:^13.9}", " 1.000000010 ";
+    tdc_check_fmt_non_negative_0, 0, "{}", "0";
+    tdc_check_fmt_non_negative_1, 0, "{:2}", " 0";
+    tdc_check_fmt_non_negative_2, 0, "{:02}", "00";
+    tdc_check_fmt_non_negative_3, 0, "{:.1}", "0.0";
+    tdc_check_fmt_non_negative_4, 0, "{:4.1}", " 0.0";
+    tdc_check_fmt_non_negative_5, 0, "{:04.1}", "00.0";
+    tdc_check_fmt_non_negative_6, 1, "{}", "0.00000001";
+    tdc_check_fmt_non_negative_7, 1, "{:2}", "0.00000001";
+    tdc_check_fmt_non_negative_8, 1, "{:02}", "0.00000001";
+    tdc_check_fmt_non_negative_9, 1, "{:.1}", "0.0";
+    tdc_check_fmt_non_negative_10, 1, "{:11}", " 0.00000001";
+    tdc_check_fmt_non_negative_11, 1, "{:11.1}", "        0.0";
+    tdc_check_fmt_non_negative_12, 1, "{:011.1}", "000000000.0";
+    tdc_check_fmt_non_negative_13, 1, "{:.9}", "0.000000010";
+    tdc_check_fmt_non_negative_14, 1, "{:11.9}", "0.000000010";
+    tdc_check_fmt_non_negative_15, 1, "{:011.9}", "0.000000010";
+    tdc_check_fmt_non_negative_16, 1, "{:12.9}", " 0.000000010";
+    tdc_check_fmt_non_negative_17, 1, "{:012.9}", "00.000000010";
+    tdc_check_fmt_non_negative_18, 100_000_000, "{}", "1";
+    tdc_check_fmt_non_negative_19, 100_000_000, "{:2}", " 1";
+    tdc_check_fmt_non_negative_20, 100_000_000, "{:02}", "01";
+    tdc_check_fmt_non_negative_21, 100_000_000, "{:.1}", "1.0";
+    tdc_check_fmt_non_negative_22, 100_000_000, "{:4.1}", " 1.0";
+    tdc_check_fmt_non_negative_23, 100_000_000, "{:04.1}", "01.0";
+    tdc_check_fmt_non_negative_24, 110_000_000, "{}", "1.1";
+    tdc_check_fmt_non_negative_25, 100_000_001, "{}", "1.00000001";
+    tdc_check_fmt_non_negative_26, 100_000_001, "{:1}", "1.00000001";
+    tdc_check_fmt_non_negative_27, 100_000_001, "{:.1}", "1.0";
+    tdc_check_fmt_non_negative_28, 100_000_001, "{:10}", "1.00000001";
+    tdc_check_fmt_non_negative_29, 100_000_001, "{:11}", " 1.00000001";
+    tdc_check_fmt_non_negative_30, 100_000_001, "{:011}", "01.00000001";
+    tdc_check_fmt_non_negative_31, 100_000_001, "{:.8}", "1.00000001";
+    tdc_check_fmt_non_negative_32, 100_000_001, "{:.9}", "1.000000010";
+    tdc_check_fmt_non_negative_33, 100_000_001, "{:11.9}", "1.000000010";
+    tdc_check_fmt_non_negative_34, 100_000_001, "{:12.9}", " 1.000000010";
+    tdc_check_fmt_non_negative_35, 100_000_001, "{:012.9}", "01.000000010";
+    tdc_check_fmt_non_negative_36, 100_000_001, "{:+011.8}", "+1.00000001";
+    tdc_check_fmt_non_negative_37, 100_000_001, "{:+12.8}", " +1.00000001";
+    tdc_check_fmt_non_negative_38, 100_000_001, "{:+012.8}", "+01.00000001";
+    tdc_check_fmt_non_negative_39, 100_000_001, "{:+12.9}", "+1.000000010";
+    tdc_check_fmt_non_negative_40, 100_000_001, "{:+012.9}", "+1.000000010";
+    tdc_check_fmt_non_negative_41, 100_000_001, "{:+13.9}", " +1.000000010";
+    tdc_check_fmt_non_negative_42, 100_000_001, "{:+013.9}", "+01.000000010";
+    tdc_check_fmt_non_negative_43, 100_000_001, "{:<10}", "1.00000001";
+    tdc_check_fmt_non_negative_44, 100_000_001, "{:<11}", "1.00000001 ";
+    tdc_check_fmt_non_negative_45, 100_000_001, "{:<011}", "01.00000001";
+    tdc_check_fmt_non_negative_46, 100_000_001, "{:<11.9}", "1.000000010";
+    tdc_check_fmt_non_negative_47, 100_000_001, "{:<12.9}", "1.000000010 ";
+    tdc_check_fmt_non_negative_48, 100_000_001, "{:<12}", "1.00000001  ";
+    tdc_check_fmt_non_negative_49, 100_000_001, "{:^11}", "1.00000001 ";
+    tdc_check_fmt_non_negative_50, 100_000_001, "{:^11.9}", "1.000000010";
+    tdc_check_fmt_non_negative_51, 100_000_001, "{:^12.9}", "1.000000010 ";
+    tdc_check_fmt_non_negative_52, 100_000_001, "{:^12}", " 1.00000001 ";
+    tdc_check_fmt_non_negative_53, 100_000_001, "{:^12.9}", "1.000000010 ";
+    tdc_check_fmt_non_negative_54, 100_000_001, "{:^13.9}", " 1.000000010 ";
 }
 
 check_format_non_negative_show_denom! {
     Tidecoin, " TDC";
-    btc_check_fmt_non_negative_show_denom_0, 1, "{:14.1}", "       0.0";
-    btc_check_fmt_non_negative_show_denom_1, 1, "{:14.8}", "0.00000001";
-    btc_check_fmt_non_negative_show_denom_2, 1, "{:15}", " 0.00000001";
-    btc_check_fmt_non_negative_show_denom_3, 1, "{:015}", "00.00000001";
-    btc_check_fmt_non_negative_show_denom_4, 1, "{:.9}", "0.000000010";
-    btc_check_fmt_non_negative_show_denom_5, 1, "{:15.9}", "0.000000010";
-    btc_check_fmt_non_negative_show_denom_6, 1, "{:16.9}", " 0.000000010";
-    btc_check_fmt_non_negative_show_denom_7, 1, "{:016.9}", "00.000000010";
+    tdc_check_fmt_non_negative_show_denom_0, 1, "{:14.1}", "       0.0";
+    tdc_check_fmt_non_negative_show_denom_1, 1, "{:14.8}", "0.00000001";
+    tdc_check_fmt_non_negative_show_denom_2, 1, "{:15}", " 0.00000001";
+    tdc_check_fmt_non_negative_show_denom_3, 1, "{:015}", "00.00000001";
+    tdc_check_fmt_non_negative_show_denom_4, 1, "{:.9}", "0.000000010";
+    tdc_check_fmt_non_negative_show_denom_5, 1, "{:15.9}", "0.000000010";
+    tdc_check_fmt_non_negative_show_denom_6, 1, "{:16.9}", " 0.000000010";
+    tdc_check_fmt_non_negative_show_denom_7, 1, "{:016.9}", "00.000000010";
 }
 
 check_format_non_negative_show_denom! {
     Tidecoin, " TDC ";
-    btc_check_fmt_non_negative_show_denom_align_0, 1, "{:<15}", "0.00000001";
-    btc_check_fmt_non_negative_show_denom_align_1, 1, "{:^15}", "0.00000001";
-    btc_check_fmt_non_negative_show_denom_align_2, 1, "{:^16}", " 0.00000001";
+    tdc_check_fmt_non_negative_show_denom_align_0, 1, "{:<15}", "0.00000001";
+    tdc_check_fmt_non_negative_show_denom_align_1, 1, "{:^15}", "0.00000001";
+    tdc_check_fmt_non_negative_show_denom_align_2, 1, "{:^16}", " 0.00000001";
 }
 
 #[test]
@@ -716,7 +716,7 @@ fn unsigned_signed_conversion() {
 }
 
 #[test]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
 #[allow(clippy::items_after_statements)] // Define functions where we use them.
 #[allow(clippy::too_many_lines)]
 fn from_str() {
@@ -871,7 +871,7 @@ fn from_str() {
 
 #[test]
 #[cfg(feature = "alloc")]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
 fn to_from_string_in() {
     use super::Denomination as D;
     let ua_str = Amount::from_str_in;
@@ -1527,10 +1527,10 @@ fn to_tdc() {
     assert_eq!(SignedAmount::ZERO.to_tdc(), 0.0);
 
     let amt_pairs = [(200_000_000, 2.0), (50_000_000, 0.5), (100_000, 0.001), (1, 0.000_000_01)];
-    for (sats, btc) in amt_pairs {
-        assert_eq!(ssat(sats).to_tdc(), btc);
-        assert_eq!(ssat(-sats).to_tdc(), -btc);
-        assert_eq!(sat(sats as u64).to_tdc(), btc);
+    for (sats, tdc) in amt_pairs {
+        assert_eq!(ssat(sats).to_tdc(), tdc);
+        assert_eq!(ssat(-sats).to_tdc(), -tdc);
+        assert_eq!(sat(sats as u64).to_tdc(), tdc);
     }
 }
 

@@ -3,7 +3,7 @@
 //! Rust Tidecoin Internal
 //!
 //! This crate is only meant to be used internally by crates in the
-//! [rust-tidecoin](https://github.com/nicenemo/rust-tidecoin) ecosystem.
+//! [rust-tidecoin](https://github.com/tidecoin/rust-tidecoin) ecosystem.
 
 #![no_std]
 // Coding conventions.
@@ -40,6 +40,8 @@ pub mod array;
 pub mod array_vec;
 pub mod const_tools;
 pub mod error;
+#[cfg(feature = "hex")]
+pub mod hex;
 pub mod macros;
 mod parse;
 pub mod script;

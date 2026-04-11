@@ -10,7 +10,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use encoding::{ByteVecDecoder, ByteVecDecoderError, Encodable};
 use internals::write_err;
 
-use super::{write_scriptint, Error, Instruction, Script, ScriptEncoder};
+use super::{encode_scriptnum, Error, Instruction, Script, ScriptEncoder};
 #[cfg(feature = "hex")]
 use crate::hex;
 use crate::opcodes::all::{
@@ -181,19 +181,6 @@ impl<T> ScriptBuf<T> {
         self.1.capacity()
     }
 
-    /// Gets the hex representation of this script.
-    ///
-    /// # Returns
-    ///
-    /// Just the script bytes in hexadecimal **not** consensus encoding of the script i.e., the
-    /// string will not include a length prefix.
-    #[cfg(feature = "hex")]
-    #[inline]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(&self) -> alloc::string::String {
-        alloc::format!("{:x}", self)
-    }
-
     /// Returns the encoded length for pushing a slice of bytes.
     pub fn reserved_len_for_slice(len: usize) -> usize {
         len + if len < 0x4c {
@@ -242,11 +229,11 @@ impl<T> ScriptBuf<T> {
     ///
     /// Panics only if the internally encoded script integer somehow exceeds the `PushBytes` limit.
     pub fn push_int_non_minimal(&mut self, data: i64) {
-        let mut buf = [0u8; 8];
-        let len = write_scriptint(&mut buf, data);
+        let buf = encode_scriptnum(data);
+        let len = buf.len();
         self.reserve(Self::reserved_len_for_slice(len));
         self.push_slice_no_opt(
-            <&super::PushBytes>::try_from(&buf[..len]).expect("scriptint bytes fit PushBytes"),
+            <&super::PushBytes>::try_from(buf.as_slice()).expect("scriptint bytes fit PushBytes"),
         );
     }
 

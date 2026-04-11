@@ -63,40 +63,33 @@ use crate::{BlockHeight, BlockHeightInterval};
 pub struct Params {
     /// Network for which parameters are valid.
     pub network: Network,
-    /// Time when BIP-0016 becomes active.
+    /// Time when pay-to-script-hash validation becomes active.
     pub bip16_time: u32,
-    /// Block height at which BIP-0034 becomes active.
+    /// Block height at which coinbase height validation becomes active.
     pub bip34_height: BlockHeight,
-    /// Block height at which BIP-0065 becomes active.
+    /// Block height at which CHECKLOCKTIMEVERIFY validation becomes active.
     pub bip65_height: BlockHeight,
-    /// Block height at which BIP-0066 becomes active.
+    /// Block height at which strict signature encoding validation becomes active.
     pub bip66_height: BlockHeight,
     /// Block height at which auxpow activates, if any.
     pub auxpow_start_height: Option<BlockHeight>,
     /// Auxpow chain ID encoded into header version bits.
     pub auxpow_chain_id: u32,
-    /// Enforce BIP-0094 block storm mitigation.
+    /// Enforce Tidecoin block storm mitigation.
     pub enforce_bip94: bool,
     /// Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
-    /// (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP-0009 deployments.
+    /// (nPowTargetTimespan / nPowTargetSpacing).
     /// Examples: 1916 for 95%, 1512 for testchains.
     pub rule_change_activation_threshold: BlockHeightInterval,
     /// Number of blocks with the same set of rules.
     pub miner_confirmation_window: BlockHeightInterval,
-    /// Proof of work limit value. It contains the lowest possible difficulty.
-    #[deprecated(since = "0.32.0", note = "use `max_attainable_target` instead")]
-    pub pow_limit: Target,
     /// The maximum **attainable** target value for these params.
     ///
     /// Not all target values are attainable because consensus code uses the compact format to
     /// represent targets (see [`CompactTarget`]).
     ///
-    /// Note that this value differs from the upstream `powLimit` field in that this value is
-    /// attainable, but the upstream field is not. Specifically, because targets are always
-    /// rounded to the nearest float expressible in "compact form", not all targets are attainable.
-    /// Still, this should not affect consensus as the only place where the non-compact form of
-    /// this is used in the upstream consensus algorithm is in comparison and there are no
-    /// compact-expressible values between the upstream value and the limit expressed here.
+    /// Tidecoin node consensus compares compact-encoded targets. This field stores the largest
+    /// target value that is exactly representable by the compact target format for the network.
     pub max_attainable_target: Target,
     /// Expected amount of time to mine one block.
     pub pow_target_spacing: u32,
@@ -121,11 +114,7 @@ pub static TESTNET: Params = Params::TESTNET;
 /// The regtest parameters.
 pub static REGTEST: Params = Params::REGTEST;
 
-#[allow(deprecated)] // For `pow_limit`.
 impl Params {
-    /// The mainnet parameters (alias for `Params::MAINNET`).
-    pub const BITCOIN: Self = Self::MAINNET;
-
     /// The mainnet parameters.
     pub const MAINNET: Self = Self {
         network: Network::Tidecoin,
@@ -138,7 +127,6 @@ impl Params {
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
         miner_confirmation_window: BlockHeightInterval::from_u32(8064),
-        pow_limit: Target::MAX_ATTAINABLE_MAINNET,
         max_attainable_target: Target::MAX_ATTAINABLE_MAINNET,
         pow_target_spacing: 60,
         pow_target_timespan: 432_000,
@@ -158,7 +146,6 @@ impl Params {
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
         miner_confirmation_window: BlockHeightInterval::from_u32(8064),
-        pow_limit: Target::MAX_ATTAINABLE_MAINNET,
         max_attainable_target: Target::MAX_ATTAINABLE_MAINNET,
         pow_target_spacing: 60,
         pow_target_timespan: 432_000,
@@ -178,7 +165,6 @@ impl Params {
         enforce_bip94: true,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(108),
         miner_confirmation_window: BlockHeightInterval::from_u32(144),
-        pow_limit: Target::MAX_ATTAINABLE_REGTEST,
         max_attainable_target: Target::MAX_ATTAINABLE_REGTEST,
         pow_target_spacing: 60,
         pow_target_timespan: 14_400,

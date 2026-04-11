@@ -2,6 +2,11 @@
 
 This file is the authoritative state tracker for the multi-wave validation and fixing run.
 
+Current-state notes supersede older phase-local "Remaining open risks" bullets. In particular,
+live validation no longer dispatches to upstream `bitcoinconsensus`, Tidecoin PQ transport parity is
+implemented in `p2p/src/pq_v2_transport.rs`, and the shared Tidecoin runtime now lives under
+`consensus-core/` with `consensus/` as the byte-oriented wrapper.
+
 ## State Definitions
 
 - `queued`: identified but not yet explored
@@ -35,7 +40,7 @@ Bring the library to a state where:
 | Inventory and baseline verification | `done` | orchestrator | Current status established from local and subagent validation |
 | Tidecoin node compatibility diff | `done` | orchestrator | Major Rust vs node deltas identified and tracked |
 | Consensus-core extraction and `consensus/` migration | `verifying` | orchestrator | `consensus-core` now owns the shared interpreter/typed tx/sighash/PQ/witness core, `consensus/` is a Tidecoin-native byte-oriented adapter over it, and the remaining work is cleanup of historical proof assets plus final boundary audit |
-| Shared Tidecoin node-parity harness extraction | `verifying` | orchestrator | Shared crate now owns native bridge sources, native build wiring, raw FFI, script-error/fixture helpers, and `TidecoinNodeHarness`; both `tidecoin` and `consensus/` now consume it, `consensus/tests/tidecoin_node_parity.rs` covers Tidecoin script and tx corpora, and the next step is replacing the remaining Bitcoin-specific `core_diff_bridge` differential path |
+| Shared Tidecoin node-parity harness extraction | `verifying` | orchestrator | Shared crate now owns native bridge sources, native build wiring, raw FFI, script-error/fixture helpers, and `TidecoinNodeHarness`; both `tidecoin` and `consensus/` now consume it, `consensus/tests/tidecoin_node_parity.rs` covers Tidecoin script and tx corpora, and the old Core-era `core_diff_bridge` path is archived reference material only |
 | All-features compilation | `done` | orchestrator | Tidecoin crate targeted all-features compile/lint gates are currently green; keep tied to fresh command output rather than stale blanket claims |
 | Taproot removal | `done` | orchestrator + workers | Hidden taproot modules and taproot script/address support are removed; `is_p2tr()` and dead taproot serde artifacts are gone; `OP_CHECKSIGADD` is retained only as a disabled node-compatibility opcode byte, while x-only secp utilities, explicit PSBT rejection markers, and historical changelog references remain intentionally present |
 | Unused code and warnings | `verifying` | orchestrator | The I/O compatibility codec crate is being removed; canonical codecs now flow through `tidecoin-consensus-encoding`, with crate-specific facades only where they add domain semantics |
@@ -138,7 +143,7 @@ Bring the library to a state where:
   - removed the residual `is_p2tr()` script API and renamed the witness-v1 regression test accordingly
   - deleted unreferenced taproot-era serde blobs from `tidecoin/tests/data/serde/**`
   - reduced ignored doctests to three justified sketch/context cases:
-    - `tidecoin/src/bip158.rs`
+    - `tidecoin/src/compact_filter.rs`
     - `tidecoin/src/crypto/sighash.rs`
     - `hashes/src/internal_macros.rs`
   - completed final verification successfully:
@@ -163,7 +168,8 @@ Bring the library to a state where:
   - real PQ crypto backend parity with `src/pq/pq_api.h` and `src/pq/pq_scheme.h` is still missing
   - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and `SignatureHash512` is still missing
   - node PQ script/transaction/multisig/policy corpora are not yet migrated as executable Rust coverage
-  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
+  - historical at this phase: Tidecoin PQ transport parity was still open; this
+    was closed by the later `p2p/src/pq_v2_transport.rs` implementation
 
 ### Phase 7
 
@@ -184,7 +190,8 @@ Bring the library to a state where:
   - real PQ crypto backend parity with deterministic keygen/sign/verify and ML-KEM is still missing
   - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and `SignatureHash512` is still missing
   - node PQ script/transaction/multisig/policy corpora are not yet migrated as executable Rust coverage
-  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
+  - historical at this phase: Tidecoin PQ transport parity was still open; this
+    was closed by the later `p2p/src/pq_v2_transport.rs` implementation
 
 ### Phase 8
 
@@ -211,9 +218,7 @@ Bring the library to a state where:
 - Remaining open risks:
   - deterministic PQHD key generation from the derived stream material is still missing
   - prefixed/legacy PQ secret-key codec parity with node `DecodeSecretKey` / `EncodeSecretKey` is still missing
-  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
-  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
-  - the optional validation API still points at upstream `bitcoinconsensus`, not a Tidecoin-specific validation surface
+  - historical at this phase: interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution was still missing; this was superseded by later consensus-core and node-parity phases
 
 ### Phase 9
 
@@ -232,28 +237,24 @@ Bring the library to a state where:
     - `cargo test --workspace`
     - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Remaining open risks:
-  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
-  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
-  - the optional validation API still points at upstream `bitcoinconsensus`, not a Tidecoin-specific validation surface
+  - historical at this phase: interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution was still missing; this was superseded by later consensus-core and node-parity phases
 
 ### Phase 10
 
 - State: `done`
-- Objective: land the missing `pqhd(...)` key-expression and descriptor-string layer in the dedicated workspace crate
+- Objective: land the missing `pqhd(...)` key-expression and descriptor-string layer in the Tidecoin high-level crate
 - Completed in this phase:
-  - implemented `PqhdKeyExpression` parsing and formatting in `key_expression/src/lib.rs`
+  - implemented `PqhdKeyExpression` parsing and formatting in `tidecoin/src/key_expression.rs`
   - added deterministic public-key/keypair derivation from `pqhd(...)` expressions backed by `tidecoin::pqhd`
   - added node-style wallet descriptor string generation with Tidecoin scheme/height gating for `pkh(...)`, `sh(wpkh(...))`, `wpkh(...)`, and `wsh512(pk(...))`
   - added regression coverage ported from node descriptor and wallet behavior, including negative parsing cases and scheme-height policy checks
   - re-ran verification successfully:
-    - `cargo test -p tidecoin-key-expression`
+    - `cargo test -p tidecoin --lib key_expression`
     - `cargo check --workspace`
     - `cargo test --workspace`
     - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Remaining open risks:
-  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
-  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
-  - the optional validation API still points at upstream `bitcoinconsensus`, not a Tidecoin-specific validation surface
+  - historical at this phase: interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution was still missing; this was superseded by later consensus-core and node-parity phases
 
 ### Phase 11
 
@@ -271,9 +272,7 @@ Bring the library to a state where:
     - `cargo test --workspace`
     - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Remaining open risks:
-  - interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution is still missing
-  - Tidecoin PQ transport parity with `src/bip324_pq.h` is still missing
-  - the optional validation API still points at upstream `bitcoinconsensus`, not a Tidecoin-specific validation surface
+  - historical at this phase: interpreter/runtime support for `SCRIPT_VERIFY_PQ_STRICT`, `SCRIPT_VERIFY_WITNESS_V1_512`, `SCRIPT_VERIFY_SHA512`, and PQ corpus execution was still missing; this was superseded by later consensus-core and node-parity phases
 
 ### Phase 12
 
@@ -286,14 +285,14 @@ Bring the library to a state where:
     - encapsulate / deterministic encapsulate
     - decapsulate
   - added regression coverage for ML-KEM-512 roundtrip and deterministic behavior in `tidecoin/src/crypto/pq.rs`
-  - added `p2p/src/bip324_pq.rs` implementing Tidecoin v2 PQ packet-cipher key derivation and packet encryption/decryption
+  - added `p2p/src/pq_v2_transport.rs` implementing Tidecoin v2 PQ packet-cipher key derivation and packet encryption/decryption
   - mirrored node transport test coverage with Rust tests for:
     - FSChaCha20 vectors from `src/test/crypto_tests.cpp`
     - FSChaCha20Poly1305 vectors from `src/test/crypto_tests.cpp`
-    - `bip324_pq` packet roundtrip and corruption handling from `src/test/bip324_pq_tests.cpp`
+    - PQ v2 transport packet roundtrip and corruption handling from node transport tests
   - re-ran verification successfully:
     - `cargo test -p tidecoin --lib crypto::pq`
-    - `cargo test -p tidecoin-p2p-messages bip324_pq`
+    - `cargo test -p tidecoin-p2p-messages pq_v2_transport`
     - `cargo check --workspace`
     - `cargo test --workspace`
     - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
@@ -330,7 +329,7 @@ Bring the library to a state where:
     - `cargo check -p tidecoin --features tidecoin-node-validation`
     - `cargo test -p tidecoin --lib consensus_validation -- --nocapture`
 - Remaining open risks:
-  - the imported [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) crate still contains upstream `bitcoinconsensus` and Bitcoin Core differential infrastructure, and remains a migration target rather than the live Tidecoin validation surface
+  - historical Core-era proof material under [`consensus/tests/archived`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived) still needs final delete-or-replace decisions, but it is no longer part of the live Tidecoin validation surface
 
 ### Phase 14
 
@@ -356,7 +355,7 @@ Bring the library to a state where:
     - PQ multisig mixed, negative, and limit cases
     - committed-hash mixed and failure cases
     - legacy base-signature verification
-  - corrected the feature-matrix gating for the legacy pure-`bitcoinconsensus` tests so both validation configurations remain green
+  - corrected the feature-matrix gating while removing the legacy pure-`bitcoinconsensus` validation path so both validation configurations remain green
   - re-ran verification successfully:
     - `cargo check -p tidecoin --all-features --tests --examples`
     - `cargo test -p tidecoin --all-features --quiet`

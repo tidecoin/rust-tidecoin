@@ -1,6 +1,6 @@
 use consensus::verify_with_flags_detailed;
 use encoding::{decode_from_slice, encode_to_vec};
-use hashes::hex_unstable::DisplayHex;
+use internals::hex::DisplayHex;
 use node_parity::fixtures::test_data_path;
 use primitives::{script::ScriptBuf, Transaction, TxOut, Witness};
 use serde_json::Value;

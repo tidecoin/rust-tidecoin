@@ -17,7 +17,7 @@ pub struct Foo {
     #[serde(with = "primitives::serde_as_consensus")]
     header: Header,
 
-    /// `Amount` can use sats or bitcoin (`as_btc`).
+    /// `Amount` can use sats or TDC (`as_tdc`).
     #[serde(with = "amount::serde::as_sat")]
     amount: Amount,
 

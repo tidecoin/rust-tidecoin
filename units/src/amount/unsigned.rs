@@ -48,7 +48,6 @@ mod encapsulate {
     ///
     /// #[derive(Serialize, Deserialize)]
     /// struct Foo {
-    ///     // If you are using `rust-tidecoin` then `bitcoin::amount::serde::as_sat` also works.
     ///     #[serde(with = "tidecoin_units::amount::serde::as_sat")]  // Also `serde::as_tdc`.
     ///     amount: Amount,
     /// }
@@ -163,8 +162,8 @@ impl Amount {
     /// Converts from a value expressing a whole number of tidecoin to an [`Amount`]
     /// in const context.
     #[allow(clippy::missing_panics_doc)]
-    pub const fn from_tdc_u16(whole_bitcoin: u16) -> Self {
-        let tdc = const_casts::u16_to_u64(whole_bitcoin);
+    pub const fn from_tdc_u16(whole_tidecoin: u16) -> Self {
+        let tdc = const_casts::u16_to_u64(whole_tidecoin);
         let sats = tdc * 100_000_000;
 
         match Self::from_sat(sats) {

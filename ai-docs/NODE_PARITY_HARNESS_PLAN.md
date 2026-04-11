@@ -15,10 +15,11 @@ The repository already has a good Tidecoin-specific node bridge:
 - Rust FFI wrappers and parity tests in [tidecoin/src/consensus_validation_node.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_node.rs)
 
 The imported [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus)
-crate already has a cleaner differential harness shape:
+crate originally had a cleaner differential harness shape in its Core-era
+tests:
 
-- backend abstraction in [consensus/tests/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/core_diff_bridge.rs)
-- systematic vector/random differential use in [consensus/tests/script_vectors.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/script_vectors.rs) and [consensus/tests/random_consistency.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/random_consistency.rs)
+- archived backend abstraction in [consensus/tests/archived/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/core_diff_bridge.rs)
+- archived vector/random differential use in [consensus/tests/archived/script_vectors.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/script_vectors.rs) and [consensus/tests/archived/random_consistency.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/random_consistency.rs)
 
 We want both:
 
@@ -76,8 +77,10 @@ The first extraction slice is already in place:
 
 Still missing:
 
-- broader `consensus/` test integration beyond the first script/transaction fixture-backed parity tests
-- any additional capability/reporting APIs the shared harness may still need
+- explicit matrix mapping from each retired historical coverage class to the
+  Tidecoin-native parity or local-invariant test that replaces it
+- any additional capability/reporting APIs the shared harness still needs after
+  that matrix reconciliation
 
 ## Hard Rules
 
@@ -129,9 +132,9 @@ These are the important Tidecoin-specific capabilities:
 
 ### Reuse From The Existing `consensus/` Harness
 
-Copy the structural patterns from:
+The useful structural patterns have been ported from:
 
-- [consensus/tests/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/core_diff_bridge.rs)
+- [consensus/tests/archived/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/core_diff_bridge.rs)
 
 The useful design ideas are:
 
@@ -272,23 +275,23 @@ The shared harness path is now validated by both primary consumers:
 - [consensus/tests/tidecoin_node_parity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_node_parity.rs)
   uses the same harness against Tidecoin node `script_tests_pq.json`
 
-The next migration step is not bridge extraction anymore. It is replacing
-`consensus/tests/core_diff_bridge.rs` and the Bitcoin-specific differential
-surface with this shared Tidecoin harness.
+The next migration step is not bridge extraction anymore. The active tests have
+moved to the shared Tidecoin harness; the remaining work is matrix
+reconciliation for archived Core-era proof classes and any extra diagnostics
+that reconciliation proves useful.
 
-After extraction, `tidecoin/src/consensus_validation_node.rs` should become a
-thin adapter over the shared harness crate.
+`tidecoin/src/consensus_validation_node.rs` is now an adapter over the shared
+harness crate.
 
 ### Reuse In `consensus/`
 
-Replace the current Bitcoin/Core diff backend in tests with the shared Tidecoin
-node harness.
+Keep the active `consensus/` tests on the shared Tidecoin node harness.
 
 That means:
 
-- stop growing [consensus/tests/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/core_diff_bridge.rs)
-  as a Bitcoin-specific long-term solution
-- port the good harness shape into the new Tidecoin parity crate
+- keep [consensus/tests/archived/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/core_diff_bridge.rs)
+  archived as historical reference only
+- keep the ported harness shape in the Tidecoin parity crate
 - make `consensus/tests` depend on `tidecoin-node-parity` for node-backed
   comparisons
 
@@ -298,8 +301,8 @@ That means:
 
 - [x] Confirm this layer is test/dev support, not production consensus core
 - [x] Confirm crate name and directory
-- [ ] Define the minimal public harness API
-- [ ] Define what remains in top-level `tidecoin`
+- [x] Define the minimal public harness API
+- [x] Define what remains in top-level `tidecoin`
 
 ### Phase 2: Extract The Bridge Substrate
 
@@ -324,22 +327,26 @@ That means:
   [tidecoin/src/consensus_validation_node.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_node.rs)
   tests with the shared harness
 - [x] Finish migrating the remaining Tidecoin-side node helper calls
-- [ ] Keep Tidecoin node-backed validation behavior unchanged
-- [ ] Re-run existing Tidecoin node-parity tests
+- [x] Keep Tidecoin node-backed validation behavior unchanged
+- [x] Re-run existing Tidecoin node-parity tests
 
 ### Phase 5: Rewire `consensus/` Differential Surface
 
-- [ ] Stop extending the Bitcoin-specific diff harness as the long-term path
-- [ ] Introduce Tidecoin node-parity usage in `consensus/tests`
-- [ ] Port applicable vector-based differential tests to the shared harness
-- [ ] Port applicable randomized differential tests to the shared harness
+- [x] Stop extending the Bitcoin-specific diff harness as the long-term path
+- [x] Introduce Tidecoin node-parity usage in `consensus/tests`
+- [x] Port applicable vector-based differential tests to the shared harness
+- [x] Port applicable randomized or generated corpus-style differential tests to
+  Tidecoin-native parity/local-invariant coverage
+- [ ] Reconcile the coverage matrix against each retired historical coverage
+  class so future audits can see the replacement test explicitly
 
 ### Phase 6: Tighten The Coverage Model
 
-- [ ] Make Tidecoin node the only external parity target
+- [x] Make Tidecoin node the only external parity target
 - [x] Remove `libbitcoinconsensus` fallback from the long-term plan
-- [ ] Remove Bitcoin/Taproot-specific helper assumptions from migrated tests
-- [ ] Add Tidecoin-specific mismatch diagnostics and coverage counters
+- [x] Remove Bitcoin/Taproot-specific helper assumptions from migrated tests
+- [ ] Add any remaining Tidecoin-specific mismatch diagnostics and coverage
+  counters that the matrix reconciliation proves useful
 
 ## Success Criteria
 

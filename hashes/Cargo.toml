@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin_hashes"
 version = "0.20.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 documentation = "https://docs.rs/tidecoin_hashes/"
 description = "Hash functions used by the rust-tidecoin ecosystem"
 categories = ["algorithms", "cryptography", "no-std"]
@@ -15,10 +15,10 @@ exclude = ["tests", "contrib"]
 
 [features]
 default = ["std"]
-std = ["alloc", "hex-stable/std", "hex-unstable/std"]
-alloc = ["hex-stable/alloc", "hex-unstable/alloc"]
+std = ["alloc", "hex-stable?/std", "internals/std"]
+alloc = ["hex-stable?/alloc", "internals/alloc"]
 serde = ["dep:serde", "hex"]
-hex = ["dep:hex-stable", "dep:hex-unstable"]
+hex = ["dep:hex-stable", "internals/hex"]
 # Smaller (but slower) implementation of sha256, sha512 and ripemd160
 small-hash = []
 
@@ -30,9 +30,7 @@ arbitrary = { version = "1.4.1", optional = true}
 serde = { version = "1.0.195", default-features = false, optional = true }
 cpufeatures = { version = "0.2", optional = true }
 
-# Both optional hex dependencies are behind the `hex` feature.
 hex-stable = { package = "hex-conservative", version = "1.0.0", default-features = false, optional = true }
-hex-unstable = { package = "hex-conservative", version = "0.3.2", default-features = false, optional = true }
 
 [dev-dependencies]
 serde_test = "1.0.19"
@@ -53,11 +51,6 @@ exact_features = [
     ["std", "small-hash"],
     ["alloc", "serde", "small-hash"],
     ["std", "serde", "small-hash"],
-]
-
-[package.metadata.rbmt.lint]
-allowed_duplicates = [
-    "hex-conservative",
 ]
 
 [package.metadata.rbmt.prerelease]

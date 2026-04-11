@@ -21,6 +21,8 @@ use encoding::{ArrayDecoder, Decoder6, Encodable as _};
 use encoding::{CompactSizeEncoder, Decoder2, Encoder2, SliceEncoder, VecDecoder};
 use hashes::{sha256d, HashEngine as _};
 use internals::write_err;
+#[cfg(feature = "alloc")]
+use internals::ToU64 as _;
 
 #[cfg(feature = "hex")]
 use crate::hex_codec::{HexPrimitive, ParsePrimitiveError};
@@ -34,7 +36,7 @@ use crate::prelude::{Box, Vec};
 use crate::script::{ScriptPubKeyBuf, ScriptSigBuf};
 use crate::time::{BlockTimeDecoder, BlockTimeDecoderError};
 #[cfg(feature = "alloc")]
-use crate::{Amount, Transaction, TxIn, TxOut, Wtxid};
+use crate::{Amount, Transaction, TxIn, TxOut, Weight, Wtxid};
 use crate::{BlockTime, CompactTarget};
 
 #[rustfmt::skip]                // Keep public re-exports separate.
@@ -239,6 +241,30 @@ impl<V: Validation> Block<V> {
     #[inline]
     pub fn block_hash(&self) -> BlockHash {
         self.header.block_hash()
+    }
+
+    /// Returns the block weight.
+    ///
+    /// Block weight is base size multiplied by three plus total size.
+    #[inline]
+    pub fn weight(&self) -> Weight {
+        Weight::from_wu((self.base_size() * 3 + self.total_size()).to_u64())
+    }
+
+    /// Returns the base block size, with transaction witness data stripped.
+    #[inline]
+    pub fn base_size(&self) -> usize {
+        self.header.serialized_len()
+            + CompactSizeEncoder::encoded_size(self.transactions.len())
+            + self.transactions.iter().map(Transaction::base_size).sum::<usize>()
+    }
+
+    /// Returns the total block size under canonical block serialization.
+    #[inline]
+    pub fn total_size(&self) -> usize {
+        self.header.serialized_len()
+            + CompactSizeEncoder::encoded_size(self.transactions.len())
+            + self.transactions.iter().map(Transaction::total_size).sum::<usize>()
     }
 }
 
@@ -577,25 +603,9 @@ pub struct AuxPow {
 
 #[cfg(feature = "alloc")]
 impl AuxPow {
-    fn consensus_bytes(&self) -> Vec<u8> {
-        let mut bytes = encoding::encode_to_vec(&self.coinbase_tx);
-        bytes.extend_from_slice(&[0; 32]); // hashBlock placeholder
-        bytes.extend_from_slice(&crate::compact_size_encode(self.merkle_branch.len()));
-        for hash in &self.merkle_branch {
-            bytes.extend_from_slice(hash.as_byte_array());
-        }
-        bytes.extend_from_slice(&0_i32.to_le_bytes()); // coinbase index placeholder
-        bytes.extend_from_slice(&crate::compact_size_encode(self.chain_merkle_branch.len()));
-        for hash in &self.chain_merkle_branch {
-            bytes.extend_from_slice(hash.as_byte_array());
-        }
-        bytes.extend_from_slice(&self.chain_index.to_le_bytes());
-        bytes.extend_from_slice(&pure_header_bytes(&self.parent_block));
-        bytes
-    }
-
     fn consensus_len(&self) -> usize {
-        self.consensus_bytes().len()
+        let encoder = self.encoder();
+        encoding::ExactSizeEncoder::len(&encoder)
     }
 
     /// Creates the minimal auxpow payload used by the Tidecoin node serialization tests.
@@ -649,16 +659,16 @@ impl AuxPow {
     }
 }
 
-#[cfg(feature = "alloc")]
-fn pure_header_bytes(header: &Header) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(Header::SIZE);
-    bytes.extend_from_slice(&header.version.to_consensus().to_le_bytes());
-    bytes.extend_from_slice(header.prev_blockhash.as_byte_array());
-    bytes.extend_from_slice(header.merkle_root.as_byte_array());
-    bytes.extend_from_slice(&header.time.to_u32().to_le_bytes());
-    bytes.extend_from_slice(&header.bits.to_consensus().to_le_bytes());
-    bytes.extend_from_slice(&header.nonce.to_le_bytes());
-    bytes
+fn sha256d_hash_encoder(mut encoder: impl encoding::Encoder) -> sha256d::Hash {
+    let mut enc = sha256d::Hash::engine();
+    loop {
+        enc.input(encoder.current_chunk());
+        if !encoder.advance() {
+            break;
+        }
+    }
+
+    enc.finalize()
 }
 
 /// Tidecoin block header.
@@ -700,15 +710,19 @@ impl Header {
     /// Returns the block hash.
     // This hashes only the six standard header fields; auxpow is not committed by the block hash.
     pub fn block_hash(&self) -> BlockHash {
-        let mut bare_hash = sha256d::Hash::engine();
-        bare_hash = hashes::encode_to_engine(&self.version, bare_hash);
-        bare_hash = hashes::encode_to_engine(&self.prev_blockhash, bare_hash);
-        bare_hash = hashes::encode_to_engine(&self.merkle_root, bare_hash);
-        bare_hash = hashes::encode_to_engine(&self.time, bare_hash);
-        bare_hash = hashes::encode_to_engine(&self.bits, bare_hash);
-        bare_hash.input(&self.nonce.to_le_bytes());
-        let bare_hash = bare_hash.finalize();
+        let bare_hash = sha256d_hash_encoder(self.pure_encoder());
         BlockHash::from_byte_array(bare_hash.to_byte_array())
+    }
+
+    fn pure_encoder(&self) -> PureHeaderEncoder<'_> {
+        PureHeaderEncoder::new(encoding::Encoder6::new(
+            self.version.encoder(),
+            self.prev_blockhash.encoder(),
+            self.merkle_root.encoder(),
+            self.time.encoder(),
+            self.bits.encoder(),
+            encoding::ArrayEncoder::without_length_prefix(self.nonce.to_le_bytes()),
+        ))
     }
 }
 
@@ -799,43 +813,63 @@ encoding::encoder_newtype_exact! {
 }
 
 #[cfg(feature = "alloc")]
-#[derive(Debug, Clone)]
-struct OwnedBytesEncoder {
-    bytes: Vec<u8>,
-    emitted: bool,
+type MerkleBranchEncoder<'e> = Encoder2<CompactSizeEncoder, SliceEncoder<'e, BlockHash>>;
+
+#[cfg(feature = "alloc")]
+type AuxPowEncoderInner<'e> = encoding::Encoder6<
+    crate::transaction::TransactionEncoder<'e>,
+    encoding::ArrayEncoder<32>,
+    MerkleBranchEncoder<'e>,
+    encoding::ArrayEncoder<4>,
+    MerkleBranchEncoder<'e>,
+    Encoder2<encoding::ArrayEncoder<4>, PureHeaderEncoder<'e>>,
+>;
+
+#[cfg(feature = "alloc")]
+encoding::encoder_newtype_exact! {
+    /// The structured encoder for the [`AuxPow`] wire layout.
+    struct AuxPowLayoutEncoder<'e>(AuxPowEncoderInner<'e>);
 }
 
 #[cfg(feature = "alloc")]
-impl OwnedBytesEncoder {
-    fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes, emitted: false }
-    }
+fn auxpow_layout_encoder(auxpow: &AuxPow) -> AuxPowLayoutEncoder<'_> {
+    let merkle_branch = Encoder2::new(
+        CompactSizeEncoder::new(auxpow.merkle_branch.len()),
+        SliceEncoder::without_length_prefix(&auxpow.merkle_branch),
+    );
+    let chain_merkle_branch = Encoder2::new(
+        CompactSizeEncoder::new(auxpow.chain_merkle_branch.len()),
+        SliceEncoder::without_length_prefix(&auxpow.chain_merkle_branch),
+    );
+
+    AuxPowLayoutEncoder::new(encoding::Encoder6::new(
+        auxpow.coinbase_tx.encoder(),
+        encoding::ArrayEncoder::without_length_prefix([0; 32]),
+        merkle_branch,
+        encoding::ArrayEncoder::without_length_prefix(0_i32.to_le_bytes()),
+        chain_merkle_branch,
+        Encoder2::new(
+            encoding::ArrayEncoder::without_length_prefix(auxpow.chain_index.to_le_bytes()),
+            auxpow.parent_block.pure_encoder(),
+        ),
+    ))
 }
 
 #[cfg(feature = "alloc")]
-impl encoding::Encoder for OwnedBytesEncoder {
-    fn current_chunk(&self) -> &[u8] {
-        if self.emitted {
-            &[]
-        } else {
-            &self.bytes
-        }
-    }
-
-    fn advance(&mut self) -> bool {
-        self.emitted = true;
-        false
-    }
+encoding::encoder_newtype_exact! {
+    /// The encoder for the [`AuxPow`] type.
+    pub struct AuxPowEncoder<'e>(AuxPowLayoutEncoder<'e>);
 }
 
 #[cfg(feature = "alloc")]
-impl encoding::ExactSizeEncoder for OwnedBytesEncoder {
-    fn len(&self) -> usize {
-        if self.emitted {
-            0
-        } else {
-            self.bytes.len()
-        }
+impl encoding::Encodable for AuxPow {
+    type Encoder<'e>
+        = AuxPowEncoder<'e>
+    where
+        Self: 'e;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AuxPowEncoder::new(auxpow_layout_encoder(self))
     }
 }
 
@@ -843,7 +877,7 @@ impl encoding::ExactSizeEncoder for OwnedBytesEncoder {
 /// The encoder for the [`Header`] type.
 pub struct HeaderEncoder<'e> {
     pure: PureHeaderEncoder<'e>,
-    auxpow: Option<OwnedBytesEncoder>,
+    auxpow: Option<AuxPowEncoder<'e>>,
     pure_done: bool,
 }
 
@@ -854,18 +888,8 @@ pub use PureHeaderEncoder as HeaderEncoder;
 impl<'e> HeaderEncoder<'e> {
     fn new(header: &'e Header) -> Self {
         Self {
-            pure: PureHeaderEncoder::new(encoding::Encoder6::new(
-                header.version.encoder(),
-                header.prev_blockhash.encoder(),
-                header.merkle_root.encoder(),
-                header.time.encoder(),
-                header.bits.encoder(),
-                encoding::ArrayEncoder::without_length_prefix(header.nonce.to_le_bytes()),
-            )),
-            auxpow: header
-                .auxpow
-                .as_ref()
-                .map(|auxpow| OwnedBytesEncoder::new(auxpow.consensus_bytes())),
+            pure: header.pure_encoder(),
+            auxpow: header.auxpow.as_deref().map(encoding::Encodable::encoder),
             pure_done: false,
         }
     }
@@ -875,7 +899,7 @@ impl<'e> HeaderEncoder<'e> {
 impl encoding::Encoder for HeaderEncoder<'_> {
     fn current_chunk(&self) -> &[u8] {
         if self.pure_done {
-            self.auxpow.as_ref().map_or(&[], OwnedBytesEncoder::current_chunk)
+            self.auxpow.as_ref().map_or(&[], encoding::Encoder::current_chunk)
         } else {
             self.pure.current_chunk()
         }
@@ -904,7 +928,7 @@ impl encoding::Encoder for HeaderEncoder<'_> {
 #[cfg(feature = "alloc")]
 impl encoding::ExactSizeEncoder for HeaderEncoder<'_> {
     fn len(&self) -> usize {
-        self.pure.len() + self.auxpow.as_ref().map_or(0, OwnedBytesEncoder::len)
+        self.pure.len() + self.auxpow.as_ref().map_or(0, encoding::ExactSizeEncoder::len)
     }
 }
 
@@ -922,14 +946,7 @@ impl encoding::Encodable for Header {
     type Encoder<'e> = HeaderEncoder<'e>;
 
     fn encoder(&self) -> Self::Encoder<'_> {
-        PureHeaderEncoder::new(encoding::Encoder6::new(
-            self.version.encoder(),
-            self.prev_blockhash.encoder(),
-            self.merkle_root.encoder(),
-            self.time.encoder(),
-            self.bits.encoder(),
-            encoding::ArrayEncoder::without_length_prefix(self.nonce.to_le_bytes()),
-        ))
+        self.pure_encoder()
     }
 }
 
@@ -1088,11 +1105,11 @@ enum AuxPowDecoderState {
 pub enum AuxPowDecoderError {
     /// Error while decoding the parent coinbase transaction.
     CoinbaseTx(crate::transaction::TransactionDecoderError),
-    /// Error while decoding the legacy `hashBlock` placeholder.
+    /// Error while decoding the reserved `AuxPow` `hashBlock` field.
     HashBlock(encoding::UnexpectedEofError),
     /// Error while decoding the parent coinbase merkle branch.
     MerkleBranch(<VecDecoder<BlockHash> as encoding::Decoder>::Error),
-    /// Error while decoding the legacy parent coinbase index placeholder.
+    /// Error while decoding the reserved parent coinbase index field.
     CoinbaseIndex(encoding::UnexpectedEofError),
     /// Error while decoding the chain merkle branch.
     ChainMerkleBranch(<VecDecoder<BlockHash> as encoding::Decoder>::Error),
@@ -1100,7 +1117,7 @@ pub enum AuxPowDecoderError {
     ChainIndex(encoding::UnexpectedEofError),
     /// Error while decoding the pure parent block header.
     ParentBlock(Box<HeaderDecoderError>),
-    /// The serialized parent coinbase index placeholder was non-zero.
+    /// The reserved parent coinbase index field was non-zero.
     InvalidCoinbaseIndex(i32),
     /// The auxpow payload ended before all required fields were present.
     EarlyEnd(&'static str),
@@ -1291,7 +1308,7 @@ impl encoding::Decoder for AuxPowDecoder {
 
         match self.state {
             S::CoinbaseTx(_) => Err(E::EarlyEnd("coinbase transaction")),
-            S::HashBlock(..) => Err(E::EarlyEnd("auxpow hashBlock placeholder")),
+            S::HashBlock(..) => Err(E::EarlyEnd("reserved auxpow hashBlock field")),
             S::MerkleBranch(..) => Err(E::EarlyEnd("coinbase merkle branch")),
             S::CoinbaseIndex(..) => Err(E::EarlyEnd("coinbase merkle index")),
             S::ChainMerkleBranch(..) => Err(E::EarlyEnd("chain merkle branch")),
@@ -1495,10 +1512,10 @@ impl Version {
     /// Tidecoin block version 1.
     pub const ONE: Self = Self(1);
 
-    /// BIP-0034 Block v2.
+    /// Tidecoin block version 2 with coinbase height encoding.
     pub const TWO: Self = Self(2);
 
-    /// BIP-0009 compatible version number that does not signal for any softforks.
+    /// Version-bits compatible version number that does not signal for any softforks.
     pub const NO_SOFT_FORK_SIGNALLING: Self = Self(Self::USE_VERSION_BITS as i32);
 
     /// Auxpow header flag.
@@ -1512,7 +1529,7 @@ impl Version {
     /// Mask of the embedded auxpow chain id field already shifted into place.
     pub const MASK_AUXPOW_CHAINID_SHIFTED: i32 = 0x001f << Self::VERSION_START_BIT;
 
-    /// BIP-0009 soft fork signal bits mask.
+    /// Version-bits soft fork signal bits mask.
     const VERSION_BITS_MASK: u32 = 0x1FFF_FFFF;
 
     /// 32bit value starting with `001` to use version bits.
@@ -1578,7 +1595,7 @@ impl Version {
 
     /// Checks whether the version number is signalling a soft fork at the given bit.
     ///
-    /// A block is signalling for a soft fork under BIP-0009 if the first 3 bits are `001` and
+    /// A block signals for a version-bits soft fork if the first 3 bits are `001` and
     /// the version bit for the specific soft fork is toggled on.
     pub fn is_signalling_soft_fork(self, bit: u8) -> bool {
         // Only bits [0, 28] inclusive are used for signalling.
@@ -2292,18 +2309,51 @@ mod tests {
         assert_eq!(decoded, original);
     }
 
-    // Test vector provided by tm0 in issue #5023
     #[test]
-    #[cfg(all(feature = "alloc", feature = "hex"))]
+    #[cfg(feature = "alloc")]
     fn merkle_tree_hash_collision() {
-        // https://learnmeabitcoin.com/explorer/block/00000000000008a662b4a95a46e4c54cb04852525ac0ef67d1bcac85238416d4
-        // this block has 7 transactions
-        const BLOCK_128461_HEX: &str = "01000000166208c96de305f2a304130a1b53727abf8fb77e8a3cfe2a831e000000000000d4fd086755b4d46221362a09a4228bed60d729d22362b87803ff44b72c138ec04a8ce94d2194261af9551f720701000000010000000000000000000000000000000000000000000000000000000000000000ffffffff08042194261a026005ffffffff018076242a01000000434104390e51c3d66d5ee10327395872e33bc232e9e1660225c9f88fa594fdcdcd785d86b1152fb380a63cdf57d8cf2345a55878412a6864656b158704e0b734b3fd9dac000000000100000001f591edc180a889b21a45b6bd5b5e0017d4137dae9695703107ac1e6e878c9f02000000008b483045022100e066df28b29bf18bfcd8da11ea576a6f502f59e7b1d37e2e849ee4648008962b022023be840ec01ffa6860b5577bf0b8546541f40c287eb57b8b421a1396c7aea583014104add16286f51f68cee1b436d0c29a41a59fa8bd224eb6bec34b073512303c70fc3d630cb4952416ef02340c56bee2eef294659b4023ea8a3d90a297bdb54321f9ffffffff02508470b5000000001976a91472579bbeaeca0802fde07ce88f946b64da63989388ac40aeeb02000000001976a914d2a7410246b5ece345aa821af89bff0b6fa3bcaa88ac0000000001000000016197cb143d4cef51389076fdee3f62c294b65bc9aff217a6c71b9dd987e22754000000008c493046022100bf174e942e4619f4e470b5d8b1c0c8ded9e2f7a6616c073c5ab05cc9d699ede3022100a642fa9d0bcc89523635f9468e4813a120b233a249678de0ebf7ba398a4205f6014104122979c0ac1c3af2aa84b4c1d6a9b3b6fa491827f1a2ba37c4b58bdecd644438da715497a44b16aedbadbd18cf9765cdb36851284f643ed743c4365798dd314affffffff02c0404384000000001976a91443cd8fbad7421a53f9e899a2c9761259705d465b88acc0f4f50e000000001976a9142f6c963506b0a2c93a09a92171957e9e7e11a7a388ac00000000010000000228a11f953c26d558a8299ad9dc61279d7abc9a4059820b614bf403c05e471c481d0000008b48304502205baff189016e6fee8e0faa9eebdc8f150d2d3815007719ceccabd995607bb0b0022100f4cc49ef0b29561e976bf6f6f7ae135f665b8dd38a67634bb6bbe74c0da9c1f7014104dd5920aedc3f79ace9c8061f3724812f5b218ea81d175dd990071175874d6c79025f9db516ab23975e510645aabc4ee699cc5c24358a403d15a7736a504399f8ffffffff191b06773a7cec0bb30539f185edbf1d139f9756071c6ae395c1c29f3e2484f6010000008c493046022100c7123436476f923cd8dacbe132f5128b529baa194c9aedc570402d8d2d7902ac02210094e6974695265d96d5859ab493df00c90b62a84dcc33a05753aea23b38c249670141041d878bc5438ff439490e71d059e6b687e511336c0aa53e0d129663c91db71cfe20008891f1e4780bf1139ec9c9e81bfd2e3ea9009608a78d96a5a3a5bf7812baffffffff0200093d00000000001976a914fd0d4c3d0963db8358bd01ba6f386d4c5ef2e30288ac0084d717000000001976a914dcb1e8e699eb9f07a1ddfd5d764aa74359ddd93088ac00000000010000000118e2286c42643e6146669b0f5ee35454fe256aac2b1401dbeefd941f2e6d2074000000008b483045022100edec1c5078fed29d808282d62f167eb3f0ea6a6655f3869c12eca9c63d8463c2022031a3ae430be137932059b4a3e3fb7f1e1f2a05065dbc47c3142972de45c76daa01410423162e5ac10ec46c4a142fea3197cc66e614b9f28f014882ebc8271c4ab6022e474ccdc246445dd2479f9de217e8aaf4d770da15aff1078d329c02e0f4de8d77ffffffff02b00ac165000000001976a914f543a7f0dfcd621a05c646810ba94da791ed14c488ac80de8002000000001976a9144763f6309b3aca0bff49ed6365ffbd791b1afc5d88ac0000000001000000014e3632994e6cbcae4122bf9e8de242aa1d7c13bf6d045392fa69fa92353f13cf000000008c493046022100c6879938322e9945dae2404a2b104b534df7fdab5927a30a57a12418d619c3b8022100c53331f402010cbdc8297d7a827154e42263fc2f6cef6e56b85bbc061d5e30810141047e717e70b8c5e928bc2c482662dbe9007113f7a5fb0360da1d2f193add960fed97ab3163e85c02b127829d694ab4a796326918d4f639d0b19345f7558406667dffffffff0270c8b165000000001976a9146c908731300d5c0a4215ba3bb3041b4f313d14f688ac40420f00000000001976a91457b01e2a6bf178a10a0e36cd3e301a41ac58b68b88ac000000000100000001a2e94f26db15d7098104a3616b650cc7490eca961a23111c12c3d94f593ab3bc000000008c493046022100b355076f2c956d7565d44fdf589ebdbdff70abcd806c71845b47d31c3579cbc00221008352a03c5276ba481ae92a2327307ad1ce9b234be7386c105fb914ceb9c63341014104872ee8390f11c8ac309df772362614ff7c99f98e1fd68888c5e8765d630c93ae86fcd33922b17f5da490ea14a9f9002ef4e7fb11166ba399f9794296ca02e401ffffffff02f07d5460000000001976a914ff1da11fbd50b9906e78c694169c19902d2ee20388ac804a5d05000000001976a91444d5774b8277c59a07ed9dce1225e2d24a3faab188ac00000000";
-        let bytes = hex::decode_to_array::<1948>(BLOCK_128461_HEX).unwrap();
-        let valid_block: Block<Unchecked> = encoding::decode_from_slice(&bytes).unwrap();
-        let (header, mut transactions) = valid_block.clone().into_parts();
-        transactions.push(transactions[6].clone());
-        let forged_block = Block::new_unchecked(header, transactions);
+        fn coinbase_tx() -> Transaction {
+            let mut coinbase_in = crate::TxIn::EMPTY_COINBASE;
+            coinbase_in.script_sig = crate::ScriptSigBuf::from_bytes(vec![0x51, 0x51]);
+            Transaction {
+                version: crate::transaction::Version::ONE,
+                lock_time: crate::absolute::LockTime::ZERO,
+                inputs: vec![coinbase_in],
+                outputs: vec![crate::TxOut {
+                    amount: units::Amount::ONE_SAT,
+                    script_pubkey: crate::ScriptPubKeyBuf::from_bytes(vec![0x51]),
+                }],
+            }
+        }
+
+        fn spend_tx(tag: u8) -> Transaction {
+            Transaction {
+                version: crate::transaction::Version::TWO,
+                lock_time: crate::absolute::LockTime::ZERO,
+                inputs: vec![crate::TxIn {
+                    previous_output: crate::OutPoint {
+                        txid: crate::Txid::from_byte_array([tag; 32]),
+                        vout: tag.into(),
+                    },
+                    script_sig: crate::ScriptSigBuf::from_bytes(vec![tag]),
+                    sequence: crate::sequence::Sequence::MAX,
+                    witness: crate::Witness::new(),
+                }],
+                outputs: vec![crate::TxOut {
+                    amount: units::Amount::ONE_SAT,
+                    script_pubkey: crate::ScriptPubKeyBuf::from_bytes(vec![tag.wrapping_add(1)]),
+                }],
+            }
+        }
+
+        let transactions = vec![coinbase_tx(), spend_tx(0x11), spend_tx(0x12)];
+        let mut header = dummy_header();
+        header.merkle_root = compute_merkle_root(&transactions).unwrap();
+        let valid_block = Block::new_unchecked(header.clone(), transactions.clone());
+
+        let mut forged_transactions = transactions;
+        forged_transactions.push(forged_transactions[2].clone());
+        let forged_block = Block::new_unchecked(header, forged_transactions);
 
         assert!(valid_block.validate().is_ok());
         assert!(forged_block.validate().is_err());

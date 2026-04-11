@@ -43,7 +43,6 @@ mod encapsulate {
     ///
     /// #[derive(Serialize, Deserialize)]
     /// struct Foo {
-    ///     // If you are using `rust-tidecoin` then `bitcoin::amount::serde::as_sat` also works.
     ///     #[serde(with = "tidecoin_units::amount::serde::as_sat")]  // Also `serde::as_tdc`.
     ///     amount: SignedAmount,
     /// }
@@ -172,8 +171,8 @@ impl SignedAmount {
     /// Converts from a value expressing a whole number of tidecoin to a [`SignedAmount`]
     /// in const context.
     #[allow(clippy::missing_panics_doc)]
-    pub const fn from_tdc_i16(whole_bitcoin: i16) -> Self {
-        let tdc = const_casts::i16_to_i64(whole_bitcoin);
+    pub const fn from_tdc_i16(whole_tidecoin: i16) -> Self {
+        let tdc = const_casts::i16_to_i64(whole_tidecoin);
         let sats = tdc * 100_000_000;
 
         match Self::from_sat(sats) {
@@ -401,18 +400,6 @@ impl SignedAmount {
     /// this [`SignedAmount`] is zero or positive.
     pub fn is_negative(self) -> bool {
         self.to_sat().is_negative()
-    }
-
-    /// Returns the absolute value of this [`SignedAmount`].
-    ///
-    /// Consider using `unsigned_abs` which is often more practical.
-    ///
-    /// Returns [`None`] if overflow occurred. (`self == i64::MIN`)
-    #[must_use]
-    #[deprecated(since = "1.0.0-rc.0", note = "Never returns none, use `abs()` instead")]
-    #[allow(clippy::unnecessary_wraps)] // To match stdlib function definition.
-    pub const fn checked_abs(self) -> Option<Self> {
-        Some(self.abs())
     }
 
     /// Checked addition.

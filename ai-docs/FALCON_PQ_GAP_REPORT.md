@@ -21,10 +21,10 @@ Validation basis:
 - prefixed and legacy raw PQ secret-key codecs in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
 - node-compatible PQ base58 secret import/export in [tidecoin/src/crypto/key.rs](../tidecoin/src/crypto/key.rs)
 - ML-KEM-512 keypair, deterministic keypair, encapsulate, deterministic encapsulate, and decapsulate helpers in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
-- `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in [key_expression/src/lib.rs](../key_expression/src/lib.rs)
+- `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in [tidecoin/src/key_expression.rs](../tidecoin/src/key_expression.rs)
 - Tidecoin PSBT PQHD origin and PQ partial-signature helpers in [tidecoin/src/psbt/tidecoin.rs](../tidecoin/src/psbt/tidecoin.rs)
 - PQ witness helper `Witness::p2wsh512_pq()` in [tidecoin/src/blockdata/witness.rs](../tidecoin/src/blockdata/witness.rs)
-- Tidecoin v2 PQ packet cipher parity in [p2p/src/bip324_pq.rs](../p2p/src/bip324_pq.rs)
+- Tidecoin v2 PQ packet cipher parity in [p2p/src/pq_v2_transport.rs](../p2p/src/pq_v2_transport.rs)
 - Tidecoin validation/runtime behavior for PQ scripts in [tidecoin/src/consensus_validation.rs](../tidecoin/src/consensus_validation.rs), [tidecoin/src/consensus_validation_node.rs](../tidecoin/src/consensus_validation_node.rs), and [tidecoin/src/consensus_validation_tidecoin.rs](../tidecoin/src/consensus_validation_tidecoin.rs)
 - node-backed executable PQ corpus coverage for:
   - `script_tests_pq.json`

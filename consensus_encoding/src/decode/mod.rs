@@ -8,7 +8,7 @@ pub mod decoders;
 use crate::ReadError;
 use crate::{DecodeError, UnconsumedError};
 
-/// A Bitcoin object which can be consensus-decoded using a push decoder.
+/// A Tidecoin object which can be consensus-decoded using a push decoder.
 ///
 /// To decode something, create a [`Self::Decoder`] and push byte slices into it with
 /// [`Decoder::push_bytes`], then call [`Decoder::end`] to get the result.

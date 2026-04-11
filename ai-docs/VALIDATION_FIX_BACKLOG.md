@@ -29,10 +29,10 @@ Needed:
 - keep the node bridge outside the shared core crate
 - make both the top-level `tidecoin` crate and any compatibility-facing `consensus` crate depend on the shared core instead of duplicating validation logic
 
-### Shared Tidecoin node-parity harness migration is incomplete (planned)
+### Shared Tidecoin node-parity harness matrix reconciliation (planned)
 
 The repository now has the right shared Tidecoin-specific node bridge
-infrastructure, but the migration is not finished:
+infrastructure and the active consumers are migrated:
 
 - native build logic now lives in `node-parity/build.rs`
 - bridge sources now live in `node-parity/c_src/**`
@@ -46,51 +46,40 @@ infrastructure, but the migration is not finished:
   - `tx_valid_pq.json`
   - `tx_invalid_pq.json`
 
-At the same time, the imported `consensus/` crate has a cleaner differential
-harness shape in `consensus/tests/core_diff_bridge.rs`, but it is built around
-the wrong external target: Bitcoin Core / `libbitcoinconsensus`.
-
-That leaves the repo with one remaining split:
-
-- the shared Tidecoin harness exists and works
-- but `consensus/` still carries the older Bitcoin-specific
-  `core_diff_bridge` differential path alongside it
+The older `consensus/tests/core_diff_bridge.rs` harness and its consumers are
+now archived under `consensus/tests/archived/`. They remain reference material
+only; active Tidecoin validation and differential tests must use the shared
+Tidecoin node harness or local Tidecoin-native invariants.
 
 Needed:
 
 - keep the shared Tidecoin harness as test/dev parity infrastructure, not part
   of the pure-Rust production consensus core
-- continue the migration by replacing `consensus/tests/core_diff_bridge.rs`,
-  `script_vectors.rs`, `core_tx_vectors.rs`, and the Bitcoin/Core differential
-  path with the shared Tidecoin harness
-- the explicitly incompatible Bitcoin/Core-diff files have now been archived
-  under `consensus/tests/archived/`; they should stay archived unless and until
-  they are rewritten as Tidecoin-native node-parity tests
-- make both `tidecoin` and `consensus/` tests use the same Tidecoin node-backed
+- keep both `tidecoin` and `consensus/` tests on the same Tidecoin node-backed
   harness
-- stop growing the Bitcoin-specific `core_diff_bridge` as the long-term path
+- reconcile every archived Core-era proof class against its Tidecoin-native
+  replacement in `ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md`
+- do not restore archived Core-diff files to the active test set unless they are
+  rewritten as Tidecoin-native node-parity tests
 
 ### `consensus/` crate migration to Tidecoin semantics (planned)
 
-The imported `consensus/` crate still carries Bitcoin-shaped migration debt:
+The active `consensus/` crate is now a Tidecoin-native byte-oriented adapter
+over `tidecoin-consensus-core`. Remaining migration debt is historical and
+coverage-oriented:
 
 - archived Bitcoin/Core proof files that still need Tidecoin-native replacements
 - residual Bitcoin-oriented docs/metadata and historical notes
-- some surviving semantics/tests that still need to be replaced by Tidecoin-specific coverage classes
+- explicit coverage-matrix reconciliation by retired historical class
 
 Needed:
 
-- first audit `consensus/src/lib.rs` and the runtime/API surface, then classify each Bitcoin/Taproot/`bitcoinconsensus` assumption as:
-  - delete
-  - rewrite
-  - replace via shared `tidecoin-consensus-core`
-- stop treating direct dependency on the top-level `tidecoin` crate as the target architecture
-- rebase the crate on the shared Tidecoin consensus core instead
-- make the crate's node-backed differential surface use the shared Tidecoin
+- keep `consensus/` rebased on the shared Tidecoin consensus core, not on the
+  top-level `tidecoin` crate
+- keep the crate's node-backed differential surface on the shared Tidecoin
   node-parity harness
 - do not preserve old codec compatibility helpers; keep only Tidecoin-native byte-oriented
   validation APIs that are part of the standalone consensus contract
-- remove Bitcoin-only flags and paths from the public contract
 - replace Bitcoin/Taproot/Core-diff assumptions in metadata, docs, and archived proof-class replacements with Tidecoin node parity
 - keep archived Bitcoin/Core-diff test files as historical reference only; do
   not restore them to the active test set without Tidecoin-node-based rewrite
@@ -129,12 +118,12 @@ Needed:
   - delete the broader archived Core-era corpora under
     `consensus/tests/archived/data/` later once the Tidecoin-native proof
     surface is accepted
-- rewrite flag/token parsing around Tidecoin flags:
+- flag/token parsing around Tidecoin flags is now active:
   - `PQ_STRICT`
   - `WITNESS_V1_512`
   - `SHA512`
-- replace Bitcoin Core / `bitcoinconsensus` differential tests with shared
-  Tidecoin-node parity tests
+- the active Bitcoin Core / `bitcoinconsensus` differential tests have been
+  replaced with shared Tidecoin-node parity tests
 - preserve only generic local invariant tests that still make sense under Tidecoin semantics
 - preserve archived proof depth explicitly, using the replacement matrix in
   [ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md),
@@ -160,7 +149,9 @@ Needed:
 Priority note:
 
 - do not treat test migration as the lead task
-- use the new shared Tidecoin node harness to support the real migration, but only retire large `core_diff_bridge` consumers after the corresponding runtime/API assumptions in `consensus/src/lib.rs` have been rewritten or removed
+- use the shared Tidecoin node harness as the active proof path; `core_diff_bridge`
+  is archived historical material now, so remaining work is matrix reconciliation,
+  fixture provenance cleanup, and filling explicitly documented node-parity gaps
 
 ### Chain-rule coverage below the new core boundary (planned)
 
@@ -230,10 +221,10 @@ The `tidecoin-node-validation` feature covers PQ execution through the C++ bridg
 - `done` Implement the first PQHD parity slice: node-mirrored PQHD v1 KDF/path validation in `tidecoin/src/pqhd.rs`, Tidecoin PSBT PQHD origin helpers in `tidecoin/src/psbt/tidecoin.rs`, and regression coverage for roundtrip/combine/malformed cases.
 - `done` Implement PQ public-key derivation and Falcon legacy-mode signing/verification parity in `tidecoin/src/crypto/pq.rs` using a small node-compatible PQClean bridge, with regression coverage across all five schemes.
 - `done` Implement deterministic PQHD key generation and PQ secret-key codec parity in `tidecoin/src/pqhd.rs` and `tidecoin/src/crypto/pq.rs`, with exact node hash vectors and prefixed/raw-secret roundtrip coverage.
-- `done` Implement `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in `key_expression/src/lib.rs`, with node-style parsing and policy tests.
+- `done` Implement `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in `tidecoin/src/key_expression.rs`, with node-style parsing and policy tests.
 - `done` Implement ML-KEM-512 keypair / deterministic keypair / encapsulate / deterministic encapsulate / decapsulate helpers in `tidecoin/src/crypto/pq.rs`, with node-style roundtrip and deterministic regression coverage.
-- `done` Implement Tidecoin v2 PQ transport parity from node `src/bip324_pq.h` in `p2p/src/bip324_pq.rs`, with node-derived FSChaCha20, FSChaCha20Poly1305, and packet-cipher tests.
-- `done` Remove the dead `legacy_sighash.json` and unused mainnet/testnet raw fixtures, correct the remaining Tidecoin-facing `BTC/kB` / "today's Bitcoin network" docs, and confirm that legacy `reject` payloads already decode as `Unknown` while `alert` remains live for old-peer compatibility.
+- `done` Implement Tidecoin v2 PQ transport parity from node transport semantics in `p2p/src/pq_v2_transport.rs`, with node-derived FSChaCha20, FSChaCha20Poly1305, and packet-cipher tests.
+- `done` Remove the dead `legacy_sighash.json` and unused mainnet/testnet raw fixtures, correct the remaining stale fee-unit/network-policy docs, and confirm that legacy `reject` payloads already decode as `Unknown` while `alert` remains live for old-peer compatibility.
 - `done` Complete repository publish flow by pushing the validated tree to `origin` branch `v2` (`d8bbe1e`).
 - `done` Replace stale `Network::Bitcoin` references in feature-gated tests and examples so `cargo check -p tidecoin --all-features --tests --examples` succeeds.
 - `done` Remove stale mainnet address literals and legacy Bitcoin wording from examples/docs/fuzz generator.

@@ -11,7 +11,7 @@
 //! `std::io`'s traits without unnecessary complexity.
 //!
 //! For examples of how to use and implement the types and traits in this crate see `io.rs` in the
-//! `github.com/nicenemo/rust-tidecoin/tidecoin/examples/` directory.
+//! `github.com/tidecoin/rust-tidecoin/tidecoin/examples/` directory.
 
 #![no_std]
 // Coding conventions.
@@ -312,15 +312,6 @@ impl<T: AsRef<[u8]>> Cursor<T> {
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.inner
-    }
-
-    /// Returns a reference to the inner buffer.
-    ///
-    /// This is the whole wrapped buffer, including the bytes already read.
-    #[inline]
-    #[deprecated(since = "0.3.0", note = "use `get_ref()` instead")]
-    pub fn inner(&self) -> &T {
-        &self.inner
     }
 }
 

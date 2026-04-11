@@ -7,6 +7,7 @@ use crate::error::{NodeParityError, ScriptError};
 use crate::ffi::{
     tidecoin_node_check_transaction, tidecoin_node_parse_script_asm,
     tidecoin_node_pq_compute_public_key, tidecoin_node_pq_keygen_from_seed,
+    tidecoin_node_pq_p2sh_p2wpkh_input_vsize, tidecoin_node_pq_p2wpkh_input_vsize,
     tidecoin_node_pq_sign_message, tidecoin_node_pq_verify_message,
     tidecoin_node_pqhd_keygen_from_stream_key, tidecoin_node_verify_script_case,
     tidecoin_node_verify_tx_input,
@@ -56,6 +57,30 @@ impl TidecoinNodeHarness {
             1 => Ok(()),
             0 => Err(NodeParityError::BridgeFailure("invalid transaction")),
             _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_transaction")),
+        }
+    }
+
+    /// Returns Tidecoin node `pq::VSizeP2WPKHInput` for the provided serialized PQ lengths.
+    pub fn pq_p2wpkh_input_vsize(
+        &self,
+        sig_len: usize,
+        pubkey_len: usize,
+    ) -> Result<i64, NodeParityError> {
+        match unsafe { tidecoin_node_pq_p2wpkh_input_vsize(sig_len, pubkey_len) } {
+            v if v >= 0 => Ok(v),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_pq_p2wpkh_input_vsize")),
+        }
+    }
+
+    /// Returns Tidecoin node `pq::VSizeP2SH_P2WPKHInput` for the provided serialized PQ lengths.
+    pub fn pq_p2sh_p2wpkh_input_vsize(
+        &self,
+        sig_len: usize,
+        pubkey_len: usize,
+    ) -> Result<i64, NodeParityError> {
+        match unsafe { tidecoin_node_pq_p2sh_p2wpkh_input_vsize(sig_len, pubkey_len) } {
+            v if v >= 0 => Ok(v),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_pq_p2sh_p2wpkh_input_vsize")),
         }
     }
 

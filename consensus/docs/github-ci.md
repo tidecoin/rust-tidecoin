@@ -1,6 +1,6 @@
 # Tidecoin Fixture Provenance
 
-This crate no longer uses the old Bitcoin Core `script_assets_test_minimizer`
+This crate no longer uses the old upstream `script_assets_test_minimizer`
 pipeline as its active parity/provenance workflow.
 
 The active Tidecoin-native proof surface is:
@@ -59,5 +59,5 @@ cargo test -p consensus \
 
 ## Historical Note
 
-The old Bitcoin/Core-minimizer files and workflows are historical only. They are
+The old upstream-minimizer files and workflows are historical only. They are
 not the acceptance standard for Tidecoin parity anymore.

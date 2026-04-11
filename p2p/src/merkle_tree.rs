@@ -1,12 +1,14 @@
-// SPDX-License-Identifier: CC0-1.0
+// SPDX-License-Identifier: MIT
+// Derived from the Bitcoin Core partial-merkle implementation; this file now
+// implements the active Tidecoin P2P merkleblock protocol surface.
 //
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
-// SPDX-License-Identifier: MIT
 
-//! Merkle Block and Partial Merkle Tree.
+//! Tidecoin Merkle Block and Partial Merkle Tree messages.
 //!
-//! Support proofs that transaction(s) belong to a block.
+//! Support proofs that transaction(s) belong to a block. This module tracks the Tidecoin node's
+//! `CMerkleBlock`/`CPartialMerkleTree` protocol surface.
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -46,34 +48,32 @@ impl MerkleBlock {
     /// # Examples
     ///
     /// ```rust
-    /// use tidecoin_p2p_messages::hex;
+    /// use hashes::Hash as _;
     /// use tidecoin_p2p_messages::merkle_tree::MerkleBlock;
-    /// use primitives::{Block, Txid};
-    ///
-    /// // Block 80000
-    /// let block_bytes = hex::decode_to_vec("01000000ba8b9cda965dd8e536670f9ddec10e53aab14b20bacad2\
-    ///     7b9137190000000000190760b278fe7b8565fda3b968b918d5fd997f993b23674c0af3b6fde300b38f33\
-    ///     a5914ce6ed5b1b01e32f5702010000000100000000000000000000000000000000000000000000000000\
-    ///     00000000000000ffffffff0704e6ed5b1b014effffffff0100f2052a01000000434104b68a50eaa0287e\
-    ///     ff855189f949c1c6e5f58b37c88231373d8a59809cbae83059cc6469d65c665ccfd1cfeb75c6e8e19413\
-    ///     bba7fbff9bc762419a76d87b16086eac000000000100000001a6b97044d03da79c005b20ea9c0e1a6d9d\
-    ///     c12d9f7b91a5911c9030a439eed8f5000000004948304502206e21798a42fae0e854281abd38bacd1aee\
-    ///     d3ee3738d9e1446618c4571d1090db022100e2ac980643b0b82c0e88ffdfec6b64e3e6ba35e7ba5fdd7d\
-    ///     5d6cc8d25c6b241501ffffffff0100f2052a010000001976a914404371705fa9bd789a2fcd52d2c580b6\
-    ///     5d35549d88ac00000000").unwrap();
-    /// let block: Block = encoding::decode_from_slice(&block_bytes).unwrap();
-    /// let block = block.validate().expect("valid block");
+    /// use primitives::block::{Header, Version};
+    /// use primitives::merkle_tree::TxMerkleNode;
+    /// use primitives::{BlockHash, BlockTime, CompactTarget, Txid};
     ///
     /// // Constructs a new Merkle block containing a single transaction
-    /// let txid = "5a4ebf66822b0b2d56bd9dc64ece0bc38ee7844a23ff1d7320a88c5fdb2ad3e2".parse::<Txid>().unwrap();
-    /// let match_txids: Vec<Txid> = vec![txid].into_iter().collect();
-    /// let mb = MerkleBlock::from_block_with_predicate(&block, |t| match_txids.contains(t));
-    ///
-    /// // Authenticate and extract matched transaction ids
-    /// let mut matches: Vec<Txid> = vec![];
-    /// let mut index: Vec<u32> = vec![];
-    /// assert!(mb.extract_matches(&mut matches, &mut index).is_ok());
-    /// assert_eq!(txid, matches[0]);
+    /// let header = Header {
+    ///     version: Version::ONE,
+    ///     prev_blockhash: BlockHash::from_byte_array([0; 32]),
+    ///     merkle_root: TxMerkleNode::from_byte_array([0; 32]),
+    ///     time: BlockTime::from_u32(0),
+    ///     bits: CompactTarget::from_consensus(0),
+    ///     nonce: 0,
+    ///     auxpow: None,
+    /// };
+    /// let txids: Vec<Txid> = [
+    ///     "0101010101010101010101010101010101010101010101010101010101010101",
+    ///     "0202020202020202020202020202020202020202020202020202020202020202",
+    /// ]
+    /// .iter()
+    /// .map(|hex| hex.parse::<Txid>().unwrap())
+    /// .collect();
+    /// let selected = txids[1];
+    /// let mb = MerkleBlock::from_header_txids_with_predicate(&header, &txids, |t| *t == selected);
+    /// assert_eq!(mb.header.block_hash(), header.block_hash());
     /// ```
     pub fn from_block_with_predicate<F>(block: &Block<Checked>, match_txids: F) -> Self
     where
@@ -268,10 +268,9 @@ impl PartialMerkleTree {
     /// use tidecoin_p2p_messages::merkle_tree::PartialMerkleTree;
     /// use primitives::Txid;
     ///
-    /// // Block 80000
     /// let txids: Vec<Txid> = [
-    ///     "c06fbab289f723c6261d3030ddb6be121f7d2508d77862bb1e484f5cd7f92b25",
-    ///     "5a4ebf66822b0b2d56bd9dc64ece0bc38ee7844a23ff1d7320a88c5fdb2ad3e2",
+    ///     "0101010101010101010101010101010101010101010101010101010101010101",
+    ///     "0202020202020202020202020202020202020202020202020202020202020202",
     /// ]
     /// .iter()
     /// .map(|hex| hex.parse::<Txid>().unwrap())
@@ -697,7 +696,8 @@ impl<'a> Arbitrary<'a> for MerkleBlock {
 mod tests {
     use core::cmp;
 
-    use hex_unstable::{hex, DisplayHex};
+    use internals::hex::DisplayHex;
+    use internals::hex_lit as hex;
     use primitives::block::Unchecked;
 
     use super::*;
@@ -858,7 +858,8 @@ mod tests {
 
     #[test]
     fn merkleblock_serialization() {
-        // Got it by running the rpc call
+        // Tidecoin node fixture from `gettxoutproof` for the block used by
+        // `src/test/merkleblock_tests.cpp::merkleblock_construct_from_txids_found`.
         // `gettxoutproof '["220ebc64e21abece964927322cba69180ed853bb187fbc6923bac7d010b9d87a"]'`
         let mb_hex = include_str!("../tests/data/merkle_block.hex");
 
@@ -877,6 +878,7 @@ mod tests {
     /// given block.
     #[test]
     fn merkleblock_construct_from_txids_found() {
+        // Mirrors the Tidecoin node's `src/test/merkleblock_tests.cpp`.
         let block = get_block_13b8a();
 
         let txids: Vec<Txid> = [
@@ -915,6 +917,7 @@ mod tests {
     /// Constructs a new [`MerkleBlock`] using a list of txids which will not be found in the given block
     #[test]
     fn merkleblock_construct_from_txids_not_found() {
+        // Mirrors the Tidecoin node's `src/test/merkleblock_tests.cpp`.
         let block = get_block_13b8a();
         let txids: Vec<Txid> = ["c0ffee00003bafa802c8aa084379aa98d9fcd632ddc2ed9782b586ec87451f20"]
             .iter()
@@ -948,8 +951,7 @@ mod tests {
         }
     }
 
-    /// Returns a real block (0000000000013b8ab2cd513b0261a14096412195a72a0c4827d229dcc7e0f7af)
-    /// with 9 txs.
+    /// Returns the node fixture used by Tidecoin's `getBlock13b8a()` test helper.
     fn get_block_13b8a() -> Block<Checked> {
         let block_hex = include_str!("../tests/data/block_13b8a.hex");
         let block: Block<Unchecked> =
@@ -1027,12 +1029,31 @@ mod tests {
 
     #[test]
     fn extract_matches_from_merkleblock() {
-        // Compact partial merkle tree proof fixture.
-        let mb_bytes = hex::decode_to_vec("01000000ba8b9cda965dd8e536670f9ddec10e53aab14b20bacad27b913719\
-            0000000000190760b278fe7b8565fda3b968b918d5fd997f993b23674c0af3b6fde300b38f33a5914ce6ed5b\
-            1b01e32f570200000002252bf9d75c4f481ebb6278d708257d1f12beb6dd30301d26c623f789b2ba6fc0e2d3\
-            2adb5f8ca820731dff234a84e78ec30bce4ec69dbd562d0b2b8266bf4e5a0105").unwrap();
-        let mb: MerkleBlock = encoding::decode_from_slice(&mb_bytes).unwrap();
+        let txids: Vec<Txid> = [
+            "252bf9d75c4f481ebb6278d708257d1f12beb6dd30301d26c623f789b2ba6fc0",
+            "e2d32adb5f8ca820731dff234a84e78ec30bce4ec69dbd562d0b2b8266bf4e5a",
+        ]
+        .iter()
+        .map(|hex| hex.parse::<Txid>().unwrap())
+        .collect();
+        let selected = txids[1];
+
+        let txn = PartialMerkleTree::from_txids(&txids, &[false, true]);
+        let merkle_root = {
+            let mut matches = vec![];
+            let mut index = vec![];
+            txn.extract_matches(&mut matches, &mut index).unwrap()
+        };
+        let header = block::Header {
+            version: block::Version::ONE,
+            prev_blockhash: primitives::BlockHash::from_byte_array([0xba; 32]),
+            merkle_root,
+            time: primitives::BlockTime::from_u32(0x4e59_133a),
+            bits: primitives::CompactTarget::from_consensus(0x1b5b_ed6e),
+            nonce: 0x572f_e301,
+            auxpow: None,
+        };
+        let mb = MerkleBlock { header, txn };
 
         // Authenticate and extract matched transaction ids
         let mut matches: Vec<Txid> = vec![];
@@ -1049,9 +1070,6 @@ mod tests {
         assert_eq!(index[0], 1);
 
         // And we know the txid we want.
-        let want = "5a4ebf66822b0b2d56bd9dc64ece0bc38ee7844a23ff1d7320a88c5fdb2ad3e2"
-            .parse::<Txid>()
-            .expect("failed to parse txid");
-        assert_eq!(matches[0], want);
+        assert_eq!(matches[0], selected);
     }
 }

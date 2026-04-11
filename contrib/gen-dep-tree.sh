@@ -5,7 +5,7 @@ set -euo pipefail
 
 exec cargo tree \
     --workspace \
-    --exclude bitcoin-fuzz \
+    --exclude tidecoin-fuzz \
     --all-features \
     --edges=no-dev,no-build \
     --format='{lib}' \

@@ -193,6 +193,21 @@ impl<T: Encodable> Encoder for SliceEncoder<'_, T> {
     }
 }
 
+impl<'e, T> ExactSizeEncoder for SliceEncoder<'e, T>
+where
+    T: Encodable + 'e,
+    T::Encoder<'e>: ExactSizeEncoder,
+{
+    fn len(&self) -> usize {
+        let Some(cur_enc) = self.cur_enc.as_ref() else {
+            return 0;
+        };
+
+        let rest = self.sl.get(1..).unwrap_or_default().iter().map(|item| item.encoder().len());
+        cur_enc.len() + rest.sum::<usize>()
+    }
+}
+
 /// Helper macro to define an unrolled `EncoderN` composite encoder.
 macro_rules! define_encoder_n {
     (

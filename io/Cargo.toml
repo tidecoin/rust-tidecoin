@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin-io"
 version = "0.5.0"
-authors = ["Matt Corallo <birchneutea@mattcorallo.com>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 documentation = "https://docs.rs/tidecoin-io/"
 description = "Simple I/O traits for no-std (and std) environments"
 categories = ["no-std"]
@@ -38,9 +38,4 @@ workspace = true
 exact_features = [
     ["alloc", "hashes"],
     ["std", "hashes"],
-]
-
-[package.metadata.rbmt.lint]
-allowed_duplicates = [
-    "hex-conservative",
 ]

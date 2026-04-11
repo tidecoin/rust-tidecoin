@@ -6,8 +6,7 @@ including the checksum.
 There are a bunch of crates on crates.io that implement base58 encoding and decoding. The more
 obviously named ones differ from this crate because:
 
-1. [bitcoin-base58](https://crates.io/crates/bitcoin-base58) is transpiled from the C++ code in
-   Bitcoin-derived node implementations as part of a large long-term transpilation project, whereas this crate is a pure
+1. Some base58 crates are transpiled from C++ node implementations, whereas this crate is a pure
    Rust implementation intended to be production-ready and to provide a Rust-idiomatic API.
 
 2. [base58](https://crates.io/crates/base58) implements parsing but does not validate checksums (see

@@ -190,11 +190,11 @@ impl crate::HashEngine for HashEngine {
 /// It represents "partially hashed data" but does not itself have properties of cryptographic
 /// hashes. For example, when (ab)used as hashes, midstates are vulnerable to trivial
 /// length-extension attacks. They are typically used to optimize the computation of full hashes.
-/// For example, when implementing BIP-0340 tagged hashes, which always begin by hashing the same
-/// fixed 64-byte prefix, it makes sense to hash the prefix once, store the midstate as a constant,
-/// and hash any future data starting from the constant rather than from a fresh hash engine.
+/// For example, when implementing tagged hashes that always begin by hashing the same fixed
+/// 64-byte prefix, it makes sense to hash the prefix once, store the midstate as a constant, and
+/// hash any future data starting from the constant rather than from a fresh hash engine.
 ///
-/// For BIP-0340 support we provide the [`sha256t`] module, and the [`sha256t_tag`] macro which will
+/// For tagged-hash support we provide the [`sha256t`] module, and the [`sha256t_tag`] macro which will
 /// create the midstate for you in const context.
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Midstate {

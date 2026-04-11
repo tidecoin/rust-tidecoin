@@ -16,6 +16,34 @@ set -euo pipefail
 # under the hood to invoke rustdoc.
 RUSTDOCFLAGS="-Z unstable-options --document-private-items --document-hidden-items --output-format=json --cap-lints=allow"
 
+ALL_FEATURE_CRATES=(
+    "base58ck"
+    "chacha20-poly1305"
+    "consensus"
+    "tidecoin"
+    "tidecoin-consensus-core"
+    "tidecoin-consensus-encoding"
+    "tidecoin_hashes"
+    "tidecoin-internals"
+    "tidecoin-io"
+    "tidecoin-network-kind"
+    "tidecoin-p2p-messages"
+    "tidecoin-primitives"
+    "tidecoin-units"
+)
+
+ALLOC_FEATURE_CRATES=(
+    "base58ck"
+    "chacha20-poly1305"
+    "tidecoin-consensus-encoding"
+    "tidecoin_hashes"
+    "tidecoin-internals"
+    "tidecoin-io"
+    "tidecoin-network-kind"
+    "tidecoin-primitives"
+    "tidecoin-units"
+)
+
 # These will be set to the commit SHA from the PR's target branch
 # GitHub Actions CI.
 # NOTE: if running locally this will be set to master.
@@ -26,77 +54,51 @@ else
 fi
 
 main() {
-    # On current commit:
-    # 1. bitcoin: all-features and no-default-features.
-    generate_json_files_all_features "bitcoin" "current"
-    generate_json_files_no_default_features "bitcoin" "current"
-
-    # 2. base58ck: all-features and no-default-features.
-    generate_json_files_all_features "base58ck" "current"
-    generate_json_files_no_default_features "base58ck" "current"
-
-    # 3. bitcoin_hashes: all-features, no-default-features and alloc feature.
-    generate_json_files_all_features "bitcoin_hashes" "current"
-    generate_json_files_no_default_features "bitcoin_hashes" "current"
-    generate_json_files_features_alloc "bitcoin_hashes" "current"
-
-    # 4. bitcoin-units: all-features, no-default-features and alloc feature.
-    generate_json_files_all_features "bitcoin-units" "current"
-    generate_json_files_no_default_features "bitcoin-units" "current"
-    generate_json_files_features_alloc "bitcoin-units" "current"
-
-    # 5. bitcoin-io: all-features, no-default-features and alloc feature.
-    generate_json_files_all_features "bitcoin-io" "current"
-    generate_json_files_no_default_features "bitcoin-io" "current"
-    generate_json_files_features_alloc "bitcoin-io" "current"
-
+    generate_current_json_files
 
     # Switch to target commit.
     echo "Checking out target commit at $TARGET_COMMIT"
     git checkout "$TARGET_COMMIT"
 
-    # On target commit:
-    # 1. bitcoin: all-features and no-default-features.
-    generate_json_files_all_features "bitcoin" "master"
-    generate_json_files_no_default_features "bitcoin" "master"
-
-    # 2. base58ck: all-features and no-default-features.
-    generate_json_files_all_features "base58ck" "master"
-    generate_json_files_no_default_features "base58ck" "master"
-
-    # 3. bitcoin_hashes: all-features, no-default-features and alloc feature.
-    generate_json_files_all_features "bitcoin_hashes" "master"
-    generate_json_files_no_default_features "bitcoin_hashes" "master"
-    generate_json_files_features_alloc "bitcoin_hashes" "master"
-
-    # 4. bitcoin-units: all-features, no-default-features and alloc feature.
-    generate_json_files_all_features "bitcoin-units" "master"
-    generate_json_files_no_default_features "bitcoin-units" "master"
-    generate_json_files_features_alloc "bitcoin-units" "master"
-
-    # 5. bitcoin-io: all-features, no-default-features and alloc feature.
-    generate_json_files_all_features "bitcoin-io" "master"
-    generate_json_files_no_default_features "bitcoin-io" "master"
-    generate_json_files_features_alloc "bitcoin-io" "master"
-
-    # Check for API semver breaks on all the generated JSON files above.
-    run_cargo_semver_check "bitcoin" "all-features"
-    run_cargo_semver_check "bitcoin" "no-default-features"
-    run_cargo_semver_check "base58ck" "all-features"
-    run_cargo_semver_check "base58ck" "no-default-features"
-    run_cargo_semver_check "bitcoin_hashes" "all-features"
-    run_cargo_semver_check "bitcoin_hashes" "no-default-features"
-    run_cargo_semver_check "bitcoin_hashes" "alloc"
-    run_cargo_semver_check "bitcoin-units" "all-features"
-    run_cargo_semver_check "bitcoin-units" "no-default-features"
-    run_cargo_semver_check "bitcoin-units" "alloc"
-    run_cargo_semver_check "bitcoin-io" "all-features"
-    run_cargo_semver_check "bitcoin-io" "no-default-features"
-    run_cargo_semver_check "bitcoin-io" "alloc"
+    generate_target_json_files
+    run_cargo_semver_checks
 
     # Invoke cargo semver-checks to check for breaking changes
     # in all generated files.
     check_for_breaking_changes
+}
+
+generate_current_json_files() {
+    for crate in "${ALL_FEATURE_CRATES[@]}"; do
+        generate_json_files_all_features "$crate" "current"
+        generate_json_files_no_default_features "$crate" "current"
+    done
+
+    for crate in "${ALLOC_FEATURE_CRATES[@]}"; do
+        generate_json_files_features_alloc "$crate" "current"
+    done
+}
+
+generate_target_json_files() {
+    for crate in "${ALL_FEATURE_CRATES[@]}"; do
+        generate_json_files_all_features "$crate" "master"
+        generate_json_files_no_default_features "$crate" "master"
+    done
+
+    for crate in "${ALLOC_FEATURE_CRATES[@]}"; do
+        generate_json_files_features_alloc "$crate" "master"
+    done
+}
+
+run_cargo_semver_checks() {
+    for crate in "${ALL_FEATURE_CRATES[@]}"; do
+        run_cargo_semver_check "$crate" "all-features"
+        run_cargo_semver_check "$crate" "no-default-features"
+    done
+
+    for crate in "${ALLOC_FEATURE_CRATES[@]}"; do
+        run_cargo_semver_check "$crate" "alloc"
+    done
 }
 
 # Run cargo doc with the cargo semver-checks rustdoc flags.

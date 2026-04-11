@@ -78,7 +78,3 @@ pub use self::{
     time::BlockTime,
     weight::Weight
 };
-
-#[deprecated(since = "1.0.0-rc.0", note = "use `BlockHeightInterval` instead")]
-#[doc(hidden)]
-pub type BlockInterval = BlockHeightInterval;

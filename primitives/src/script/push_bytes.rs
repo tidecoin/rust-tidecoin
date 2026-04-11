@@ -83,28 +83,7 @@ impl PushBytes {
     }
 
     fn read_scriptint_internal(&self, max_size: usize) -> Result<i64, ScriptIntError> {
-        let Some(last) = self.as_bytes().last() else {
-            return Ok(0);
-        };
-        if self.len() > max_size {
-            return Err(ScriptIntError::NumericOverflow);
-        }
-        // Reject non-minimal encodings, including negative zero.
-        if last.trailing_zeros() >= 7 && (self.len() <= 1 || (self[self.len() - 2] & 0x80) == 0) {
-            return Err(ScriptIntError::NonMinimal);
-        }
-
-        let mut ret = 0i64;
-        let mut sh = 0;
-        for byte in self.as_bytes() {
-            ret += i64::from(*byte) << sh;
-            sh += 8;
-        }
-        if last & 0x80 != 0 {
-            ret &= (1 << (sh - 1)) - 1;
-            ret = -ret;
-        }
-        Ok(ret)
+        super::read_scriptnum(self.as_bytes(), true, max_size)
     }
 }
 

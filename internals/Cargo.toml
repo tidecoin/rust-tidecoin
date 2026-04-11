@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin-internals"
 version = "0.5.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>", "The Rust Bitcoin developers"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin/"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 documentation = "https://docs.rs/tidecoin-internals"
 description = "Internal types and macros used by rust-tidecoin ecosystem"
 categories = ["cryptography::cryptocurrencies", "no-std"]
@@ -21,7 +21,7 @@ alloc = ["hex?/alloc"]
 test-serde = ["serde", "dep:serde_json", "dep:bincode"]
 
 [dependencies]
-hex = { package = "hex-conservative", version = "0.3.2", default-features = false, optional = true }
+hex = { package = "hex-conservative", version = "1.0.0", default-features = false, optional = true }
 serde = { version = "1.0.195", default-features = false, optional = true }
 
 # Behind the test-serde feature.

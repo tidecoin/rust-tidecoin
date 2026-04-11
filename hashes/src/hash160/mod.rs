@@ -10,7 +10,7 @@
 use crate::{ripemd160, sha256};
 
 crate::internal_macros::general_hash_type! {
-    /// Output of the Bitcoin HASH160 hash function. (RIPEMD160(SHA256))
+    /// Output of the HASH160 hash function. (RIPEMD160(SHA256))
     pub struct Hash([u8; 20]);
 
     const DISPLAY_BACKWARD: bool = false;
@@ -81,7 +81,7 @@ mod tests {
 
         #[rustfmt::skip]
         let tests = [
-            // Uncompressed pubkey obtained from Bitcoin key; data from validateaddress
+            // Uncompressed public-key bytes used as a HASH160 regression vector.
             Test {
                 input: [
                     0x04, 0xa1, 0x49, 0xd7, 0x6c, 0x5d, 0xe2, 0x7a, 0x2d,

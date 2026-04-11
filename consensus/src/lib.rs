@@ -25,13 +25,13 @@ use crate::types::{c_int64, c_uchar, c_uint};
 
 /// Do not enable any verification.
 pub const VERIFY_NONE: c_uint = core_flags::VERIFY_NONE as c_uint;
-/// Evaluate P2SH (BIP16) subscripts.
+/// Evaluate pay-to-script-hash subscripts.
 pub const VERIFY_P2SH: c_uint = core_flags::VERIFY_P2SH as c_uint;
-/// Enforce NULLDUMMY (BIP147).
+/// Enforce NULLDUMMY for multisig stack dummies.
 pub const VERIFY_NULLDUMMY: c_uint = core_flags::VERIFY_NULLDUMMY as c_uint;
 /// Require scriptSig to be push only.
 pub const VERIFY_SIGPUSHONLY: c_uint = core_flags::VERIFY_SIGPUSHONLY as c_uint;
-/// Require minimal data encodings (BIP62).
+/// Require minimal data encodings.
 pub const VERIFY_MINIMALDATA: c_uint = core_flags::VERIFY_MINIMALDATA as c_uint;
 /// Discourage use of upgradable NOP opcodes.
 pub const VERIFY_DISCOURAGE_UPGRADABLE_NOPS: c_uint =
@@ -41,15 +41,15 @@ pub const VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM: c_uint =
     core_flags::VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM as c_uint;
 /// Require a clean stack after evaluation.
 pub const VERIFY_CLEANSTACK: c_uint = core_flags::VERIFY_CLEANSTACK as c_uint;
-/// Enable CHECKLOCKTIMEVERIFY (BIP65).
+/// Enable CHECKLOCKTIMEVERIFY.
 pub const VERIFY_CHECKLOCKTIMEVERIFY: c_uint = core_flags::VERIFY_CHECKLOCKTIMEVERIFY as c_uint;
-/// Enable CHECKSEQUENCEVERIFY (BIP112).
+/// Enable CHECKSEQUENCEVERIFY.
 pub const VERIFY_CHECKSEQUENCEVERIFY: c_uint = core_flags::VERIFY_CHECKSEQUENCEVERIFY as c_uint;
-/// Enable WITNESS (BIP141).
+/// Enable Tidecoin witness validation.
 pub const VERIFY_WITNESS: c_uint = core_flags::VERIFY_WITNESS as c_uint;
 /// Require minimal encodings for IF/NOTIF.
 pub const VERIFY_MINIMALIF: c_uint = core_flags::VERIFY_MINIMALIF as c_uint;
-/// Enforce NULLFAIL behaviour (BIP147).
+/// Enforce NULLFAIL behavior.
 pub const VERIFY_NULLFAIL: c_uint = core_flags::VERIFY_NULLFAIL as c_uint;
 /// Forbid legacy Falcon-512 signatures after auxpow activation.
 pub const VERIFY_PQ_STRICT: c_uint = core_flags::VERIFY_PQ_STRICT as c_uint;
@@ -90,17 +90,6 @@ pub fn height_to_flags_with_auxpow_start_height(
     flags
 }
 
-/// Reported version of the underlying consensus implementation.
-///
-/// The value is a placeholder while the standalone crate surface continues to
-/// settle around the Tidecoin-native engine.
-pub const CONSENSUS_VERSION: u32 = 0;
-
-/// Returns the compatibility surface version exposed by this crate.
-pub fn version() -> u32 {
-    CONSENSUS_VERSION
-}
-
 /// Detailed failure information returned by the diagnostic verification APIs.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ScriptFailure {
@@ -118,7 +107,6 @@ pub fn verify(
     spent_outputs: Option<&[Utxo]>,
     input_index: usize,
 ) -> Result<(), Error> {
-    let _ = spent_outputs;
     let flags = VERIFY_ALL_TIDECOIN;
 
     verify_with_flags(spent_output, amount, spending_transaction, spent_outputs, input_index, flags)
@@ -132,7 +120,6 @@ pub fn verify_with_details(
     spent_outputs: Option<&[Utxo]>,
     input_index: usize,
 ) -> Result<(), ScriptFailure> {
-    let _ = spent_outputs;
     let flags = VERIFY_ALL_TIDECOIN;
 
     perform_verification(

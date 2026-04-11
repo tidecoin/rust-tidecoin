@@ -360,20 +360,6 @@ impl Target {
 
     /// Computes the minimum valid [`Target`] threshold allowed for a block in which a difficulty
     /// adjustment occurs.
-    #[deprecated(since = "0.32.0", note = "use `min_transition_threshold` instead")]
-    pub fn min_difficulty_transition_threshold(&self) -> Self {
-        self.min_transition_threshold()
-    }
-
-    /// Computes the maximum valid [`Target`] threshold allowed for a block in which a difficulty
-    /// adjustment occurs.
-    #[deprecated(since = "0.32.0", note = "use `max_transition_threshold` instead")]
-    pub fn max_difficulty_transition_threshold(&self) -> Self {
-        self.max_transition_threshold_unchecked()
-    }
-
-    /// Computes the minimum valid [`Target`] threshold allowed for a block in which a difficulty
-    /// adjustment occurs.
     ///
     /// The difficulty can only decrease or increase by a factor of 4 max on each difficulty
     /// adjustment period.
@@ -1127,13 +1113,13 @@ macro_rules! impl_hex {
     ($hex:path, $case:expr) => {
         impl $hex for U256 {
             fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
-                hex_unstable::fmt_hex_exact!(f, 32, &self.to_be_bytes(), $case)
+                internals::fmt_hex_exact!(f, 32, &self.to_be_bytes(), $case)
             }
         }
     };
 }
-impl_hex!(fmt::LowerHex, hex_unstable::Case::Lower);
-impl_hex!(fmt::UpperHex, hex_unstable::Case::Upper);
+impl_hex!(fmt::LowerHex, internals::hex::Case::Lower);
+impl_hex!(fmt::UpperHex, internals::hex::Case::Upper);
 
 #[cfg(feature = "serde")]
 impl crate::serde::Serialize for U256 {

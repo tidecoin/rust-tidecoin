@@ -296,7 +296,7 @@ impl std::error::Error for AddrV1MessageDecoderError {
     }
 }
 
-/// Supported networks for use in BIP-0155 addrv2 message
+/// Supported networks for use in `addrv2` messages.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum AddrV2 {
     /// IPV4
@@ -670,7 +670,7 @@ impl std::error::Error for AddrV2DecoderError {
     }
 }
 
-/// Address received from BIP-0155 addrv2 message
+/// Address received from an `addrv2` message.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct AddrV2Message {
     /// Time that this node was last seen as connected to the network
@@ -1006,7 +1006,7 @@ mod test {
     use alloc::{format, vec};
     use std::net::IpAddr;
 
-    use hex_unstable::hex;
+    use internals::hex_lit as hex;
 
     use super::*;
     use crate::hex;

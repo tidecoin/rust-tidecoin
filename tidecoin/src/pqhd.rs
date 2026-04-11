@@ -10,7 +10,7 @@ use core::str::FromStr;
 use hashes::{sha256, sha512, Hash as _, HashEngine as _, HmacEngine};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSecretKey};
+use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSchemeCryptoExt as _, PqSecretKey};
 
 /// PQHD v1 purpose constant.
 pub const PURPOSE: u32 = 10_007;

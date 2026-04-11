@@ -107,10 +107,15 @@ pub(crate) trait MerkleNode: Copy + PartialEq {
     }
 }
 
-// These two impl blocks are identical. FIXME once we have nailed down
-// our hash traits, it should be possible to put bounds on `MerkleNode`
-// and `MerkleNode::Leaf` which are sufficient to turn both methods into
-// provided methods in the trait definition.
+fn combine_merkle_hashes(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
+    let mut encoder = sha256d::Hash::engine();
+    encoder.input(left);
+    encoder.input(right);
+    sha256d::Hash::from_engine(encoder).to_byte_array()
+}
+
+// Keep these impls explicit: TxMerkleNode and WitnessMerkleNode are separate
+// nominal consensus hash types even though their branch compression is shared.
 impl MerkleNode for TxMerkleNode {
     type Leaf = Txid;
     fn from_leaf(leaf: Self::Leaf) -> Self {
@@ -118,10 +123,7 @@ impl MerkleNode for TxMerkleNode {
     }
 
     fn combine(&self, other: &Self) -> Self {
-        let mut encoder = sha256d::Hash::engine();
-        encoder.input(self.as_byte_array());
-        encoder.input(other.as_byte_array());
-        Self::from_byte_array(sha256d::Hash::from_engine(encoder).to_byte_array())
+        Self::from_byte_array(combine_merkle_hashes(self.as_byte_array(), other.as_byte_array()))
     }
 }
 impl MerkleNode for WitnessMerkleNode {
@@ -131,10 +133,7 @@ impl MerkleNode for WitnessMerkleNode {
     }
 
     fn combine(&self, other: &Self) -> Self {
-        let mut encoder = sha256d::Hash::engine();
-        encoder.input(self.as_byte_array());
-        encoder.input(other.as_byte_array());
-        Self::from_byte_array(sha256d::Hash::from_engine(encoder).to_byte_array())
+        Self::from_byte_array(combine_merkle_hashes(self.as_byte_array(), other.as_byte_array()))
     }
 }
 

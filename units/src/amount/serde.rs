@@ -382,12 +382,6 @@ pub mod as_tdc {
 }
 
 #[cfg(feature = "alloc")]
-#[deprecated(since = "0.33.0-beta", note = "use `as_tdc`")]
-pub mod as_btc {
-    pub use super::as_tdc::*;
-}
-
-#[cfg(feature = "alloc")]
 pub mod as_str {
     //! Serialize and deserialize [`Amount`] and [`SignedAmount`] as a JSON string denominated in TDC.
     //!
@@ -416,8 +410,8 @@ pub mod as_str {
         A: TryFrom<SignedAmount>,
         <A as TryFrom<SignedAmount>>::Error: core::fmt::Display,
     {
-        let btc = String::deserialize(d)?;
-        let amount = SignedAmount::from_str_in(&btc, Denomination::Tidecoin)
+        let tdc = String::deserialize(d)?;
+        let amount = SignedAmount::from_str_in(&tdc, Denomination::Tidecoin)
             .map_err(DisplayFullError)
             .map_err(serde::de::Error::custom)?;
 

@@ -102,7 +102,7 @@ test_hex_parse! {
     number_of_512_seconds, relative::NumberOf512Seconds, "00000001", relative::NumberOf512Seconds::from_512_second_intervals(1);
 }
 
-// These types have additional failure modes for valid hex. e.g. an amount > 21M BTC
+// These types have additional failure modes for valid hex, e.g. an amount above max supply.
 test_hex_parse! {
     height, absolute::Height, "00000001", absolute::Height::from_u32(1).unwrap();
     median_time_past, absolute::MedianTimePast, "1dcd6500", absolute::MedianTimePast::from_u32(500_000_000).unwrap();
@@ -132,7 +132,7 @@ mod hex_out_of_range {
 
     #[test]
     fn amount_at_max() {
-        // Amount::MAX is 21M BTC * 100M sats/BTC = 2,100,000,000,000,000.
+        // Amount::MAX is 21M TDC * 100M tidoshi/TDC = 2,100,000,000,000,000.
         Amount::from_sat_hex("0x775f05a074000").unwrap();
         Amount::from_sat_unprefixed_hex("775f05a074000").unwrap();
     }

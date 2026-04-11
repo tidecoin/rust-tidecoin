@@ -39,7 +39,7 @@ ci-bench: (ci "bench")
 
 # Quick workspace lint.
 @lint:
-  cargo +{{NIGHTLY_VERSION}} clippy --quiet --workspace --all-targets --all-features -- --deny warnings
+  cargo clippy --quiet --workspace --all-targets --all-features -- --deny warnings
 
 # Quick workspace sanity check.
 @sane: lint
@@ -48,7 +48,7 @@ ci-bench: (ci "bench")
 
 # Format workspace.
 @fmt:
-  cargo +{{NIGHTLY_VERSION}} fmt --all
+  cargo fmt --all
 
 # Generate documentation (accepts cargo doc args, e.g. --open).
 @docsrs *flags:

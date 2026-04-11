@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin-consensus-core"
 version = "0.1.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin/"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 documentation = "https://docs.rs/tidecoin-consensus-core/"
 description = "Shared Tidecoin consensus-validation core types."
 categories = ["cryptography::cryptocurrencies"]
@@ -24,7 +24,7 @@ internals = { package = "tidecoin-internals", path = "../internals", version = "
 io = { package = "tidecoin-io", path = "../io", version = "0.5.0", default-features = false, features = ["hashes"] }
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
-tide-fn-dsa = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "27f47ec28af52ceb650f5cd93eba0a8c4ac5ea45" }
+tide-fn-dsa-vrfy = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "27f47ec28af52ceb650f5cd93eba0a8c4ac5ea45", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "deny", check-cfg = ['cfg(fuzzing)', 'cfg(kani)'] }

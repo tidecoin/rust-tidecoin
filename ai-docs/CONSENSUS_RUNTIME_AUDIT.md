@@ -69,12 +69,13 @@ Runtime facts:
 
 Current status:
 
-- still describes itself as a pure-Rust `libbitcoinconsensus` surface
-- now exposes Tidecoin-shaped public flags and defaults
-- now uses Tidecoin auxpow-aware activation helpers instead of Bitcoin height logic
-- still contains Bitcoin-shaped metadata/docs and parts of the legacy test corpus
+- describes itself as a Tidecoin-native byte-oriented validation adapter over
+  `tidecoin-consensus-core`
+- exposes Tidecoin-shaped public flags and defaults
+- uses Tidecoin auxpow-aware activation helpers instead of Bitcoin height logic
+- keeps Bitcoin/Core-era proof material only under archived historical paths
 
-Confirmed non-Tidecoin surfaces:
+Retired non-Tidecoin surfaces:
 
 - `VERIFY_WITNESS_PUBKEYTYPE`
 - `VERIFY_TAPROOT`
@@ -347,9 +348,9 @@ These should not be hand-maintained separately inside `consensus/`.
 1. Rewrite [consensus/src/lib.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs) public flags and public defaults to Tidecoin semantics.
 2. Delete Taproot/Tapscript/ECDSA/Schnorr public tests embedded in that file.
 3. Move the mature interpreter and typed tx/precompute layer into shared core.
-4. Reduce `consensus` to the byte-oriented wrapper over that engine.
-5. Only after runtime conversion starts, retire the old Bitcoin differential test
-   harnesses in `consensus/tests/**`.
+4. Keep `consensus` as the byte-oriented wrapper over that engine.
+5. Keep the old Bitcoin differential test harnesses archived while the
+   Tidecoin-native replacement matrix is reconciled.
 
 ## Exit Criteria For The First Runtime Pass
 

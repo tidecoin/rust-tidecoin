@@ -892,38 +892,56 @@ impl<'a> Arbitrary<'a> for Alert {
 mod tests {
     use alloc::string::ToString;
 
-    use hex_unstable::hex;
+    use internals::hex_lit as hex;
 
     use super::*;
 
     #[test]
     fn version_message_test() {
-        // This message is from my satoshi node, morning of May 27 2014
-        let from_sat = hex!("721101000100000000000000e6e0845300000000010000000000000000000000000000000000ffff0000000000000100000000000000fd87d87eeb4364f22cf54dca59412db7208d47d920cffce83ee8102f5361746f7368693a302e392e39392f2c9f040001");
+        let mut message = VersionMessage::new(
+            ProtocolVersion::INVALID_CB_NO_BAN_VERSION,
+            ServiceFlags::NETWORK,
+            1_713_657_600,
+            Address::new(&([127, 0, 0, 1], 8333).into(), ServiceFlags::NETWORK),
+            Address::new(&([127, 0, 0, 2], 8333).into(), ServiceFlags::NETWORK),
+            16_735_069_437_859_780_935,
+            UserAgent::new(
+                "TidecoinCore",
+                &UserAgentVersion::new(ClientSoftwareVersion::SemVer {
+                    major: 0,
+                    minor: 33,
+                    revision: 0,
+                }),
+            ),
+            302_892,
+        );
+        message.relay = true;
+        let encoded = encoding::encode_to_vec(&message);
 
-        let decode: Result<VersionMessage, _> = encoding::decode_from_slice(&from_sat);
+        let decode: Result<VersionMessage, _> = encoding::decode_from_slice(&encoded);
         assert!(decode.is_ok());
         let real_decode = decode.unwrap();
-        assert_eq!(real_decode.version.0, 70002);
+        assert_eq!(real_decode.version, message.version);
         assert_eq!(real_decode.services, ServiceFlags::NETWORK);
-        assert_eq!(real_decode.timestamp, 1_401_217_254);
+        assert_eq!(real_decode.timestamp, 1_713_657_600);
         // address decodes should be covered by Address tests
         assert_eq!(real_decode.nonce, 16_735_069_437_859_780_935);
         assert_eq!(
             real_decode.user_agent,
             UserAgent::new(
-                "Satoshi",
+                "TidecoinCore",
                 &UserAgentVersion::new(ClientSoftwareVersion::SemVer {
                     major: 0,
-                    minor: 9,
-                    revision: 99
+                    minor: 33,
+                    revision: 0
                 })
             )
         );
         assert_eq!(real_decode.start_height, 302_892);
         assert!(real_decode.relay);
 
-        assert_eq!(encoding::encode_to_vec(&real_decode), from_sat);
+        assert_eq!(real_decode, message);
+        assert_eq!(encoding::encode_to_vec(&real_decode), encoded);
     }
 
     #[test]
@@ -974,14 +992,14 @@ mod tests {
 
     #[test]
     fn test_user_agent() {
-        let client_name = "Satoshi";
+        let client_name = "TidecoinCore";
         let client_version = UserAgentVersion::new(ClientSoftwareVersion::SemVer {
             major: 5,
             minor: 12,
             revision: 0,
         });
         let user_agent = UserAgent::new(client_name, &client_version);
-        assert_eq!("/Satoshi:5.12.0/", user_agent.to_string());
+        assert_eq!("/TidecoinCore:5.12.0/", user_agent.to_string());
         let wallet_name = "tidecoin-wallet";
         let wallet_version = UserAgentVersion::new(ClientSoftwareVersion::SemVer {
             major: 0,
@@ -989,7 +1007,7 @@ mod tests {
             revision: 0,
         });
         let user_agent = user_agent.add_client(wallet_name, &wallet_version);
-        assert_eq!("/Satoshi:5.12.0/tidecoin-wallet:0.8.0/", user_agent.to_string());
+        assert_eq!("/TidecoinCore:5.12.0/tidecoin-wallet:0.8.0/", user_agent.to_string());
         let client_name = "TidecoinJ";
         let client_version =
             UserAgentVersion::new(ClientSoftwareVersion::Date { yyyy: 2011, mm: 1, dd: 28 });
@@ -1010,7 +1028,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "user agent configuration cannot contain: / ( ) :")]
     fn test_incorrect_user_agent() {
-        let client_name = "Satoshi/";
+        let client_name = "TidecoinCore/";
         let client_version = UserAgentVersion::new(ClientSoftwareVersion::SemVer {
             major: 5,
             minor: 12,

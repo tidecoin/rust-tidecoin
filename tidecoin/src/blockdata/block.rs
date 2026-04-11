@@ -14,12 +14,10 @@ use crate::merkle_tree::{TxMerkleNode, WitnessMerkleNode};
 use crate::network::Params;
 use crate::prelude::Vec;
 use crate::script::ScriptIntError;
-use crate::transaction::{Coinbase, Transaction, TransactionExt as _};
+use crate::transaction::{Coinbase, Transaction};
 use crate::{internal_macros, Target, Weight, Work};
 #[cfg(test)]
 use crate::{prelude::Box, BlockTime};
-use encoding::CompactSizeEncoder;
-use internals::ToU64;
 
 #[rustfmt::skip]                // Keep public re-exports separate.
 #[doc(inline)]
@@ -40,10 +38,6 @@ pub use units::block::{
 };
 #[doc(no_inline)]
 pub use units::block::{BlockHeightDecoderError, TooBigForRelativeHeightError};
-
-#[deprecated(since = "TBD", note = "use `BlockHeightInterval` instead")]
-#[doc(hidden)]
-pub type BlockInterval = BlockHeightInterval;
 
 internal_macros::define_extension_trait! {
     /// Extension functionality for the [`Header`] type.
@@ -108,9 +102,12 @@ pub trait BlockCheckedExt: sealed::Sealed {
     /// > Block weight is defined as Base size * 3 + Total size.
     fn weight(&self) -> Weight;
 
+    /// Returns the base block size, with transaction witness data stripped.
+    fn base_size(&self) -> usize;
+
     /// Returns the total block size.
     ///
-    /// > Total size is the block size in bytes with transactions serialized as described in BIP-0144,
+    /// > Total size is the block size in bytes with transactions serialized with witness data,
     /// > including base data and witness data.
     ///
     /// # Panics
@@ -124,7 +121,7 @@ pub trait BlockCheckedExt: sealed::Sealed {
     /// that a valid coinbase transaction is always present.
     fn coinbase(&self) -> &Coinbase;
 
-    /// Returns the block height, as encoded in the coinbase transaction according to BIP-0034.
+    /// Returns the block height encoded in the coinbase transaction.
     fn bip34_block_height(&self) -> Result<u64, Bip34Error>;
 }
 
@@ -146,18 +143,18 @@ impl BlockCheckedExt for Block<Checked> {
     }
 
     fn weight(&self) -> Weight {
-        // This is the exact definition of a weight unit, as defined by BIP-0141 (quote above).
-        let wu = block_base_size(self.header(), self.transactions()) * 3 + self.total_size();
-        Weight::from_wu(wu.to_u64())
+        let block: &Self = self;
+        block.weight()
+    }
+
+    fn base_size(&self) -> usize {
+        let block: &Self = self;
+        block.base_size()
     }
 
     fn total_size(&self) -> usize {
-        let mut size = self.header().serialized_len();
-
-        size += CompactSizeEncoder::encoded_size(self.transactions().len());
-        size += self.transactions().iter().map(|tx| tx.total_size()).sum::<usize>();
-
-        size
+        let block: &Self = self;
+        block.total_size()
     }
 
     fn coinbase(&self) -> &Coinbase {
@@ -165,16 +162,10 @@ impl BlockCheckedExt for Block<Checked> {
         Coinbase::assume_coinbase_ref(first_tx)
     }
 
-    /// Returns the block height, as encoded in the coinbase transaction according to BIP-0034.
+    /// Returns the block height encoded in the coinbase transaction.
     fn bip34_block_height(&self) -> Result<u64, Bip34Error> {
-        // Citing the spec:
-        // Add height as the first item in the coinbase transaction's scriptSig,
-        // and increase block version to 2. The format of the height is
-        // "minimally encoded serialized CScript"" -- first byte is number of bytes in the number
-        // (will be 0x03 on main net for the next 150 or so years with 2^23-1
-        // blocks), following bytes are little-endian representation of the
-        // number (including a sign bit). Height is the height of the mined
-        // block in the block chain, where the genesis block is height zero (0).
+        // Tidecoin version-2+ blocks encode height as the first minimally
+        // encoded script number in the coinbase transaction's scriptSig.
 
         if self.header().version < Version::TWO {
             return Err(Bip34Error::Unsupported);
@@ -198,15 +189,6 @@ impl BlockCheckedExt for Block<Checked> {
     }
 }
 
-fn block_base_size(header: &Header, transactions: &[Transaction]) -> usize {
-    let mut size = header.serialized_len();
-
-    size += CompactSizeEncoder::encoded_size(transactions.len());
-    size += transactions.iter().map(|tx| tx.base_size()).sum::<usize>();
-
-    size
-}
-
 mod sealed {
     /// Seals the extension traits.
     pub trait Sealed {}
@@ -214,17 +196,17 @@ mod sealed {
     impl<V: super::Validation> Sealed for super::Block<V> {}
 }
 
-/// An error when looking up a BIP-0034 block height.
+/// An error when looking up a coinbase-encoded block height.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Bip34Error {
-    /// The block does not support BIP-0034 yet.
+    /// The block does not support coinbase height encoding yet.
     Unsupported,
-    /// No push was present where the BIP-0034 push was expected.
+    /// No push was present where the coinbase height push was expected.
     NotPresent,
-    /// The BIP-0034 push was not minimally encoded.
+    /// The coinbase height push was not minimally encoded.
     NonMinimalPush,
-    /// The BIP-0034 push was negative.
+    /// The coinbase height push was negative.
     NegativeHeight,
 }
 
@@ -237,10 +219,10 @@ impl From<Infallible> for Bip34Error {
 impl fmt::Display for Bip34Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Unsupported => write!(f, "block doesn't support BIP-0034"),
-            Self::NotPresent => write!(f, "BIP-0034 push not present in block's coinbase"),
+            Self::Unsupported => write!(f, "block doesn't support coinbase height encoding"),
+            Self::NotPresent => write!(f, "height push not present in block's coinbase"),
             Self::NonMinimalPush => write!(f, "byte push not minimally encoded"),
-            Self::NegativeHeight => write!(f, "negative BIP-0034 height"),
+            Self::NegativeHeight => write!(f, "negative coinbase height"),
         }
     }
 }
@@ -313,7 +295,7 @@ mod tests {
     use alloc::string::ToString;
     use alloc::vec;
 
-    use hex_unstable::hex;
+    use internals::hex_lit as hex;
     use internals::ToU64 as _;
 
     use super::*;
@@ -517,10 +499,7 @@ mod tests {
             real_decode.block_hash()
         );
         assert_eq!(real_decode.total_size(), some_block.len());
-        assert_eq!(
-            block_base_size(real_decode.header(), real_decode.transactions()),
-            some_block.len()
-        );
+        assert_eq!(real_decode.base_size(), some_block.len());
         assert_eq!(real_decode.weight(), Weight::from_vb_unchecked(some_block.len().to_u64()));
 
         assert_eq!(encoding::encode_to_vec(&real_decode), some_block);
@@ -558,9 +537,7 @@ mod tests {
             real_decode.block_hash()
         );
         assert_eq!(real_decode.total_size(), segwit_block.len());
-        assert!(
-            block_base_size(real_decode.header(), real_decode.transactions()) < segwit_block.len()
-        );
+        assert!(real_decode.base_size() < segwit_block.len());
         assert!(real_decode.weight() < Weight::from_wu((segwit_block.len() * 4) as u64));
 
         assert_eq!(encoding::encode_to_vec(&real_decode), segwit_block);
@@ -812,7 +789,7 @@ mod tests {
         let block: Block = encoding::decode_from_slice(&hex!(BLOCK_HEX)).unwrap();
         let block = block.assume_checked(None);
 
-        // Test that BIP-0034 height extraction works with the Coinbase type
+        // Test that coinbase height extraction works with the Coinbase type.
         assert_eq!(block.bip34_block_height(), Ok(100_000));
 
         // Test that coinbase method returns a Coinbase type

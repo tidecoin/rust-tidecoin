@@ -23,8 +23,8 @@ use primitives::{
     absolute::LOCK_TIME_THRESHOLD,
     opcodes::{all, Opcode},
     script::{
-        Builder as ScriptBuilderT, Instruction, PushBytesBuf, Script as ScriptT,
-        ScriptBuf as ScriptBufT,
+        encode_scriptnum, read_scriptbool, read_scriptnum, Builder as ScriptBuilderT, Instruction,
+        PushBytesBuf, Script as ScriptT, ScriptBuf as ScriptBufT, ScriptIntError,
     },
     Amount, Sequence, Transaction, Witness,
 };
@@ -287,7 +287,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             if p2sh_enabled && spent_is_p2sh { Some(self.stack.clone()) } else { None };
         let spent_script_res = self.run_on_main_stack(self.spent_output_script, SigVersion::Base);
         self.track_script_error(spent_script_res)?;
-        if self.stack.is_empty() || !cast_to_bool(self.stack.last().unwrap()) {
+        if self.stack.is_empty() || !read_scriptbool(self.stack.last().unwrap()) {
             return Err(self.fail(ScriptError::EvalFalse));
         }
         if witness_enabled {
@@ -322,7 +322,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
 
             let redeem_script = stack_copy.pop_bytes()?;
             self.run_script(&mut stack_copy, &redeem_script, SigVersion::Base)?;
-            if stack_copy.is_empty() || !cast_to_bool(stack_copy.last().unwrap()) {
+            if stack_copy.is_empty() || !read_scriptbool(stack_copy.last().unwrap()) {
                 return Err(self.fail(ScriptError::EvalFalse));
             }
 
@@ -350,7 +350,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             self.stack = stack_copy;
         }
 
-        if self.stack.is_empty() || !cast_to_bool(self.stack.last().unwrap()) {
+        if self.stack.is_empty() || !read_scriptbool(self.stack.last().unwrap()) {
             return Err(self.fail(ScriptError::EvalFalse));
         }
 
@@ -644,7 +644,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         }
         if opcode >= OP_PUSHNUM_1.to_u8() && opcode <= OP_PUSHNUM_16.to_u8() {
             let value = (opcode - OP_PUSHNUM_1.to_u8() + 1) as i32;
-            return self.push_element(stack, encode_num(value as i64));
+            return self.push_element(stack, encode_scriptnum(value as i64));
         }
 
         match op {
@@ -664,16 +664,16 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                     .last()
                     .ok_or_else(|| self.fail(ScriptError::InvalidStackOperation))?
                     .clone();
-                if cast_to_bool(&value) {
+                if read_scriptbool(&value) {
                     self.push_element(stack, value)?;
                 }
             }
             OP_DEPTH => {
-                let depth = encode_num(stack.len() as i64);
+                let depth = encode_scriptnum(stack.len() as i64);
                 self.push_element(stack, depth)?;
             }
             OP_PUSHNUM_NEG1 => {
-                self.push_element(stack, encode_num(-1))?;
+                self.push_element(stack, encode_scriptnum(-1))?;
             }
             OP_NOP => {}
             OP_NOP1 | OP_NOP5 | OP_NOP6 | OP_NOP7 | OP_NOP8 | OP_NOP9 | OP_NOP10 => {
@@ -815,7 +815,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             OP_SIZE => {
                 let value =
                     stack.last().ok_or_else(|| self.fail(ScriptError::InvalidStackOperation))?;
-                let size = encode_num(value.len() as i64);
+                let size = encode_scriptnum(value.len() as i64);
                 self.push_element(stack, size)?;
             }
             OP_1ADD | OP_1SUB | OP_NEGATE | OP_ABS | OP_NOT | OP_0NOTEQUAL => {
@@ -833,7 +833,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                     OP_0NOTEQUAL => num = if num != 0 { 1 } else { 0 },
                     _ => {}
                 }
-                let encoded = encode_num(num);
+                let encoded = encode_scriptnum(num);
                 self.push_element(stack, encoded)?;
             }
             OP_ADD
@@ -926,7 +926,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                     }
                     _ => 0,
                 };
-                self.push_element(stack, encode_num(result))?;
+                self.push_element(stack, encode_scriptnum(result))?;
                 if op == OP_NUMEQUALVERIFY {
                     self.op_verify_with_code(stack, ScriptError::NumEqualVerify)?;
                 }
@@ -1027,7 +1027,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                     {
                         return Err(self.fail(minimal_if_error));
                     }
-                    value = cast_to_bool(&condition);
+                    value = read_scriptbool(&condition);
                     if op == OP_NOTIF {
                         value = !value;
                     }
@@ -1122,7 +1122,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         error: ScriptError,
     ) -> Result<(), TidecoinValidationError> {
         let value = self.map_failure(stack.pop_bytes(), ScriptError::InvalidStackOperation)?;
-        if !cast_to_bool(&value) {
+        if !read_scriptbool(&value) {
             return Err(self.fail(error));
         }
         Ok(())
@@ -1412,7 +1412,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         if stack.len() != 1 {
             return Err(ScriptError::CleanStack);
         }
-        if !cast_to_bool(stack.last().expect("stack length checked")) {
+        if !read_scriptbool(stack.last().expect("stack length checked")) {
             return Err(ScriptError::CleanStack);
         }
         Ok(())
@@ -1425,7 +1425,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         if stack.len() != 1 {
             return Err(self.fail(ScriptError::CleanStack));
         }
-        if !cast_to_bool(stack.last().expect("stack length checked")) {
+        if !read_scriptbool(stack.last().expect("stack length checked")) {
             return Err(self.fail(ScriptError::EvalFalse));
         }
         Ok(())
@@ -1578,92 +1578,14 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
     }
 }
 
-fn cast_to_bool(data: &[u8]) -> bool {
-    for (i, &byte) in data.iter().enumerate() {
-        if byte != 0 {
-            if i == data.len() - 1 && byte == 0x80 {
-                return false;
-            }
-            return true;
-        }
-    }
-    false
-}
-
-fn encode_num(value: i64) -> Vec<u8> {
-    if value == 0 {
-        return Vec::new();
-    }
-
-    let mut result = Vec::new();
-    let mut abs_value = value.unsigned_abs();
-
-    while abs_value > 0 {
-        result.push((abs_value & 0xff) as u8);
-        abs_value >>= 8;
-    }
-
-    if let Some(last) = result.last_mut() {
-        if *last & 0x80 != 0 {
-            result.push(if value < 0 { 0x80 } else { 0x00 });
-        } else if value < 0 {
-            *last |= 0x80;
-        }
-    } else {
-        result.push(if value < 0 { 0x81 } else { 0x01 });
-    }
-
-    result
-}
-
 fn parse_scriptnum(bytes: &[u8], minimal: bool, max_len: usize) -> Result<i64, ScriptError> {
-    if bytes.len() > max_len {
-        return Err(ScriptError::Unknown);
-    }
-    if minimal && !is_minimally_encoded(bytes, max_len) {
-        return Err(ScriptError::Unknown);
-    }
-    Ok(decode_num(bytes))
-}
-
-fn decode_num(bytes: &[u8]) -> i64 {
-    if bytes.is_empty() {
-        return 0;
-    }
-
-    let mut result: i64 = 0;
-    for (i, &byte) in bytes.iter().enumerate() {
-        result |= (byte as i64) << (8 * i);
-    }
-
-    let last = bytes[bytes.len() - 1];
-    if last & 0x80 != 0 {
-        let mask = !(0x80i64 << (8 * (bytes.len() - 1)));
-        -(result & mask)
-    } else {
-        result
-    }
-}
-
-fn is_minimally_encoded(bytes: &[u8], max_len: usize) -> bool {
-    if bytes.len() > max_len {
-        return false;
-    }
-    if bytes.is_empty() {
-        return true;
-    }
-
-    let last = bytes[bytes.len() - 1];
-    if (last & 0x7f) == 0 {
-        if bytes.len() == 1 {
-            return false;
+    match read_scriptnum(bytes, minimal, max_len) {
+        Ok(value) => Ok(value),
+        Err(ScriptIntError::NumericOverflow | ScriptIntError::NonMinimal) => {
+            Err(ScriptError::Unknown)
         }
-        if bytes[bytes.len() - 2] & 0x80 == 0 {
-            return false;
-        }
+        Err(_) => Err(ScriptError::Unknown),
     }
-
-    true
 }
 
 fn is_push_only(script_bytes: &[u8]) -> bool {

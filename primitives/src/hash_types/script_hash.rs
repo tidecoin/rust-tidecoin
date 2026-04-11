@@ -24,10 +24,10 @@ impl ScriptHash {
     ///
     /// # 520-byte limitation on serialized script size
     ///
-    /// > As a consequence of the requirement for backwards compatibility the serialized script is
-    /// > itself subject to the same rules as any other PUSHDATA operation, including the rule that
-    /// > no data greater than 520 bytes may be pushed to the stack. Thus it is not possible to
-    /// > spend a P2SH output if the redemption script it refers to is >520 bytes in length.
+    /// > Tidecoin P2SH evaluation hashes the serialized script and then pushes that script onto the
+    /// > stack for execution, so the serialized script is subject to the same rules as any other
+    /// > PUSHDATA operation. No pushed data item may exceed 520 bytes, so a P2SH output cannot be
+    /// > spent if the redemption script it refers to is larger than 520 bytes.
     ///
     /// # Errors
     ///

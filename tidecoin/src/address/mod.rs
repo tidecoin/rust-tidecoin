@@ -582,12 +582,6 @@ impl<V: NetworkValidation> Address<V> {
         Address::from_inner(self.to_inner())
     }
 
-    /// Marks the network of this address as unchecked.
-    #[deprecated(since = "0.33.0", note = "use to_unchecked instead")]
-    pub fn into_unchecked(self) -> Address<NetworkUnchecked> {
-        Address::from_inner(self.to_inner())
-    }
-
     /// Returns the [`NetworkKind`] of this address.
     pub fn network_kind(&self) -> NetworkKind {
         use AddressInner::*;
@@ -615,7 +609,7 @@ impl Address {
 
     /// Constructs a new pay-to-script-hash (P2SH) [`Address`] from a script.
     ///
-    /// This address type was introduced with BIP-0016 and is the popular type to implement multi-sig
+    /// This address type is commonly used to implement multi-sig
     /// these days.
     #[inline]
     pub fn p2sh<T: ScriptHashableTag>(
@@ -832,8 +826,8 @@ impl Address {
     /// If the address is bech32, the address becomes uppercase.
     /// If the address is base58, the address is left mixed case.
     ///
-    /// Quoting BIP 173 "inside QR codes uppercase SHOULD be used, as those permit the use of
-    /// alphanumeric mode, which is 45% more compact than the normal byte mode."
+    /// For QR codes, uppercase SHOULD be used because it permits the use of
+    /// alphanumeric mode, which is more compact than the normal byte mode.
     ///
     /// If you want to avoid allocation you can use alternate display instead:
     /// ```no_run

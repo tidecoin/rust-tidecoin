@@ -80,8 +80,23 @@ pub enum IsSatisfiedByHeightError {
     /// Satisfaction of the lock height value failed.
     Satisfaction(InvalidHeightError),
     /// Tried to satisfy a lock-by-height locktime using seconds.
-    // TODO: Hide inner value in a new struct error type.
-    Incompatible(NumberOf512Seconds),
+    Incompatible(IncompatibleHeightError),
+}
+
+/// Error returned when a lock-by-time value is passed to height-only locktime evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IncompatibleHeightError(NumberOf512Seconds);
+
+impl IncompatibleHeightError {
+    /// Constructs an incompatible-height error for `time`.
+    pub const fn new(time: NumberOf512Seconds) -> Self {
+        Self(time)
+    }
+
+    /// Returns the lock-by-time value passed to height-only evaluation.
+    pub const fn time(&self) -> NumberOf512Seconds {
+        self.0
+    }
 }
 
 impl From<Infallible> for IsSatisfiedByHeightError {
@@ -95,8 +110,8 @@ impl fmt::Display for IsSatisfiedByHeightError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Self::Satisfaction(ref e) => write_err!(f, "satisfaction"; e),
-            Self::Incompatible(time) => {
-                write!(f, "tried to satisfy a lock-by-height locktime using seconds {}", time)
+            Self::Incompatible(ref e) => {
+                write!(f, "tried to satisfy a lock-by-height locktime using seconds {}", e.time())
             }
         }
     }
@@ -118,8 +133,23 @@ pub enum IsSatisfiedByTimeError {
     /// Satisfaction of the lock time value failed.
     Satisfaction(InvalidTimeError),
     /// Tried to satisfy a lock-by-time locktime using number of blocks.
-    // TODO: Hide inner value in a new struct error type.
-    Incompatible(NumberOfBlocks),
+    Incompatible(IncompatibleTimeError),
+}
+
+/// Error returned when a lock-by-height value is passed to time-only locktime evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IncompatibleTimeError(NumberOfBlocks);
+
+impl IncompatibleTimeError {
+    /// Constructs an incompatible-time error for `blocks`.
+    pub const fn new(blocks: NumberOfBlocks) -> Self {
+        Self(blocks)
+    }
+
+    /// Returns the lock-by-height value passed to time-only evaluation.
+    pub const fn blocks(&self) -> NumberOfBlocks {
+        self.0
+    }
 }
 
 impl From<Infallible> for IsSatisfiedByTimeError {
@@ -133,8 +163,8 @@ impl fmt::Display for IsSatisfiedByTimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Self::Satisfaction(ref e) => write_err!(f, "satisfaction"; e),
-            Self::Incompatible(blocks) => {
-                write!(f, "tried to satisfy a lock-by-time locktime using blocks {}", blocks)
+            Self::Incompatible(ref e) => {
+                write!(f, "tried to satisfy a lock-by-time locktime using blocks {}", e.blocks())
             }
         }
     }

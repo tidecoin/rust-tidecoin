@@ -58,7 +58,7 @@ impl Weight {
     /// The factor that non-witness serialization data is multiplied by during weight calculation.
     pub const WITNESS_SCALE_FACTOR: u64 = WITNESS_SCALE_FACTOR as u64; // this value is 4
 
-    /// The maximum allowed weight for a block, see BIP-0141 (network rule).
+    /// The maximum allowed weight for a block under Tidecoin consensus rules.
     pub const MAX_BLOCK: Self = Self::from_wu(4_000_000);
 
     /// The minimum transaction weight for a valid serialized transaction.
@@ -82,38 +82,9 @@ impl Weight {
         }
     }
 
-    /// Constructs a new [`Weight`] from virtual bytes panicking if an overflow occurred.
-    ///
-    /// # Panics
-    ///
-    /// If the conversion from virtual bytes overflows.
-    #[deprecated(since = "1.0.0-rc.0", note = "use `from_vb_unchecked` instead")]
-    pub const fn from_vb_unwrap(vb: u64) -> Self {
-        match vb.checked_mul(Self::WITNESS_SCALE_FACTOR) {
-            Some(weight) => Self::from_wu(weight),
-            None => panic!("checked_mul overflowed"),
-        }
-    }
-
     /// Constructs a new [`Weight`] from virtual bytes without an overflow check.
     pub const fn from_vb_unchecked(vb: u64) -> Self {
         Self::from_wu(vb * Self::WITNESS_SCALE_FACTOR)
-    }
-
-    /// Constructs a new [`Weight`] from witness size.
-    #[deprecated(since = "1.0.0-rc.1", note = "use `from_wu` instead")]
-    pub const fn from_witness_data_size(witness_size: u64) -> Self {
-        Self::from_wu(witness_size)
-    }
-
-    /// Constructs a new [`Weight`] from non-witness size.
-    ///
-    /// # Panics
-    ///
-    /// If the conversion from virtual bytes overflows.
-    #[deprecated(since = "1.0.0-rc.1", note = "use `from_vb` or `from_vb_unchecked` instead")]
-    pub const fn from_non_witness_data_size(non_witness_size: u64) -> Self {
-        Self::from_wu(non_witness_size * Self::WITNESS_SCALE_FACTOR)
     }
 
     /// Constructs a new `Weight` from a prefixed hex string.
@@ -418,26 +389,6 @@ mod tests {
     #[should_panic = "attempt to multiply with overflow"]
     fn from_vb_unchecked_panic() {
         Weight::from_vb_unchecked(u64::MAX);
-    }
-
-    #[test]
-    #[allow(deprecated)] // tests the deprecated function
-    #[allow(deprecated_in_future)]
-    fn from_witness_data_size() {
-        let witness_data_size = 1;
-        let got = Weight::from_witness_data_size(witness_data_size);
-        let want = Weight::from_wu(witness_data_size);
-        assert_eq!(got, want);
-    }
-
-    #[test]
-    #[allow(deprecated)] // tests the deprecated function
-    #[allow(deprecated_in_future)]
-    fn from_non_witness_data_size() {
-        let non_witness_data_size = 1;
-        let got = Weight::from_non_witness_data_size(non_witness_data_size);
-        let want = Weight::from_wu(non_witness_data_size * 4);
-        assert_eq!(got, want);
     }
 
     #[test]

@@ -124,20 +124,13 @@ impl<T> Script<T> {
         self.as_bytes().to_owned()
     }
 
-    /// Returns a copy of the script data.
-    #[inline]
-    #[deprecated(since = "0.101.0", note = "use to_vec instead")]
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_vec()
-    }
-
     /// Consensus encodes the script as lower-case hex.
     ///
     /// Consensus encoding includes a length prefix. To hex encode without the length prefix use
     /// `to_hex_string_no_length_prefix`.
     #[cfg(all(feature = "hex", feature = "alloc"))]
     pub fn to_hex_string_prefixed(&self) -> String {
-        use hex_unstable::{BytesToHexIter, Case};
+        use internals::hex::{BytesToHexIter, Case};
 
         let iter = encoding::EncodableByteIter::new(self);
         BytesToHexIter::new(iter, Case::Lower).collect()
@@ -149,7 +142,7 @@ impl<T> Script<T> {
     /// prefix. See `to_hex_string_prefixed`.
     #[cfg(all(feature = "hex", feature = "alloc"))]
     pub fn to_hex_string_no_length_prefix(&self) -> String {
-        use hex_unstable::DisplayHex as _;
+        use internals::hex::DisplayHex as _;
 
         self.as_bytes().to_lower_hex_string()
     }
@@ -177,19 +170,6 @@ impl<T> Script<T> {
         // layout).
         let inner = unsafe { Box::from_raw(rw) };
         ScriptBuf::from_bytes(Vec::from(inner))
-    }
-
-    /// Gets the hex representation of this script.
-    ///
-    /// # Returns
-    ///
-    /// Just the script bytes in hexadecimal **not** consensus encoding of the script i.e., the
-    /// string will not include a length prefix.
-    #[cfg(feature = "hex")]
-    #[inline]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(&self) -> alloc::string::String {
-        alloc::format!("{:x}", self)
     }
 
     /// Iterates over decoded instructions.

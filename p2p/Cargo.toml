@@ -1,9 +1,9 @@
 [package]
 name = "tidecoin-p2p-messages"
 version = "0.1.0"
-authors = ["Andrew Poelstra <apoelstra@wpsoftware.net>"]
+authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
-repository = "https://github.com/nicenemo/rust-tidecoin"
+repository = "https://github.com/tidecoin/rust-tidecoin"
 description = "Peer-to-peer messages defined by the Tidecoin protocol"
 categories = ["cryptography::cryptocurrencies"]
 keywords = ["tidecoin", "peer-to-peer"]
@@ -14,19 +14,18 @@ exclude = ["tests", "contrib"]
 
 [features]
 default = ["std"]
-std = ["encoding/std", "hashes/std", "network/std", "hex-stable/std", "hex-unstable/std", "internals/std", "io/std", "units/std", "primitives/std"]
+std = ["encoding/std", "hashes/std", "network/std", "hex-stable/std", "internals/std", "io/std", "units/std", "primitives/std"]
 arbitrary = ["dep:arbitrary", "primitives/arbitrary"]
-serde = ["dep:serde", "hashes/serde"]
+serde = ["dep:serde", "hashes/serde", "primitives/serde"]
 
 [dependencies]
 chacha20-poly1305 = { path = "../chacha20_poly1305", version = "0.1.2", default-features = false, features = ["alloc"] }
 encoding = { package = "tidecoin-consensus-encoding", version = "0.1.0", path = "../consensus_encoding", default-features = false, features = ["alloc"] }
 hashes = { package = "tidecoin_hashes", version = "0.20.0", path = "../hashes", default-features = false, features = ["hex"] }
 network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.0", default-features = false }
-primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["hex"] }
+primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc", "hex"] }
 hex-stable = { package = "hex-conservative", version = "1.0.0", default-features = false, features = ["alloc"] }
-hex-unstable = { package = "hex-conservative", version = "0.3.2", default-features = false }
-internals = { package = "tidecoin-internals", path = "../internals", default-features = false }
+internals = { package = "tidecoin-internals", path = "../internals", default-features = false, features = ["hex"] }
 io = { package = "tidecoin-io", version = "0.5.0", path = "../io", default-features = false }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false }
 zeroize = { version = "1.8", default-features = false }
@@ -47,10 +46,7 @@ workspace = true
 
 [package.metadata.rbmt.test]
 exact_features = [
+    [],
+    ["serde"],
     ["std", "serde"],
-]
-
-[package.metadata.rbmt.lint]
-allowed_duplicates = [
-    "hex-conservative",
 ]

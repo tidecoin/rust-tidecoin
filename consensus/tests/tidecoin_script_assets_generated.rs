@@ -8,7 +8,8 @@ use std::{
 
 use consensus::verify_with_flags_detailed;
 use encoding::{decode_from_slice, encode_to_vec};
-use hashes::{hex_unstable::DisplayHex, sha256};
+use hashes::sha256;
+use internals::hex::DisplayHex;
 use node_parity::fixtures::{test_data_path, TIDECOIN_NODE_REPO_ENV};
 use node_parity::{ScriptError, TidecoinNodeHarness};
 use primitives::{script::ScriptBuf, Amount, Transaction, TxOut, Witness};

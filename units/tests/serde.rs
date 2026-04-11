@@ -19,21 +19,21 @@ use tidecoin_units::{
 struct Serde {
     #[serde(with = "amount::serde::as_sat")]
     unsigned_as_sat: Amount,
-    #[serde(with = "amount::serde::as_btc")]
-    unsigned_as_btc: Amount,
+    #[serde(with = "amount::serde::as_tdc")]
+    unsigned_as_tdc: Amount,
     #[serde(with = "amount::serde::as_sat::opt")]
     unsigned_opt_as_sat: Option<Amount>,
-    #[serde(with = "amount::serde::as_btc::opt")]
-    unsigned_opt_as_btc: Option<Amount>,
+    #[serde(with = "amount::serde::as_tdc::opt")]
+    unsigned_opt_as_tdc: Option<Amount>,
 
     #[serde(with = "amount::serde::as_sat")]
     signed_as_sat: SignedAmount,
-    #[serde(with = "amount::serde::as_btc")]
-    signed_as_btc: SignedAmount,
+    #[serde(with = "amount::serde::as_tdc")]
+    signed_as_tdc: SignedAmount,
     #[serde(with = "amount::serde::as_sat::opt")]
     signed_opt_as_sat: Option<SignedAmount>,
-    #[serde(with = "amount::serde::as_btc::opt")]
-    signed_opt_as_btc: Option<SignedAmount>,
+    #[serde(with = "amount::serde::as_tdc::opt")]
+    signed_opt_as_tdc: Option<SignedAmount>,
 
     #[serde(with = "fee_rate::serde::as_sat_per_vb_floor")]
     vb_floor: FeeRate,
@@ -64,16 +64,16 @@ impl Serde {
     fn new() -> Self {
         Self {
             unsigned_as_sat: Amount::MAX,
-            unsigned_as_btc: Amount::MAX,
+            unsigned_as_tdc: Amount::MAX,
 
             unsigned_opt_as_sat: Some(Amount::MAX),
-            unsigned_opt_as_btc: Some(Amount::MAX),
+            unsigned_opt_as_tdc: Some(Amount::MAX),
 
             signed_as_sat: SignedAmount::MAX,
-            signed_as_btc: SignedAmount::MAX,
+            signed_as_tdc: SignedAmount::MAX,
 
             signed_opt_as_sat: Some(SignedAmount::MAX),
-            signed_opt_as_btc: Some(SignedAmount::MAX),
+            signed_opt_as_tdc: Some(SignedAmount::MAX),
 
             vb_floor: FeeRate::BROADCAST_MIN,
             vb_ceil: FeeRate::BROADCAST_MIN,
@@ -176,15 +176,15 @@ fn serde_amount_as_sat_vec() {
 #[test]
 #[cfg(feature = "serde")]
 #[cfg(feature = "alloc")]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
-fn serde_amount_as_btc() {
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
+fn serde_amount_as_tdc() {
     use serde_json;
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct T {
-        #[serde(with = "crate::amount::serde::as_btc")]
+        #[serde(with = "crate::amount::serde::as_tdc")]
         pub amt: Amount,
-        #[serde(with = "crate::amount::serde::as_btc")]
+        #[serde(with = "crate::amount::serde::as_tdc")]
         pub samt: SignedAmount,
     }
 
@@ -202,12 +202,12 @@ fn serde_amount_as_btc() {
 #[test]
 #[cfg(feature = "serde")]
 #[cfg(feature = "alloc")]
-fn serde_amount_as_btc_vec() {
+fn serde_amount_as_tdc_vec() {
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct T {
-        #[serde(with = "crate::amount::serde::as_btc::vec")]
+        #[serde(with = "crate::amount::serde::as_tdc::vec")]
         pub amt: Vec<Amount>,
-        #[serde(with = "crate::amount::serde::as_btc::vec")]
+        #[serde(with = "crate::amount::serde::as_tdc::vec")]
         pub samt: Vec<SignedAmount>,
     }
 
@@ -299,15 +299,15 @@ fn serde_amount_as_str_vec() {
 #[test]
 #[cfg(feature = "serde")]
 #[cfg(feature = "alloc")]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
-fn serde_amount_as_btc_opt() {
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
+fn serde_amount_as_tdc_opt() {
     use serde_json;
 
     #[derive(Serialize, Deserialize, PartialEq, Debug, Eq)]
     struct T {
-        #[serde(default, with = "crate::amount::serde::as_btc::opt")]
+        #[serde(default, with = "crate::amount::serde::as_tdc::opt")]
         pub amt: Option<Amount>,
-        #[serde(default, with = "crate::amount::serde::as_btc::opt")]
+        #[serde(default, with = "crate::amount::serde::as_tdc::opt")]
         pub samt: Option<SignedAmount>,
     }
 
@@ -338,7 +338,7 @@ fn serde_amount_as_btc_opt() {
 #[test]
 #[cfg(feature = "serde")]
 #[cfg(feature = "alloc")]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
 fn serde_amount_as_sat_opt() {
     use serde_json;
 
@@ -377,7 +377,7 @@ fn serde_amount_as_sat_opt() {
 #[test]
 #[cfg(feature = "serde")]
 #[cfg(feature = "alloc")]
-#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per bitcoin.
+#[allow(clippy::inconsistent_digit_grouping)] // Group to show 100,000,000 sats per TDC.
 fn serde_amount_as_str_opt() {
     use serde_json;
 

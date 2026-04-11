@@ -17,6 +17,12 @@ unsafe extern "C" {
     /// Runs Tidecoin node `CheckTransaction` on a serialized transaction.
     pub fn tidecoin_node_check_transaction(tx_hex: *const c_char) -> c_int;
 
+    /// Runs Tidecoin node `pq::VSizeP2WPKHInput`.
+    pub fn tidecoin_node_pq_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64;
+
+    /// Runs Tidecoin node `pq::VSizeP2SH_P2WPKHInput`.
+    pub fn tidecoin_node_pq_p2sh_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64;
+
     /// Deterministically generates a PQ keypair from a raw seed using the Tidecoin node.
     pub fn tidecoin_node_pq_keygen_from_seed(
         scheme_prefix: u8,

@@ -2,7 +2,7 @@
 
 //! Regression tests for each hash type.
 //!
-//! Note that if `bitcoin-io` is enabled then we get more regression-like testing from `./io.rs`.
+//! Note that if `tidecoin-io` is enabled then we get more regression-like testing from `./io.rs`.
 //!
 //! Test input data and expected hashes is the same as in `io/src/hash.rs`.
 

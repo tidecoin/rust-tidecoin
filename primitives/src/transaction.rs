@@ -20,13 +20,17 @@ use arbitrary::{Arbitrary, Unstructured};
 use encoding::{ArrayEncoder, BytesEncoder, Encoder2, UnexpectedEofError};
 #[cfg(feature = "alloc")]
 use encoding::{
-    CompactSizeEncoder, Decoder2, Decoder3, Encodable as _, Encoder3, Encoder6, SliceEncoder,
-    VecDecoder, VecDecoderError,
+    CompactSizeEncoder, Decoder as _, Decoder2, Decoder3, Encodable as _, Encoder3, Encoder4,
+    Encoder6, SliceEncoder, VecDecoder, VecDecoderError,
 };
 #[cfg(feature = "alloc")]
 use hashes::sha256d;
+#[cfg(feature = "alloc")]
+use hashes::HashEngine as _;
 use internals::array::ArrayExt as _;
 use internals::write_err;
+#[cfg(feature = "alloc")]
+use internals::ToU64 as _;
 #[cfg(feature = "serde")]
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(all(feature = "hex", feature = "alloc"))]
@@ -62,32 +66,32 @@ pub use crate::hash_types::BlockHashDecoderError;
 /// # Serialization notes
 ///
 /// If any inputs have nonempty witnesses, the entire transaction is serialized
-/// in the post-BIP-0141 SegWit format which includes a list of witnesses. If all
-/// inputs have empty witnesses, the transaction is serialized in the pre-BIP-0141
-/// format.
+/// in the Tidecoin witness format, which includes a list of witnesses. If all
+/// inputs have empty witnesses, the transaction is serialized without witness
+/// data.
 ///
 /// There is one major exception to this: to avoid deserialization ambiguity,
-/// if the transaction has no inputs, it is serialized in the BIP-0141 style. Be
-/// aware that this differs from the transaction format in PSBT, which _never_
-/// uses BIP-0141. (Ordinarily there is no conflict, since in PSBT transactions
-/// are always unsigned and therefore their inputs have empty witnesses.)
+/// if the transaction has no inputs, it is serialized in witness style. Be
+/// aware that this differs from unsigned transaction containers, which do not
+/// include witness serialization. Ordinarily there is no conflict, since unsigned
+/// transactions have empty input witnesses.
 ///
-/// The specific ambiguity is that SegWit uses the flag bytes `0001` where an old
+/// The specific ambiguity is that witness serialization uses the flag bytes `0001` where an old
 /// serializer would read the number of transaction inputs. The old serializer
 /// would interpret this as "no inputs, one output", which means the transaction
-/// is invalid, and simply reject it. SegWit further specifies that this encoding
+/// is invalid, and simply reject it. Witness serialization further specifies that this encoding
 /// should *only* be used when some input has a nonempty witness; that is,
 /// witness-less transactions should be encoded in the traditional format.
 ///
 /// However, in protocols where transactions may legitimately have 0 inputs, e.g.
-/// when parties are cooperatively funding a transaction, the "00 means SegWit"
-/// heuristic does not work. Since SegWit requires such a transaction to be encoded
+/// when parties are cooperatively funding a transaction, the "00 means witness"
+/// heuristic does not work. Since witness serialization requires such a transaction to be encoded
 /// in the original transaction format (since it has no inputs and therefore
 /// no input witnesses), a traditionally encoded transaction may have the `0001`
-/// SegWit flag in it, which confuses most SegWit parsers including the one in
+/// witness flag in it, which confuses most witness parsers including the one in
 /// Tidecoin node behavior.
 ///
-/// We therefore deviate from the spec by always using the SegWit witness encoding
+/// We therefore always use the Tidecoin witness encoding
 /// for 0-input transactions, which results in unambiguously parseable transactions.
 ///
 /// # A note on ordering
@@ -105,7 +109,7 @@ pub use crate::hash_types::BlockHashDecoderError;
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 #[cfg(feature = "alloc")]
 pub struct Transaction {
-    /// The protocol version, is currently expected to be 1, 2 (BIP-0068) or 3 (BIP-0431).
+    /// The protocol version, currently expected to be 1, 2, or 3 by Tidecoin policy.
     pub version: Version,
     /// Block height or timestamp. Transaction cannot be included in a block until this height/time.
     ///
@@ -158,7 +162,7 @@ impl Transaction {
     #[doc(alias = "txid")]
     #[inline]
     pub fn compute_txid(&self) -> Txid {
-        let hash = hash_transaction(self, false);
+        let hash = sha256d_hash_encoder(self.base_encoder());
         Txid::from_byte_array(hash.to_byte_array())
     }
 
@@ -170,19 +174,70 @@ impl Transaction {
     #[doc(alias = "wtxid")]
     #[inline]
     pub fn compute_wtxid(&self) -> Wtxid {
-        let hash = hash_transaction(self, self.uses_segwit_serialization());
+        let hash = hashes::encode_to_engine(self, sha256d::Hash::engine()).finalize();
         Wtxid::from_byte_array(hash.to_byte_array())
     }
 
-    /// Returns whether or not to serialize transaction as specified in BIP-0144.
+    /// Returns whether to serialize the transaction with witness data.
     #[inline]
-    fn uses_segwit_serialization(&self) -> bool {
+    pub fn uses_segwit_serialization(&self) -> bool {
         if self.inputs.iter().any(|input| !input.witness.is_empty()) {
             return true;
         }
-        // To avoid serialization ambiguity, no inputs means we use BIP-0141 serialization (see
+        // To avoid serialization ambiguity, no inputs means we use witness serialization (see
         // `Transaction` docs for full explanation).
         self.inputs.is_empty()
+    }
+
+    /// Returns the weight of this transaction.
+    ///
+    /// Transaction weight is base transaction size multiplied by three plus total transaction size.
+    #[inline]
+    pub fn weight(&self) -> Weight {
+        Weight::from_wu((self.base_size() * 3 + self.total_size()).to_u64())
+    }
+
+    /// Returns the base transaction size, with witness data stripped.
+    #[inline]
+    pub fn base_size(&self) -> usize {
+        let mut size = Version::SIZE;
+
+        size += CompactSizeEncoder::encoded_size(self.inputs.len());
+        size += self.inputs.iter().map(TxIn::base_size).sum::<usize>();
+
+        size += CompactSizeEncoder::encoded_size(self.outputs.len());
+        size += self.outputs.iter().map(TxOut::size).sum::<usize>();
+
+        size + absolute::LockTime::SIZE
+    }
+
+    /// Returns the total transaction size under canonical transaction serialization.
+    #[inline]
+    pub fn total_size(&self) -> usize {
+        let mut size = Version::SIZE;
+        let uses_segwit = self.uses_segwit_serialization();
+
+        if uses_segwit {
+            size += 2; // marker and flag
+        }
+
+        size += CompactSizeEncoder::encoded_size(self.inputs.len());
+        size += self
+            .inputs
+            .iter()
+            .map(|input| if uses_segwit { input.total_size() } else { input.base_size() })
+            .sum::<usize>();
+
+        size += CompactSizeEncoder::encoded_size(self.outputs.len());
+        size += self.outputs.iter().map(TxOut::size).sum::<usize>();
+
+        size + absolute::LockTime::SIZE
+    }
+
+    /// Returns the virtual transaction size, rounded up from weight units.
+    #[inline]
+    pub fn vsize(&self) -> usize {
+        self.weight().to_vbytes_ceil() as usize
     }
 
     /// Checks if this is a coinbase transaction.
@@ -194,6 +249,24 @@ impl Transaction {
     #[doc(alias = "is_coin_base")] // method previously had this name
     pub fn is_coinbase(&self) -> bool {
         self.inputs.len() == 1 && self.inputs[0].previous_output == OutPoint::COINBASE_PREVOUT
+    }
+
+    fn base_encoder(&self) -> BaseTransactionEncoder<'_> {
+        let inputs = Encoder2::new(
+            CompactSizeEncoder::new(self.inputs.len()),
+            SliceEncoder::without_length_prefix(self.inputs.as_ref()),
+        );
+        let outputs = Encoder2::new(
+            CompactSizeEncoder::new(self.outputs.len()),
+            SliceEncoder::without_length_prefix(self.outputs.as_ref()),
+        );
+
+        BaseTransactionEncoder::new(Encoder4::new(
+            self.version.encoder(),
+            inputs,
+            outputs,
+            self.lock_time.encoder(),
+        ))
     }
 }
 
@@ -254,70 +327,31 @@ pub(crate) trait TxIdentifier: AsRef<[u8]> {}
 impl TxIdentifier for Txid {}
 impl TxIdentifier for Wtxid {}
 
-/// The marker MUST be a 1-byte zero value: 0x00. (BIP-0141)
 #[cfg(feature = "alloc")]
-const SEGWIT_MARKER: u8 = 0x00;
-/// The flag MUST be a 1-byte non-zero value. Currently, 0x01 MUST be used. (BIP-0141)
-#[cfg(feature = "alloc")]
-const SEGWIT_FLAG: u8 = 0x01;
-
-// This is equivalent to consensus encoding but hashes the fields manually.
-#[cfg(feature = "alloc")]
-fn hash_transaction(tx: &Transaction, uses_segwit_serialization: bool) -> sha256d::Hash {
-    use hashes::HashEngine as _;
-
+fn sha256d_hash_encoder(mut encoder: impl encoding::Encoder) -> sha256d::Hash {
     let mut enc = sha256d::Hash::engine();
-    enc.input(&tx.version.0.to_le_bytes()); // Same as `encode::emit_i32`.
-
-    if uses_segwit_serialization {
-        // BIP-0141 (SegWit) transaction serialization also includes marker and flag.
-        enc.input(&[SEGWIT_MARKER]);
-        enc.input(&[SEGWIT_FLAG]);
-    }
-
-    // Encode inputs (excluding witness data) with leading compact size encoded int.
-    let input_len = tx.inputs.len();
-    enc.input(crate::compact_size_encode(input_len).as_slice());
-    for input in &tx.inputs {
-        // Encode each input same as we do in `Encodable for TxIn`.
-        enc.input(input.previous_output.txid.as_byte_array());
-        enc.input(&input.previous_output.vout.to_le_bytes());
-
-        let script_sig_bytes = input.script_sig.as_bytes();
-        enc.input(crate::compact_size_encode(script_sig_bytes.len()).as_slice());
-        enc.input(script_sig_bytes);
-
-        enc.input(&input.sequence.0.to_le_bytes());
-    }
-
-    // Encode outputs with leading compact size encoded int.
-    let output_len = tx.outputs.len();
-    enc.input(crate::compact_size_encode(output_len).as_slice());
-    for output in &tx.outputs {
-        // Encode each output same as we do in `Encodable for TxOut`.
-        enc.input(&output.amount.to_sat().to_le_bytes());
-
-        let script_pubkey_bytes = output.script_pubkey.as_bytes();
-        enc.input(crate::compact_size_encode(script_pubkey_bytes.len()).as_slice());
-        enc.input(script_pubkey_bytes);
-    }
-
-    if uses_segwit_serialization {
-        // BIP-0141 (SegWit) transaction serialization also includes the witness data.
-        for input in &tx.inputs {
-            // Same as `Encodable for Witness`.
-            enc.input(crate::compact_size_encode(input.witness.len()).as_slice());
-            for element in &input.witness {
-                enc.input(crate::compact_size_encode(element.len()).as_slice());
-                enc.input(element);
-            }
+    loop {
+        enc.input(encoder.current_chunk());
+        if !encoder.advance() {
+            break;
         }
     }
 
-    // Same as `Encodable for absolute::LockTime`.
-    enc.input(&tx.lock_time.to_consensus_u32().to_le_bytes());
+    enc.finalize()
+}
 
-    sha256d::Hash::from_engine(enc)
+#[cfg(feature = "alloc")]
+type BaseTransactionEncoderInner<'e> = Encoder4<
+    VersionEncoder<'e>,
+    Encoder2<CompactSizeEncoder, SliceEncoder<'e, TxIn>>,
+    Encoder2<CompactSizeEncoder, SliceEncoder<'e, TxOut>>,
+    LockTimeEncoder<'e>,
+>;
+
+#[cfg(feature = "alloc")]
+encoding::encoder_newtype_exact! {
+    /// The encoder for transaction data without witnesses.
+    pub struct BaseTransactionEncoder<'e>(BaseTransactionEncoderInner<'e>);
 }
 
 #[cfg(feature = "alloc")]
@@ -331,7 +365,7 @@ type TransactionEncoderInner<'e> = Encoder6<
 >;
 
 #[cfg(feature = "alloc")]
-encoding::encoder_newtype! {
+encoding::encoder_newtype_exact! {
     /// The encoder for the [`Transaction`] type.
     pub struct TransactionEncoder<'e>(TransactionEncoderInner<'e>);
 }
@@ -450,218 +484,289 @@ impl Default for TransactionDecoder {
 }
 
 #[cfg(feature = "alloc")]
-#[allow(clippy::too_many_lines)] // TODO: Can we clean this up?
 impl encoding::Decoder for TransactionDecoder {
     type Output = Transaction;
     type Error = TransactionDecoderError;
 
     #[inline]
     fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, Self::Error> {
-        use TransactionDecoderError as E;
-        use TransactionDecoderErrorInner as Inner;
-        use TransactionDecoderState as State;
-
-        loop {
-            // Attempt to push to the currently-active decoder and return early on success.
-            match &mut self.state {
-                State::Version(decoder) => {
-                    if decoder.push_bytes(bytes).map_err(|e| E(Inner::Version(e)))? {
-                        // Still more bytes required.
-                        return Ok(true);
-                    }
-                }
-                State::Inputs(_, _, decoder) => {
-                    if decoder.push_bytes(bytes).map_err(|e| E(Inner::Inputs(e)))? {
-                        return Ok(true);
-                    }
-                }
-                State::SegwitFlag(_) => {
-                    if bytes.is_empty() {
-                        return Ok(true);
-                    }
-                }
-                State::Outputs(_, _, _, decoder) => {
-                    if decoder.push_bytes(bytes).map_err(|e| E(Inner::Outputs(e)))? {
-                        return Ok(true);
-                    }
-                }
-                State::Witnesses(_, _, _, _, decoder) => {
-                    if decoder.push_bytes(bytes).map_err(|e| E(Inner::Witness(e)))? {
-                        return Ok(true);
-                    }
-                }
-                State::LockTime(_, _, _, decoder) => {
-                    if decoder.push_bytes(bytes).map_err(|e| E(Inner::LockTime(e)))? {
-                        return Ok(true);
-                    }
-                }
-                State::Done(..) => return Ok(false),
-                State::Errored => panic!("call to push_bytes() after decoder errored"),
-            }
-
-            // If the above failed, end the current decoder and go to the next state.
-            match mem::replace(&mut self.state, State::Errored) {
-                State::Version(decoder) => {
-                    let version = decoder.end().map_err(|e| E(Inner::Version(e)))?;
-                    self.state = State::Inputs(version, Attempt::First, VecDecoder::<TxIn>::new());
-                }
-                State::Inputs(version, attempt, decoder) => {
-                    let inputs = decoder.end().map_err(|e| E(Inner::Inputs(e)))?;
-
-                    if Attempt::First == attempt {
-                        if inputs.is_empty() {
-                            self.state = State::SegwitFlag(version);
-                        } else {
-                            self.state = State::Outputs(
-                                version,
-                                inputs,
-                                IsSegwit::No,
-                                VecDecoder::<TxOut>::new(),
-                            );
-                        }
-                    } else {
-                        self.state = State::Outputs(
-                            version,
-                            inputs,
-                            IsSegwit::Yes,
-                            VecDecoder::<TxOut>::new(),
-                        );
-                    }
-                }
-                State::SegwitFlag(version) => {
-                    let segwit_flag = bytes[0];
-                    *bytes = &bytes[1..];
-
-                    if segwit_flag != 1 {
-                        return Err(E(Inner::UnsupportedSegwitFlag(segwit_flag)));
-                    }
-                    self.state = State::Inputs(version, Attempt::Second, VecDecoder::<TxIn>::new());
-                }
-                State::Outputs(version, inputs, is_segwit, decoder) => {
-                    let outputs = decoder.end().map_err(|e| E(Inner::Outputs(e)))?;
-                    // Handle the zero-input case described in the `Transaction` docs.
-                    if is_segwit == IsSegwit::Yes && !inputs.is_empty() {
-                        self.state = State::Witnesses(
-                            version,
-                            inputs,
-                            outputs,
-                            Iteration(0),
-                            WitnessDecoder::new(),
-                        );
-                    } else {
-                        self.state =
-                            State::LockTime(version, inputs, outputs, LockTimeDecoder::new());
-                    }
-                }
-                State::Witnesses(version, mut inputs, outputs, iteration, decoder) => {
-                    let iteration = iteration.0;
-
-                    inputs[iteration].witness = decoder.end().map_err(|e| E(Inner::Witness(e)))?;
-                    if iteration < inputs.len() - 1 {
-                        self.state = State::Witnesses(
-                            version,
-                            inputs,
-                            outputs,
-                            Iteration(iteration + 1),
-                            WitnessDecoder::new(),
-                        );
-                    } else {
-                        if !inputs.is_empty() && inputs.iter().all(|input| input.witness.is_empty())
-                        {
-                            return Err(E(Inner::NoWitnesses));
-                        }
-                        self.state =
-                            State::LockTime(version, inputs, outputs, LockTimeDecoder::new());
-                    }
-                }
-                State::LockTime(version, inputs, outputs, decoder) => {
-                    let lock_time = decoder.end().map_err(|e| E(Inner::LockTime(e)))?;
-                    self.state = State::Done(Transaction { version, lock_time, inputs, outputs });
-                    return Ok(false);
-                }
-                State::Done(..) => return Ok(false),
-                State::Errored => unreachable!("checked above"),
-            }
-        }
+        self.state.push_bytes(bytes)
     }
 
     #[inline]
     fn end(self) -> Result<Self::Output, Self::Error> {
-        use TransactionDecoderError as E;
-        use TransactionDecoderErrorInner as Inner;
-        use TransactionDecoderState as State;
-
-        match self.state {
-            State::Version(_) => Err(E(Inner::EarlyEnd("version"))),
-            State::Inputs(..) => Err(E(Inner::EarlyEnd("inputs"))),
-            State::SegwitFlag(..) => Err(E(Inner::EarlyEnd("segwit flag"))),
-            State::Outputs(..) => Err(E(Inner::EarlyEnd("outputs"))),
-            State::Witnesses(..) => Err(E(Inner::EarlyEnd("witnesses"))),
-            State::LockTime(..) => Err(E(Inner::EarlyEnd("locktime"))),
-            State::Done(tx) => {
-                // Reject transactions with no outputs
-                if tx.outputs.is_empty() {
-                    return Err(E(Inner::NoOutputs));
-                }
-                // check for null prevout in non-coinbase txs
-                if tx.inputs.len() > 1 {
-                    for (index, input) in tx.inputs.iter().enumerate() {
-                        if input.previous_output == OutPoint::COINBASE_PREVOUT {
-                            return Err(E(Inner::NullPrevoutInNonCoinbase(index)));
-                        }
-                    }
-                }
-                // check coinbase scriptSig length (must be 2-100 bytes)
-                if tx.is_coinbase() {
-                    let len = tx.inputs[0].script_sig.len();
-                    if len < 2 {
-                        return Err(E(Inner::CoinbaseScriptSigTooSmall(len)));
-                    }
-                    if len > 100 {
-                        return Err(E(Inner::CoinbaseScriptSigTooLarge(len)));
-                    }
-                }
-                // check for duplicate inputs (CVE-2018-17144).
-                let mut outpoints: Vec<_> = tx.inputs.iter().map(|i| i.previous_output).collect();
-                outpoints.sort_unstable();
-                for pair in outpoints.windows(2) {
-                    if pair[0] == pair[1] {
-                        return Err(E(Inner::DuplicateInput(pair[0])));
-                    }
-                }
-                // Check that sum of output values doesn't exceed MAX_MONEY (see CVE-2010-5139)
-                // Note: Individual output values are already validated by Amount::from_sat()
-                // during decoding, so we only need to check the sum here.
-                let mut total_out: u64 = 0;
-                for output in &tx.outputs {
-                    total_out = total_out.saturating_add(output.amount.to_sat());
-                    if total_out > Amount::MAX_MONEY.to_sat() {
-                        return Err(E(Inner::OutputValueSumTooLarge(total_out)));
-                    }
-                }
-                Ok(tx)
-            }
-            State::Errored => panic!("call to end() after decoder errored"),
-        }
+        self.state.end()
     }
 
     #[inline]
     fn read_limit(&self) -> usize {
-        use TransactionDecoderState as State;
+        self.state.read_limit()
+    }
+}
 
-        match &self.state {
-            State::Version(decoder) => decoder.read_limit(),
-            State::Inputs(_, _, decoder) => decoder.read_limit(),
-            State::SegwitFlag(_) => 1,
-            State::Outputs(_, _, _, decoder) => decoder.read_limit(),
-            State::Witnesses(_, _, _, _, decoder) => decoder.read_limit(),
-            State::LockTime(_, _, _, decoder) => decoder.read_limit(),
-            State::Done(_) => 0,
-            // `read_limit` is not documented to panic or return an error, so we
-            // return a dummy value if the decoder is in an error state.
-            State::Errored => 0,
+#[cfg(feature = "alloc")]
+impl TransactionDecoderState {
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, TransactionDecoderError> {
+        loop {
+            if self.subdecoder_needs_more_bytes(bytes)? {
+                return Ok(true);
+            }
+
+            if let Some(done) = self.advance_state(bytes)? {
+                return Ok(done);
+            }
         }
     }
+
+    fn end(self) -> Result<Transaction, TransactionDecoderError> {
+        use TransactionDecoderError as E;
+        use TransactionDecoderErrorInner as Inner;
+
+        match self {
+            Self::Version(_) => Err(E(Inner::EarlyEnd("version"))),
+            Self::Inputs(..) => Err(E(Inner::EarlyEnd("inputs"))),
+            Self::SegwitFlag(..) => Err(E(Inner::EarlyEnd("segwit flag"))),
+            Self::Outputs(..) => Err(E(Inner::EarlyEnd("outputs"))),
+            Self::Witnesses(..) => Err(E(Inner::EarlyEnd("witnesses"))),
+            Self::LockTime(..) => Err(E(Inner::EarlyEnd("locktime"))),
+            Self::Done(tx) => validate_decoded_transaction(tx),
+            Self::Errored => panic!("call to end() after decoder errored"),
+        }
+    }
+
+    fn read_limit(&self) -> usize {
+        match self {
+            Self::Version(decoder) => decoder.read_limit(),
+            Self::Inputs(_, _, decoder) => decoder.read_limit(),
+            Self::SegwitFlag(_) => 1,
+            Self::Outputs(_, _, _, decoder) => decoder.read_limit(),
+            Self::Witnesses(_, _, _, _, decoder) => decoder.read_limit(),
+            Self::LockTime(_, _, _, decoder) => decoder.read_limit(),
+            Self::Done(_) => 0,
+            // `read_limit` is not documented to panic or return an error, so we
+            // return a dummy value if the decoder is in an error state.
+            Self::Errored => 0,
+        }
+    }
+
+    fn subdecoder_needs_more_bytes(
+        &mut self,
+        bytes: &mut &[u8],
+    ) -> Result<bool, TransactionDecoderError> {
+        use TransactionDecoderError as E;
+        use TransactionDecoderErrorInner as Inner;
+
+        match self {
+            Self::Version(decoder) => decoder.push_bytes(bytes).map_err(|e| E(Inner::Version(e))),
+            Self::Inputs(_, _, decoder) => {
+                decoder.push_bytes(bytes).map_err(|e| E(Inner::Inputs(e)))
+            }
+            Self::SegwitFlag(_) => Ok(bytes.is_empty()),
+            Self::Outputs(_, _, _, decoder) => {
+                decoder.push_bytes(bytes).map_err(|e| E(Inner::Outputs(e)))
+            }
+            Self::Witnesses(_, _, _, _, decoder) => {
+                decoder.push_bytes(bytes).map_err(|e| E(Inner::Witness(e)))
+            }
+            Self::LockTime(_, _, _, decoder) => {
+                decoder.push_bytes(bytes).map_err(|e| E(Inner::LockTime(e)))
+            }
+            Self::Done(..) => Ok(false),
+            Self::Errored => panic!("call to push_bytes() after decoder errored"),
+        }
+    }
+
+    fn advance_state(
+        &mut self,
+        bytes: &mut &[u8],
+    ) -> Result<Option<bool>, TransactionDecoderError> {
+        use TransactionDecoderError as E;
+        use TransactionDecoderErrorInner as Inner;
+
+        match mem::replace(self, Self::Errored) {
+            Self::Version(decoder) => {
+                let version = decoder.end().map_err(|e| E(Inner::Version(e)))?;
+                *self = Self::Inputs(version, Attempt::First, VecDecoder::<TxIn>::new());
+            }
+            Self::Inputs(version, attempt, decoder) => {
+                let inputs = decoder.end().map_err(|e| E(Inner::Inputs(e)))?;
+                *self = next_state_after_inputs(version, attempt, inputs);
+            }
+            Self::SegwitFlag(version) => {
+                let segwit_flag = bytes[0];
+                *bytes = &bytes[1..];
+
+                if segwit_flag != 1 {
+                    return Err(E(Inner::UnsupportedSegwitFlag(segwit_flag)));
+                }
+                *self = Self::Inputs(version, Attempt::Second, VecDecoder::<TxIn>::new());
+            }
+            Self::Outputs(version, inputs, is_segwit, decoder) => {
+                let outputs = decoder.end().map_err(|e| E(Inner::Outputs(e)))?;
+                *self = next_state_after_outputs(version, inputs, is_segwit, outputs);
+            }
+            Self::Witnesses(version, mut inputs, outputs, iteration, decoder) => {
+                let iteration = iteration.0;
+
+                inputs[iteration].witness = decoder.end().map_err(|e| E(Inner::Witness(e)))?;
+                *self = next_state_after_witness(version, inputs, outputs, iteration)?;
+            }
+            Self::LockTime(version, inputs, outputs, decoder) => {
+                let lock_time = decoder.end().map_err(|e| E(Inner::LockTime(e)))?;
+                *self = Self::Done(Transaction { version, lock_time, inputs, outputs });
+                return Ok(Some(false));
+            }
+            Self::Done(tx) => {
+                *self = Self::Done(tx);
+                return Ok(Some(false));
+            }
+            Self::Errored => unreachable!("checked above"),
+        }
+
+        Ok(None)
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn next_state_after_inputs(
+    version: Version,
+    attempt: Attempt,
+    inputs: Vec<TxIn>,
+) -> TransactionDecoderState {
+    use TransactionDecoderState as State;
+
+    if Attempt::First == attempt && inputs.is_empty() {
+        State::SegwitFlag(version)
+    } else {
+        let is_segwit = if Attempt::First == attempt { IsSegwit::No } else { IsSegwit::Yes };
+        State::Outputs(version, inputs, is_segwit, VecDecoder::<TxOut>::new())
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn next_state_after_outputs(
+    version: Version,
+    inputs: Vec<TxIn>,
+    is_segwit: IsSegwit,
+    outputs: Vec<TxOut>,
+) -> TransactionDecoderState {
+    use TransactionDecoderState as State;
+
+    if is_segwit == IsSegwit::Yes && !inputs.is_empty() {
+        State::Witnesses(version, inputs, outputs, Iteration(0), WitnessDecoder::new())
+    } else {
+        State::LockTime(version, inputs, outputs, LockTimeDecoder::new())
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn next_state_after_witness(
+    version: Version,
+    inputs: Vec<TxIn>,
+    outputs: Vec<TxOut>,
+    iteration: usize,
+) -> Result<TransactionDecoderState, TransactionDecoderError> {
+    use TransactionDecoderError as E;
+    use TransactionDecoderErrorInner as Inner;
+    use TransactionDecoderState as State;
+
+    if iteration < inputs.len() - 1 {
+        return Ok(State::Witnesses(
+            version,
+            inputs,
+            outputs,
+            Iteration(iteration + 1),
+            WitnessDecoder::new(),
+        ));
+    }
+
+    if !inputs.is_empty() && inputs.iter().all(|input| input.witness.is_empty()) {
+        return Err(E(Inner::NoWitnesses));
+    }
+
+    Ok(State::LockTime(version, inputs, outputs, LockTimeDecoder::new()))
+}
+
+#[cfg(feature = "alloc")]
+fn validate_decoded_transaction(tx: Transaction) -> Result<Transaction, TransactionDecoderError> {
+    validate_transaction_has_outputs(&tx)?;
+    validate_non_coinbase_prevouts(&tx)?;
+    validate_coinbase_script_sig_len(&tx)?;
+    validate_unique_inputs(&tx)?;
+    validate_output_value_sum(&tx)?;
+    Ok(tx)
+}
+
+#[cfg(feature = "alloc")]
+fn validate_transaction_has_outputs(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+    if tx.outputs.is_empty() {
+        return Err(TransactionDecoderError(TransactionDecoderErrorInner::NoOutputs));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "alloc")]
+fn validate_non_coinbase_prevouts(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+    if tx.inputs.len() <= 1 {
+        return Ok(());
+    }
+
+    for (index, input) in tx.inputs.iter().enumerate() {
+        if input.previous_output == OutPoint::COINBASE_PREVOUT {
+            return Err(TransactionDecoderError(
+                TransactionDecoderErrorInner::NullPrevoutInNonCoinbase(index),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "alloc")]
+fn validate_coinbase_script_sig_len(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+    if !tx.is_coinbase() {
+        return Ok(());
+    }
+
+    let len = tx.inputs[0].script_sig.len();
+    if len < 2 {
+        return Err(TransactionDecoderError(
+            TransactionDecoderErrorInner::CoinbaseScriptSigTooSmall(len),
+        ));
+    }
+    if len > 100 {
+        return Err(TransactionDecoderError(
+            TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(len),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "alloc")]
+fn validate_unique_inputs(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+    let mut outpoints: Vec<_> = tx.inputs.iter().map(|i| i.previous_output).collect();
+    outpoints.sort_unstable();
+    for pair in outpoints.windows(2) {
+        if pair[0] == pair[1] {
+            return Err(TransactionDecoderError(TransactionDecoderErrorInner::DuplicateInput(
+                pair[0],
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "alloc")]
+fn validate_output_value_sum(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+    let mut total_out: u64 = 0;
+    for output in &tx.outputs {
+        total_out = total_out.saturating_add(output.amount.to_sat());
+        if total_out > Amount::MAX_MONEY.to_sat() {
+            return Err(TransactionDecoderError(
+                TransactionDecoderErrorInner::OutputValueSumTooLarge(total_out),
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(feature = "alloc")]
@@ -858,14 +963,32 @@ impl TxIn {
     /// An empty transaction input with the previous output as for a coinbase transaction.
     ///
     /// This has a 0-byte scriptSig which is **invalid** per consensus rules
-    /// (coinbase scriptSig must be 2-100 bytes). This is kept for backwards compatibility
-    /// in PSBT workflows where the scriptSig is filled in later.
+    /// (coinbase scriptSig must be 2-100 bytes). It is a construction template for
+    /// code that fills the coinbase scriptSig before encoding or validation.
     pub const EMPTY_COINBASE: Self = Self {
         previous_output: OutPoint::COINBASE_PREVOUT,
         script_sig: ScriptSigBuf::new(),
         sequence: Sequence::MAX,
         witness: Witness::new(),
     };
+
+    /// Returns the base size of this input.
+    ///
+    /// Base size excludes witness data.
+    pub fn base_size(&self) -> usize {
+        OutPoint::SIZE
+            + CompactSizeEncoder::encoded_size(self.script_sig.len())
+            + self.script_sig.len()
+            + Sequence::SIZE
+    }
+
+    /// Returns the total number of bytes that this input contributes to a transaction.
+    ///
+    /// Total size includes witness data.
+    #[inline]
+    pub fn total_size(&self) -> usize {
+        self.base_size() + self.witness.size()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -941,6 +1064,23 @@ impl encoding::Encoder for WitnessesEncoder<'_> {
                 return false;
             }
         }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl encoding::ExactSizeEncoder for WitnessesEncoder<'_> {
+    fn len(&self) -> usize {
+        let Some(cur_enc) = self.cur_enc.as_ref() else {
+            return 0;
+        };
+
+        let rest = self
+            .inputs
+            .get(1..)
+            .unwrap_or_default()
+            .iter()
+            .map(|input| input.witness.encoder().len());
+        cur_enc.len() + rest.sum::<usize>()
     }
 }
 
@@ -1046,6 +1186,28 @@ pub struct TxOut {
     pub amount: Amount,
     /// The script which must be satisfied for the output to be spent.
     pub script_pubkey: ScriptPubKeyBuf,
+}
+
+#[cfg(feature = "alloc")]
+impl TxOut {
+    /// Returns the weight of this output.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the output size cannot be represented as weight. This should not happen for an
+    /// output held in memory.
+    #[inline]
+    pub fn weight(&self) -> Weight {
+        Weight::from_vb(self.size().to_u64()).expect("output size cannot overflow weight")
+    }
+
+    /// Returns the number of bytes that this output contributes to a transaction.
+    #[inline]
+    pub fn size(&self) -> usize {
+        Amount::SIZE
+            + CompactSizeEncoder::encoded_size(self.script_pubkey.len())
+            + self.script_pubkey.len()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -1473,7 +1635,7 @@ impl std::error::Error for ParseOutPointError {
 
 /// The transaction version.
 ///
-/// Currently, as specified by [BIP-0068] and [BIP-0431], version 1, 2, and 3 are considered standard.
+/// Currently, versions 1, 2, and 3 are considered standard by Tidecoin policy.
 ///
 /// Standardness of the inner `u32` is not an invariant because you are free to create transactions
 /// of any version, transactions with non-standard version numbers will not be relayed by the
@@ -1483,6 +1645,9 @@ impl std::error::Error for ParseOutPointError {
 pub struct Version(u32);
 
 impl Version {
+    /// The number of bytes that a transaction version contributes to the size of a transaction.
+    pub const SIZE: usize = 4;
+
     /// Tidecoin transaction version 1.
     pub const ONE: Self = Self(1);
 
@@ -1707,7 +1872,7 @@ mod tests {
 
     use encoding::{Decodable as _, Decoder as _, Encoder as _};
     #[cfg(feature = "hex")]
-    use hex_unstable::hex;
+    use internals::hex_lit as hex;
 
     use super::*;
     #[cfg(all(feature = "alloc", feature = "hex"))]
@@ -2056,6 +2221,31 @@ mod tests {
         ScriptSigBuf::from_bytes(TC_SCRIPT_BYTES.to_vec())
     }
 
+    #[cfg(all(feature = "alloc", feature = "hex"))]
+    fn synthetic_non_coinbase_input(tag: u8) -> TxIn {
+        TxIn {
+            previous_output: OutPoint { txid: Txid::from_byte_array([tag; 32]), vout: tag.into() },
+            script_sig: ScriptSigBuf::from_bytes(vec![0x51]),
+            sequence: Sequence::MAX,
+            witness: Witness::new(),
+        }
+    }
+
+    #[cfg(all(feature = "alloc", feature = "hex"))]
+    fn synthetic_output(amount: Amount) -> TxOut {
+        TxOut { amount, script_pubkey: ScriptPubKeyBuf::from_bytes(vec![0x51]) }
+    }
+
+    #[cfg(all(feature = "alloc", feature = "hex"))]
+    fn synthetic_non_coinbase_tx(outputs: Vec<TxOut>) -> Transaction {
+        Transaction {
+            version: Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![synthetic_non_coinbase_input(0x11)],
+            outputs,
+        }
+    }
+
     #[test]
     #[cfg(feature = "alloc")]
     #[cfg(feature = "hex")]
@@ -2240,133 +2430,23 @@ mod tests {
         assert!(encoder.current_chunk().is_empty());
     }
 
-    // FIXME: Move all these encoding tests to a single file in `primitives/tests/`.
-    #[test]
-    #[cfg(feature = "alloc")]
-    #[cfg(feature = "hex")]
-    fn encode_block() {
-        use crate::merkle_tree::TxMerkleNode;
-        use crate::{Block, BlockHash, BlockHeader, BlockTime, BlockVersion, CompactTarget};
-
-        let seconds: u32 = 1_653_195_600; // Arbitrary timestamp: May 22nd, 5am UTC.
-
-        let header = BlockHeader {
-            version: BlockVersion::TWO,
-            prev_blockhash: BlockHash::from_byte_array([0xab; 32]),
-            merkle_root: TxMerkleNode::from_byte_array([0xcd; 32]),
-            time: BlockTime::from(seconds),
-            bits: CompactTarget::from_consensus(0xbeef),
-            nonce: 0xcafe,
-            auxpow: None,
-        };
-
-        let tx = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            inputs: vec![segwit_tx_in()],
-            outputs: vec![tx_out()],
-        };
-
-        let block = Block::new_unchecked(header, vec![tx]);
-        let mut encoder = block.encoder();
-
-        // The block header, 6 encoders, 1 chunk per encoder.
-
-        // The block version.
-        assert_eq!(encoder.current_chunk(), &[2u8, 0, 0, 0][..]);
-        assert!(encoder.advance());
-        // The previous block's blockhash.
-        assert_eq!(
-            encoder.current_chunk(),
-            &[
-                171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171,
-                171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171, 171
-            ][..]
-        );
-        assert!(encoder.advance());
-        // The merkle root hash.
-        assert_eq!(
-            encoder.current_chunk(),
-            &[
-                205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205,
-                205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205
-            ][..]
-        );
-        assert!(encoder.advance());
-        // The block time.
-        assert_eq!(encoder.current_chunk(), &[80, 195, 137, 98][..]);
-        assert!(encoder.advance());
-        // The target (bits).
-        assert_eq!(encoder.current_chunk(), &[239, 190, 0, 0][..]);
-        assert!(encoder.advance());
-        // The nonce.
-        assert_eq!(encoder.current_chunk(), &[254, 202, 0, 0][..]);
-        assert!(encoder.advance());
-
-        // The transaction list length prefix.
-        assert_eq!(encoder.current_chunk(), &[1u8][..]);
-        assert!(encoder.advance());
-
-        // The transaction (same as tested above).
-
-        // The version
-        assert_eq!(encoder.current_chunk(), &[2u8, 0, 0, 0][..]);
-        assert!(encoder.advance());
-        // The segwit marker and flag
-        assert_eq!(encoder.current_chunk(), &TC_SEGWIT_MARKER_AND_FLAG[..]);
-        assert!(encoder.advance());
-        // The input (same as tested above) but with vec length prefix.
-        assert_eq!(encoder.current_chunk(), &[1u8][..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_TXID_BYTES[..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_VOUT_BYTES[..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &[3u8][..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_SCRIPT_BYTES[..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_SEQ_MAX_BYTES[..]);
-        assert!(encoder.advance());
-        // The output (same as tested above) but with vec length prefix.
-        assert_eq!(encoder.current_chunk(), &[1u8][..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_ONE_SAT_BYTES[..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &[3u8][..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_SCRIPT_BYTES[..]);
-        assert!(encoder.advance());
-        // The witness
-        assert_eq!(encoder.current_chunk(), &[1u8][..]);
-        assert!(encoder.advance());
-        assert_eq!(encoder.current_chunk(), &TC_WITNESS_ELEM_LEN_AND_DATA[..]);
-        assert!(encoder.advance());
-        // The lock time.
-        assert_eq!(encoder.current_chunk(), &TC_LOCK_TIME_ZERO_BYTES[..]);
-        assert!(!encoder.advance());
-
-        // Exhausted
-        assert!(encoder.current_chunk().is_empty());
-    }
-
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn decode_segwit_transaction() {
-        let tx_bytes = hex!(
-            "02000000000101595895ea20179de87052b4046dfe6fd515860505d6511a9004cf12a1f93cac7c01000000\
-            00ffffffff01deb807000000000017a9140f3444e271620c736808aa7b33e370bd87cb5a078702483045022\
-            100fb60dad8df4af2841adc0346638c16d0b8035f5e3f3753b88db122e70c79f9370220756e6633b17fd271\
-            0e626347d28d60b0a2d6cbb41de51740644b9fb3ba7751040121028fa937ca8cba2197a37c007176ed89410\
-            55d3bcb8627d085e94553e62f057dcc00000000"
-        );
+        let original = Transaction {
+            version: Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![segwit_tx_in()],
+            outputs: vec![tx_out()],
+        };
+        let tx_bytes = encoding::encode_to_vec(&original);
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
         decoder.push_bytes(&mut slice).unwrap();
         let tx = decoder.end().unwrap();
 
         // Attempt various truncations
-        for i in [1, 10, 20, 50, 100, tx_bytes.len() / 2, tx_bytes.len()] {
+        for i in [1, tx_bytes.len() / 4, tx_bytes.len() / 2, tx_bytes.len() - 1] {
             let mut decoder = Transaction::decoder();
             let mut slice = &tx_bytes[..tx_bytes.len() - i];
             // push_bytes will not fail because the data is not invalid, just truncated
@@ -2375,62 +2455,42 @@ mod tests {
             decoder.end().unwrap_err();
         }
 
-        // All these tests aren't really needed because if they fail, the hash check at the end
-        // will also fail. But these will show you where the failure is so I'll leave them in.
+        assert_eq!(tx, original);
         assert_eq!(tx.version, Version::TWO);
         assert_eq!(tx.inputs.len(), 1);
-        // In particular this one is easy to get backward: transaction hashes are encoded
-        // as little-endian 256-bit numbers rather than as data strings.
-        assert_eq!(
-            format!("{:x}", tx.inputs[0].previous_output.txid),
-            "7cac3cf9a112cf04901a51d605058615d56ffe6d04b45270e89d1720ea955859".to_string()
-        );
+        assert_eq!(tx.inputs[0].previous_output.txid, tc_out_point().txid);
         assert_eq!(tx.inputs[0].previous_output.vout, 1);
         assert_eq!(tx.outputs.len(), 1);
         assert_eq!(tx.lock_time, absolute::LockTime::ZERO);
-
-        assert_eq!(
-            format!("{:x}", tx.compute_txid()),
-            "f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206".to_string()
-        );
-        assert_eq!(
-            format!("{:x}", tx.compute_wtxid()),
-            "80b7d8a82d5d5bf92905b06f2014dd699e03837ca172e3a59d51426ebbe3e7f5".to_string()
-        );
+        assert_ne!(tx.compute_txid().to_byte_array(), tx.compute_wtxid().to_byte_array());
     }
 
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn decode_nonsegwit_transaction() {
-        let tx_bytes = hex!("0100000001a15d57094aa7a21a28cb20b59aab8fc7d1149a3bdbcddba9c622e4f5f6a99ece010000006c493046022100f93bb0e7d8db7bd46e40132d1f8242026e045f03a0efe71bbb8e3f475e970d790221009337cd7f1f929f00cc6ff01f03729b069a7c21b59b1736ddfee5db5946c5da8c0121033b9b137ee87d5a812d6f506efdd37f0affa7ffc310711c06c7f3e097c9447c52ffffffff0100e1f505000000001976a9140389035a9225b3839e2bbf32d826a1e222031fd888ac00000000");
+        let mut tx_in = segwit_tx_in();
+        tx_in.witness.clear();
+        let original = Transaction {
+            version: Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![tx_in],
+            outputs: vec![tx_out()],
+        };
+        let tx_bytes = encoding::encode_to_vec(&original);
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
         decoder.push_bytes(&mut slice).unwrap();
         let tx = decoder.end().unwrap();
 
-        // All these tests aren't really needed because if they fail, the hash check at the end
-        // will also fail. But these will show you where the failure is so I'll leave them in.
+        assert_eq!(tx, original);
         assert_eq!(tx.version, Version::ONE);
         assert_eq!(tx.inputs.len(), 1);
-        // In particular this one is easy to get backward: transaction hashes are encoded
-        // as little-endian 256-bit numbers rather than as data strings.
-        assert_eq!(
-            format!("{:x}", tx.inputs[0].previous_output.txid),
-            "ce9ea9f6f5e422c6a9dbcddb3b9a14d1c78fab9ab520cb281aa2a74a09575da1".to_string()
-        );
+        assert_eq!(tx.inputs[0].previous_output.txid, tc_out_point().txid);
         assert_eq!(tx.inputs[0].previous_output.vout, 1);
         assert_eq!(tx.outputs.len(), 1);
         assert_eq!(tx.lock_time, absolute::LockTime::ZERO);
-
-        assert_eq!(
-            format!("{:x}", tx.compute_txid()),
-            "a6eab3c14ab5272a58a5ba91505ba1a4b6d7a3a9fcbd187b6cd99a7b6d548cb7".to_string()
-        );
-        assert_eq!(
-            format!("{:x}", tx.compute_wtxid()),
-            "a6eab3c14ab5272a58a5ba91505ba1a4b6d7a3a9fcbd187b6cd99a7b6d548cb7".to_string()
-        );
+        assert_eq!(tx.compute_txid().to_byte_array(), tx.compute_wtxid().to_byte_array());
     }
 
     #[test]
@@ -2563,27 +2623,26 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_duplicate_inputs() {
-        // Invalid transaction fixture.
-        // Transaction has two inputs both spending the same outpoint
-        let tx_bytes = hex!("01000000020001000000000000000000000000000000000000000000000000000000000000000000006c47304402204bb1197053d0d7799bf1b30cd503c44b58d6240cccbdc85b6fe76d087980208f02204beeed78200178ffc6c74237bb74b3f276bbb4098b5605d814304fe128bf1431012321039e8815e15952a7c3fada1905f8cf55419837133bd7756c0ef14fc8dfe50c0deaacffffffff0001000000000000000000000000000000000000000000000000000000000000000000006c47304402202306489afef52a6f62e90bf750bbcdf40c06f5c6b138286e6b6b86176bb9341802200dba98486ea68380f47ebb19a7df173b99e6bc9c681d6ccf3bde31465d1f16b3012321039e8815e15952a7c3fada1905f8cf55419837133bd7756c0ef14fc8dfe50c0deaacffffffff010000000000000000015100000000");
+        let duplicate_outpoint = OutPoint { txid: Txid::from_byte_array([0x21; 32]), vout: 7 };
+        let mut input = synthetic_non_coinbase_input(0x21);
+        input.previous_output = duplicate_outpoint;
+        let tx = Transaction {
+            version: Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![input.clone(), input],
+            outputs: vec![synthetic_output(Amount::ONE_SAT)],
+        };
+        let tx_bytes = encoding::encode_to_vec(&tx);
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
         decoder.push_bytes(&mut slice).unwrap();
         let err = decoder.end().expect_err("transaction with duplicate inputs should be rejected");
 
-        let expected_outpoint = OutPoint {
-            txid: Txid::from_byte_array([
-                0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00,
-            ]),
-            vout: 0,
-        };
         assert_eq!(
             err,
             TransactionDecoderError(TransactionDecoderErrorInner::DuplicateInput(
-                expected_outpoint
+                duplicate_outpoint
             ))
         );
     }
@@ -2591,9 +2650,11 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_output_value_sum_too_large() {
-        // Invalid transaction fixture.
-        // "MAX_MONEY output + 1 output" (sum exceeds MAX_MONEY)
-        let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006d483045022027deccc14aa6668e78a8c9da3484fbcd4f9dcc9bb7d1b85146314b21b9ae4d86022100d0b43dece8cfb07348de0ca8bc5b86276fa88f7f2138381128b7c36ab2e42264012321029bb13463ddd5d2cc05da6e84e37536cb9525703cfd8f43afdb414988987a92f6acffffffff020040075af075070001510001000000000000015100000000");
+        let tx = synthetic_non_coinbase_tx(vec![
+            synthetic_output(Amount::MAX_MONEY),
+            synthetic_output(Amount::ONE_SAT),
+        ]);
+        let tx_bytes = encoding::encode_to_vec(&tx);
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
@@ -2606,7 +2667,8 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn accept_output_value_sum_equal_to_max_money() {
-        let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006d483045022027deccc14aa6668e78a8c9da3484fbcd4f9dcc9bb7d1b85146314b21b9ae4d86022100d0b43dece8cfb07348de0ca8bc5b86276fa88f7f2138381128b7c36ab2e42264012321029bb13463ddd5d2cc05da6e84e37536cb9525703cfd8f43afdb414988987a92f6acffffffff020080c6a47e8d0300015100c040b571e80300015100000000");
+        let tx = synthetic_non_coinbase_tx(vec![synthetic_output(Amount::MAX_MONEY)]);
+        let tx_bytes = encoding::encode_to_vec(&tx);
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
@@ -2620,9 +2682,17 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_output_value_greater_than_max_money() {
-        // Invalid transaction fixture.
-        // "MAX_MONEY + 1 output"
-        let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006e493046022100e1eadba00d9296c743cb6ecc703fd9ddc9b3cd12906176a226ae4c18d6b00796022100a71aef7d2874deff681ba6080f1b278bac7bb99c61b08a85f4311970ffe7f63f012321030c0588dc44d92bdcbf8e72093466766fdc265ead8db64517b0c542275b70fffbacffffffff010140075af0750700015100000000");
+        let mut tx_bytes =
+            encoding::encode_to_vec(&synthetic_non_coinbase_tx(vec![synthetic_output(
+                Amount::ONE_SAT,
+            )]));
+        let invalid_amount = Amount::MAX_MONEY.to_sat() + 1;
+        let one_sat = Amount::ONE_SAT.to_sat().to_le_bytes();
+        let amount_pos = tx_bytes
+            .windows(8)
+            .position(|window| window == one_sat)
+            .expect("encoded one-satoshi output amount");
+        tx_bytes[amount_pos..amount_pos + 8].copy_from_slice(&invalid_amount.to_le_bytes());
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
@@ -2633,9 +2703,7 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_transaction_with_no_outputs() {
-        // Invalid transaction fixture.
-        // "No outputs"
-        let tx_bytes = hex!("01000000010001000000000000000000000000000000000000000000000000000000000000000000006d483045022100f16703104aab4e4088317c862daec83440242411b039d14280e03dd33b487ab802201318a7be236672c5c56083eb7a5a195bc57a40af7923ff8545016cd3b571e2a601232103c40e5d339df3f30bf753e7e04450ae4ef76c9e45587d1d993bdc4cd06f0651c7acffffffff0000000000");
+        let tx_bytes = encoding::encode_to_vec(&synthetic_non_coinbase_tx(vec![]));
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();

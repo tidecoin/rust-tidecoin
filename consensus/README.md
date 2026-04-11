@@ -83,10 +83,10 @@ cargo bench --bench verification
 
 - `docs/github-ci.md`: active Tidecoin fixture/provenance workflow
 - `docs/pq-integration-plan.md`: active architectural and cleanup checklist
-- `docs/archived/integration-roadmap.md`: historical Bitcoin/Core-oriented roadmap
+- `docs/archived/integration-roadmap.md`: historical upstream-era roadmap
 
 ## Notes
 
 - Amount semantics follow the active Tidecoin runtime: explicit `amount` is authoritative for checksig/sighash.
-- Historical Bitcoin/Core-diff materials still exist in archived docs/tests, but are not the active Tidecoin parity workflow.
-- Historical Core-era corpora and metadata now live under [tests/archived/data](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data).
+- Historical upstream-diff materials still exist in archived docs/tests, but are not the active Tidecoin parity workflow.
+- Historical upstream-era corpora and metadata now live under [tests/archived/data](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data).

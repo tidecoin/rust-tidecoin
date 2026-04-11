@@ -292,6 +292,13 @@ impl encoding::Encoder for WitnessEncoder<'_> {
     }
 }
 
+impl encoding::ExactSizeEncoder for WitnessEncoder<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 /// The decoder for the [`Witness`] type.
 #[cfg(feature = "alloc")]
 pub struct WitnessDecoder {
@@ -643,7 +650,7 @@ impl fmt::Debug for Witness {
                     #[cfg(feature = "hex")]
                     {
                         f.debug_list()
-                            .entries(self.iter().map(hex_unstable::DisplayHex::as_hex))
+                            .entries(self.iter().map(internals::hex::DisplayHex::as_hex))
                             .finish()
                     }
                     #[cfg(not(feature = "hex"))]
@@ -735,7 +742,7 @@ impl<T: AsRef<[u8]>> FromIterator<T> for Witness {
     }
 }
 
-// Serde keep backward compatibility with old Vec<Vec<u8>> format
+// Serde uses the same sequence-of-byte-vectors shape as the witness wire model.
 #[cfg(feature = "serde")]
 impl serde::Serialize for Witness {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -1301,14 +1308,14 @@ mod test {
 
     #[test]
     #[cfg(feature = "serde")]
-    fn serde_bincode_backward_compatibility() {
-        let old_witness_format = vec![vec![0u8], vec![2]];
-        let new_witness_format = Witness::from_slice(&old_witness_format);
+    fn serde_bincode_matches_sequence_of_byte_vectors() {
+        let vector_form = vec![vec![0u8], vec![2]];
+        let witness = Witness::from_slice(&vector_form);
 
-        let old = bincode::serialize(&old_witness_format).unwrap();
-        let new = bincode::serialize(&new_witness_format).unwrap();
+        let vector_encoded = bincode::serialize(&vector_form).unwrap();
+        let witness_encoded = bincode::serialize(&witness).unwrap();
 
-        assert_eq!(old, new);
+        assert_eq!(vector_encoded, witness_encoded);
     }
 
     #[cfg(feature = "serde")]
@@ -1384,10 +1391,7 @@ mod test {
     #[test]
     #[cfg(feature = "hex")]
     fn test_from_hex() {
-        let hex_strings = [
-            "30440220703350f1c8be5b41b4cb03b3b680c4f3337f987514a6b08e16d5d9f81e9b5f72022018fb269ba5b82864c0e1edeaf788829eb332fe34a859cc1f99c4a02edfb5d0df01",
-            "0208689fe2cca52d8726cefaf274de8fa61d5faa5e1058ad35b49fb194c035f9a4",
-        ];
+        let hex_strings = ["39aabbccdd", "0751525354"];
 
         let witness = Witness::from_hex(hex_strings).unwrap();
         assert_eq!(witness.len(), 2);

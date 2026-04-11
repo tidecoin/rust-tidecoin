@@ -49,13 +49,9 @@ impl ByteVecDecoder {
     ///
     /// Reserves up to `MAX_VECTOR_ALLOCATE` bytes when the buffer has no remaining capacity.
     ///
-    /// Documentation adapted from Bitcoin Core:
-    ///
-    /// > For `DoS` prevention, do not blindly allocate as much as the stream claims to contain.
-    /// > Instead, allocate in ~1 MB batches, so that an attacker actually needs to provide X MB of
-    /// > data to make us allocate X+1 MB of memory.
-    ///
-    /// ref: <https://github.com/bitcoin/bitcoin/blob/72511fd02e72b74be11273e97bd7911786a82e54/src/serialize.h#L669C2-L672C1>
+    /// For `DoS` prevention, do not blindly allocate as much as the stream claims to contain.
+    /// Instead, allocate in batches, so that an attacker actually needs to provide X MB of
+    /// data to make us allocate roughly X MB of memory.
     fn reserve(&mut self) {
         if self.buffer.len() == self.buffer.capacity() {
             let bytes_remaining = self.bytes_expected - self.bytes_written;
@@ -194,13 +190,9 @@ impl<T: Decodable> VecDecoder<T> {
     /// Calculates how many elements of type `T` fit within `MAX_VECTOR_ALLOCATE` bytes and reserves
     /// up to that amount when the buffer reaches capacity.
     ///
-    /// Documentation adapted from Bitcoin Core:
-    ///
-    /// > For `DoS` prevention, do not blindly allocate as much as the stream claims to contain.
-    /// > Instead, allocate in ~1 MB batches, so that an attacker actually needs to provide X MB of
-    /// > data to make us allocate X+1 MB of memory.
-    ///
-    /// ref: <https://github.com/bitcoin/bitcoin/blob/72511fd02e72b74be11273e97bd7911786a82e54/src/serialize.h#L669C2-L672C1>
+    /// For `DoS` prevention, do not blindly allocate as much as the stream claims to contain.
+    /// Instead, allocate in batches, so that an attacker actually needs to provide X MB of
+    /// data to make us allocate roughly X MB of memory.
     fn reserve(&mut self) {
         if self.buffer.len() == self.buffer.capacity() {
             let elements_remaining = self.length - self.buffer.len();

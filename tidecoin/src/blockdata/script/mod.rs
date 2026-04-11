@@ -68,11 +68,12 @@ pub use self::{
 pub use primitives::script::ScriptBufDecoderError;
 #[doc(inline)]
 pub use primitives::script::{
-    Instruction, InstructionIndices, Instructions, PushBytes, PushBytesBuf, PushBytesError,
-    RedeemScript, RedeemScriptBuf, RedeemScriptSizeError, RedeemScriptTag, Script, ScriptBuf,
-    ScriptBufDecoder, ScriptEncoder, ScriptHash, ScriptHashableTag, ScriptIntError, ScriptPubKey,
-    ScriptPubKeyBuf, ScriptPubKeyTag, ScriptSig, ScriptSigBuf, ScriptSigTag, Tag, WScriptHash,
-    WitnessScript, WitnessScriptBuf, WitnessScriptSizeError, WitnessScriptTag,
+    read_scriptbool, read_scriptint_non_minimal, write_scriptint, Instruction, InstructionIndices,
+    Instructions, PushBytes, PushBytesBuf, PushBytesError, RedeemScript, RedeemScriptBuf,
+    RedeemScriptSizeError, RedeemScriptTag, Script, ScriptBuf, ScriptBufDecoder, ScriptEncoder,
+    ScriptHash, ScriptHashableTag, ScriptIntError, ScriptPubKey, ScriptPubKeyBuf, ScriptPubKeyTag,
+    ScriptSig, ScriptSigBuf, ScriptSigTag, Tag, WScriptHash, WitnessScript, WitnessScriptBuf,
+    WitnessScriptSizeError, WitnessScriptTag,
 };
 
 /// Constructs a new [`WitnessScriptBuf`] containing the script code used for spending a P2WPKH output.
@@ -80,7 +81,7 @@ pub use primitives::script::{
 /// The `scriptCode` follows the witness-v0 signature-hash template.
 ///
 /// While the type returned is [`WitnessScriptBuf`], this is **not** a witness script and
-/// should not be used as one. It is a special template defined in BIP-0143 which is used
+/// should not be used as one. It is a Tidecoin witness-v0 script-code template used
 /// in place of a witness script for purposes of sighash computation.
 pub fn p2wpkh_script_code(wpkh: WPubkeyHash) -> WitnessScriptBuf {
     Builder::new()
@@ -90,83 +91,6 @@ pub fn p2wpkh_script_code(wpkh: WPubkeyHash) -> WitnessScriptBuf {
         .push_opcode(OP_EQUALVERIFY)
         .push_opcode(OP_CHECKSIG)
         .into_script()
-}
-
-/// Encodes an integer in script(minimal CScriptNum) format.
-///
-/// Writes bytes into the buffer and returns the number of bytes written.
-///
-/// Note that `write_scriptint`/`read_scriptint` do not roundtrip if the value written requires
-/// more than 4 bytes, matching Tidecoin consensus script number encoding.
-pub fn write_scriptint(out: &mut [u8; 8], n: i64) -> usize {
-    let mut len = 0;
-    if n == 0 {
-        return len;
-    }
-
-    let neg = n < 0;
-
-    let mut abs = n.unsigned_abs();
-    while abs > 0xFF {
-        out[len] = (abs & 0xFF) as u8;
-        len += 1;
-        abs >>= 8;
-    }
-    // If the number's value causes the sign bit to be set, we need an extra
-    // byte to get the correct value and correct sign bit
-    if abs & 0x80 != 0 {
-        out[len] = abs as u8;
-        len += 1;
-        out[len] = if neg { 0x80u8 } else { 0u8 };
-        len += 1;
-    }
-    // Otherwise we just set the sign bit ourselves
-    else {
-        abs |= if neg { 0x80 } else { 0 };
-        out[len] = abs as u8;
-        len += 1;
-    }
-    len
-}
-
-/// Decodes an integer in script format without non-minimal error.
-///
-/// The overflow error for slices over 4 bytes long is still there.
-///
-/// See [`push_bytes::PushBytes::read_scriptint`] for a description of some subtleties of
-/// this function.
-pub fn read_scriptint_non_minimal(v: &[u8]) -> Result<i32, ScriptIntError> {
-    if v.is_empty() {
-        return Ok(0);
-    }
-    if v.len() > 4 {
-        return Err(ScriptIntError::NumericOverflow);
-    }
-
-    let ret = scriptint_parse(v);
-    Ok(i32::try_from(ret).expect("4 bytes or less fits in an i32"))
-}
-
-// Caller to guarantee that `v` is not empty.
-fn scriptint_parse(v: &[u8]) -> i64 {
-    let (mut ret, sh) = v.iter().fold((0, 0), |(acc, sh), n| (acc + ((*n as i64) << sh), sh + 8));
-    if v[v.len() - 1] & 0x80 != 0 {
-        ret &= (1 << (sh - 1)) - 1;
-        ret = -ret;
-    }
-    ret
-}
-
-/// Decodes a boolean.
-///
-/// This is like "`read_scriptint` then map 0 to false and everything
-/// else as true", except that the overflow rules don't apply.
-#[inline]
-pub fn read_scriptbool(v: &[u8]) -> bool {
-    match v.split_last() {
-        Some((last, rest)) => !((last & !0x80 == 0x00) && rest.iter().all(|&b| b == 0)),
-        None => false,
-    }
 }
 
 /// Generates witness-program scriptPubkey with a given [`WitnessVersion`] and the program bytes.

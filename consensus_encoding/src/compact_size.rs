@@ -2,8 +2,8 @@
 
 //! Compact size codec.
 //!
-//! Compact size is a variable-length integer encoding used throughout the Bitcoin
-//! consensus protocol to usually to encode collection lengths. However, there are
+//! Compact size is a variable-length integer encoding used throughout the Tidecoin
+//! consensus protocol, usually to encode collection lengths. However, there are
 //! also some unique non-length use cases.
 
 use internals::array_vec::ArrayVec;
@@ -40,7 +40,7 @@ impl CompactSizeEncoder {
     /// Constructs a new `CompactSizeEncoder` for a length prefix.
     ///
     /// The `usize` type is the natural Rust type for lengths and collection sizes, which is the
-    /// dominant use case for compact size encoding in the Bitcoin protocol. Prefer this constructor
+    /// dominant use case for compact size encoding in the Tidecoin protocol. Prefer this constructor
     /// whenever you are encoding the length of a collection or a byte slice.
     ///
     /// Compact size encodings are defined only over the `u64` range. On exotic platforms where
@@ -57,7 +57,7 @@ impl CompactSizeEncoder {
     ///
     /// Prefer [`Self::new`] unless you are encoding a non-length integer.
     ///
-    /// A small number of fields in the Bitcoin protocol are compact-size-encoded integers that are
+    /// A small number of fields in the Tidecoin protocol are compact-size-encoded integers that are
     /// not collection lengths (e.g. service flags). Use this constructor for those cases, where the
     /// natural type of the value is `u64` rather than `usize`.
     pub fn new_u64(value: u64) -> Self {
@@ -214,7 +214,7 @@ impl Decoder for CompactSizeDecoder {
 /// If you are decoding a length prefix, you probably want [`CompactSizeDecoder`] instead.
 ///
 /// This decoder performs no limit check and no conversion to `usize`. It exists for the small
-/// number of Bitcoin protocol fields that are compact-size-encoded integers but are not length
+/// number of Tidecoin protocol fields that are compact-size-encoded integers but are not length
 /// prefixes (e.g. service flags in the `version` message). For those fields the full `u64` range is
 /// meaningful and there is no associated allocation whose size would be controlled by the decoded
 /// value.

@@ -19,7 +19,7 @@ fn do_test(data: &[u8]) {
         // Manually call all compute functions with unchecked block data.
         let (header, transactions) = block.clone().into_parts();
         block::compute_merkle_root(&transactions);
-        // Use 32-byte zero array as witness_reserved_value per BIP-0141 requirement.
+        // Use the 32-byte zero witness reserved value required by Tidecoin witness commitment rules.
         block.compute_witness_commitment(&[0u8; 32]);
         block::compute_witness_root(&transactions);
 

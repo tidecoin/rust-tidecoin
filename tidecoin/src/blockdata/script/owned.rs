@@ -58,14 +58,6 @@ internal_macros::define_extension_trait! {
             primitives::script::ScriptBuf::scan_and_push_verify(self)
         }
 
-        /// Constructs a new [`ScriptBuf`] from a hex string.
-        #[deprecated(since = "TBD", note = "use `from_hex_no_length_prefix()` instead")]
-        fn from_hex(s: &str) -> Result<Self, hex::DecodeVariableLengthBytesError>
-        where Self: Sized
-        {
-            Self::from_hex_no_length_prefix(s)
-        }
-
         /// Generates P2WPKH-type of scriptPubkey.
         fn new_p2wpkh(pubkey_hash: WPubkeyHash) -> Self {
             script::new_witness_program_unchecked(WitnessVersion::V0, pubkey_hash.to_byte_array())

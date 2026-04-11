@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-# When running script locally the name used for the `github.com/rust-bitcoin/rust-bitcoin` remote.
+# When running script locally the name used for the upstream comparison remote.
 REMOTE="upstream"
 
 main() {

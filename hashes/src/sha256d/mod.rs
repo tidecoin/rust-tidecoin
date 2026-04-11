@@ -83,7 +83,7 @@ mod tests {
 
         #[rustfmt::skip]
         let tests = [
-            // Test vector copied out of rust-bitcoin
+            // Regression vector for the all-empty double-SHA256 case.
             Test {
                 input: "",
                 output: [

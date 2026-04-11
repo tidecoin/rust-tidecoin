@@ -1,5 +1,5 @@
 [workspace]
-members = ["base58", "bip158", "chacha20_poly1305", "consensus", "consensus-core", "consensus_encoding", "fuzz", "hashes", "internals", "io", "key_expression", "network", "node-parity", "p2p", "primitives", "tidecoin", "units"]
+members = ["base58", "chacha20_poly1305", "consensus", "consensus-core", "consensus_encoding", "fuzz", "hashes", "internals", "io", "network", "node-parity", "p2p", "primitives", "tidecoin", "units"]
 exclude = ["benches"]
 resolver = "2"
 
@@ -12,7 +12,7 @@ unexpected_cfgs = { level = "deny", check-cfg = ['cfg(bench)', 'cfg(chacha20_pol
 
 [workspace.lints.clippy]
 # Exclude lints we don't think are valuable.
-needless_question_mark = "allow" # https://github.com/rust-bitcoin/rust-bitcoin/pull/2134
+needless_question_mark = "allow" # Allows uniform error-forwarding style in generated and macro-heavy code.
 manual_range_contains = "allow" # More readable than clippy's format.
 # Exhaustive list of pedantic clippy lints
 assigning_clones = "warn"

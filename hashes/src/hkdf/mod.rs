@@ -2,7 +2,8 @@
 
 //! HMAC-based Extract-and-Expand Key Derivation Function (HKDF).
 //!
-//! Implementation based on RFC5869, but the interface is scoped to BIP-0324's requirements.
+//! Implementation based on RFC5869, with the minimal interface required by the
+//! Tidecoin v2 transport key schedule.
 
 #[cfg(feature = "alloc")]
 use alloc::vec;
@@ -160,7 +161,7 @@ impl<T: HashEngine> fmt::Debug for Hkdf<T> {
 #[cfg(feature = "alloc")]
 #[cfg(feature = "hex")]
 mod tests {
-    use hex_unstable::DisplayHex;
+    use internals::hex::DisplayHex;
 
     use super::*;
     use crate::{hex, sha256};

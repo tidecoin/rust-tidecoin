@@ -60,7 +60,7 @@
 // Instead of littering the codebase for non-fuzzing and bench code just globally allow.
 #![cfg_attr(hashes_fuzz, allow(dead_code, unused_imports))]
 // Exclude lints we don't think are valuable.
-#![allow(clippy::needless_question_mark)] // https://github.com/rust-bitcoin/rust-bitcoin/pull/2134
+#![allow(clippy::needless_question_mark)] // Allows uniform error-forwarding style in macro-heavy code.
 #![allow(clippy::manual_range_contains)] // More readable than clippy's format.
 #![allow(clippy::uninlined_format_args)] // Allow `format!("{}", x)` instead of enforcing `format!("{x}")`
 
@@ -83,7 +83,9 @@ pub extern crate encoding;
 #[cfg(feature = "hex")]
 pub extern crate hex_stable as hex;
 #[cfg(feature = "hex")]
-pub extern crate hex_unstable;
+pub use internals::fmt_hex_exact;
+#[cfg(feature = "hex")]
+pub use internals::hex as hex_format;
 
 #[doc(hidden)]
 pub mod _export {
@@ -228,7 +230,7 @@ pub trait Hash:
 
     /// Flag indicating whether user-visible serializations of this hash should be backward.
     ///
-    /// For some reason Satoshi decided this should be true for `Sha256dHash`, so here we are.
+    /// Double-SHA256 hashes use reversed byte order for their user-visible hexadecimal display.
     const DISPLAY_BACKWARD: bool = false;
 
     /// Constructs a new hash from the underlying byte array.
@@ -259,8 +261,8 @@ mod sealed {
 
 /// Does a best attempt at erasing the contents of `val` by writing zeros.
 ///
-/// The implementation is based on the approach used by the [`zeroize`](https://docs.rs/zeroize)
-/// crate and the `non_secure_erase` functions in `rust-secp256k1`.
+/// The implementation follows the same volatile-zeroing pattern used by
+/// [`zeroize`](https://docs.rs/zeroize)-style erasure helpers.
 ///
 /// Note, however, that the compiler is allowed to freely copy or move the contents of `val` to
 /// other places in memory. Preventing this behavior is very subtle. For more discussion on this,

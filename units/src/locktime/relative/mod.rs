@@ -22,14 +22,15 @@ use crate::{BlockHeight, BlockMtp, Sequence};
 #[rustfmt::skip]                // Keep public re-exports separate.
 #[doc(no_inline)]
 pub use self::error::{
-    DisabledLockTimeError, InvalidHeightError, InvalidTimeError, IsSatisfiedByError,
-    IsSatisfiedByHeightError, IsSatisfiedByTimeError, TimeOverflowError,
+    DisabledLockTimeError, IncompatibleHeightError, IncompatibleTimeError, InvalidHeightError,
+    InvalidTimeError, IsSatisfiedByError, IsSatisfiedByHeightError, IsSatisfiedByTimeError,
+    TimeOverflowError,
 };
 
 /// A relative lock time value, representing either a block height or time (512 second intervals).
 ///
-/// Used for sequence numbers (`nSequence` in Bitcoin Core and `TxIn::sequence`
-/// in `rust-tidecoin`) and also for the argument to opcode `OP_CHECKSEQUENCEVERIFY`.
+/// Used for sequence numbers (`TxIn::sequence`) and also for the argument to
+/// opcode `OP_CHECKSEQUENCEVERIFY`.
 ///
 /// # Note on ordering
 ///
@@ -37,10 +38,11 @@ pub use self::error::{
 /// ordering on locktimes. In order to compare locktimes, instead of using `<` or `>` we provide the
 /// [`LockTime::is_satisfied_by`] API.
 ///
-/// # Relevant BIPs
+/// # Tidecoin Consensus Rules
 ///
-/// * [BIP-0068 Relative lock-time using consensus-enforced sequence numbers](https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki)
-/// * [BIP-0112 CHECKSEQUENCEVERIFY](https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki)
+/// Relative lock-time values are interpreted from the sequence field using
+/// Tidecoin's active height/time bit layout. Script evaluation uses the same
+/// rule for `OP_CHECKSEQUENCEVERIFY`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LockTime {
     /// A block height lock time value.
@@ -107,7 +109,7 @@ impl LockTime {
         }
     }
 
-    /// Constructs a new `LockTime` from the sequence number of a Bitcoin input.
+    /// Constructs a new `LockTime` from a transaction input sequence number.
     ///
     /// This method will **not** round-trip with [`Self::to_sequence`]. See the
     /// docs for [`Self::from_consensus`] for more information.
@@ -121,7 +123,7 @@ impl LockTime {
     /// ```rust
     /// # use tidecoin_units::{Sequence, relative};
     ///
-    /// // Interpret a sequence number from a Bitcoin transaction input as a relative lock time
+    /// // Interpret a transaction input sequence number as a relative lock time.
     /// let sequence_number = Sequence::from_consensus(144); // 144 blocks, approx 24h.
     /// let lock_time = relative::LockTime::from_sequence(sequence_number)?;
     /// assert!(lock_time.is_block_height());
@@ -243,7 +245,9 @@ impl LockTime {
             Self::Blocks(blocks) => blocks
                 .is_satisfied_by(chain_tip, utxo_mined_at)
                 .map_err(IsSatisfiedByHeightError::Satisfaction),
-            Self::Time(time) => Err(IsSatisfiedByHeightError::Incompatible(time)),
+            Self::Time(time) => {
+                Err(IsSatisfiedByHeightError::Incompatible(IncompatibleHeightError::new(time)))
+            }
         }
     }
 
@@ -265,7 +269,9 @@ impl LockTime {
             Self::Time(time) => time
                 .is_satisfied_by(chain_tip, utxo_mined_at)
                 .map_err(IsSatisfiedByTimeError::Satisfaction),
-            Self::Blocks(blocks) => Err(IsSatisfiedByTimeError::Incompatible(blocks)),
+            Self::Blocks(blocks) => {
+                Err(IsSatisfiedByTimeError::Incompatible(IncompatibleTimeError::new(blocks)))
+            }
         }
     }
 
@@ -403,10 +409,6 @@ impl<'de> serde::Deserialize<'de> for LockTime {
     }
 }
 
-#[deprecated(since = "1.0.0-rc.0", note = "use `NumberOfBlocks` instead")]
-#[doc(hidden)]
-pub type Height = NumberOfBlocks;
-
 /// A relative lock time lock-by-height value.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NumberOfBlocks(u16);
@@ -432,25 +434,6 @@ impl NumberOfBlocks {
     #[must_use]
     pub const fn to_height(self) -> u16 {
         self.0
-    }
-
-    /// Returns the inner `u16` value.
-    #[inline]
-    #[must_use]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `to_height` instead")]
-    #[doc(hidden)]
-    pub const fn value(self) -> u16 {
-        self.0
-    }
-
-    /// Returns the `u32` value used to encode this locktime in an nSequence field or
-    /// argument to `OP_CHECKSEQUENCEVERIFY`.
-    #[deprecated(
-        since = "1.0.0-rc.0",
-        note = "use `LockTime::from` followed by `to_consensus_u32` instead"
-    )]
-    pub const fn to_consensus_u32(self) -> u32 {
-        self.0 as u32 // cast safety: u32 is wider than u16 on all architectures
     }
 
     /// Constructs a new `NumberOfBlocks` from a prefixed hex string.
@@ -518,13 +501,9 @@ impl fmt::Display for NumberOfBlocks {
     }
 }
 
-#[deprecated(since = "1.0.0-rc.0", note = "use `NumberOf512Seconds` instead")]
-#[doc(hidden)]
-pub type Time = NumberOf512Seconds;
-
 /// A relative lock time lock-by-time value.
 ///
-/// For BIP-0068 relative lock-by-time locks, time is measured in 512 second intervals.
+/// For Tidecoin relative lock-by-time locks, time is measured in 512 second intervals.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NumberOf512Seconds(u16);
 
@@ -541,7 +520,7 @@ impl NumberOf512Seconds {
     /// Constructs a new [`NumberOf512Seconds`] using time intervals where each interval is
     /// equivalent to 512 seconds.
     ///
-    /// Encoding finer granularity of time for relative lock-times is not supported in Bitcoin.
+    /// Encoding finer granularity of time for relative lock-times is not supported by Tidecoin.
     #[inline]
     pub const fn from_512_second_intervals(intervals: u16) -> Self {
         Self(intervals)
@@ -592,25 +571,6 @@ impl NumberOf512Seconds {
     #[inline]
     pub const fn to_seconds(self) -> u32 {
         const_casts::u16_to_u32(self.0) * 512
-    }
-
-    /// Returns the inner `u16` value.
-    #[inline]
-    #[must_use]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `to_512_second_intervals` instead")]
-    #[doc(hidden)]
-    pub const fn value(self) -> u16 {
-        self.0
-    }
-
-    /// Returns the `u32` value used to encode this locktime in an nSequence field or
-    /// argument to `OP_CHECKSEQUENCEVERIFY`.
-    #[deprecated(
-        since = "1.0.0-rc.0",
-        note = "use `LockTime::from` followed by `to_consensus_u32` instead"
-    )]
-    pub const fn to_consensus_u32(self) -> u32 {
-        (1u32 << 22) | self.0 as u32 // cast safety: u32 is wider than u16 on all architectures
     }
 
     /// Constructs a new `NumberOf512Seconds` from a prefixed hex string.
@@ -869,7 +829,10 @@ mod tests {
         let err = lock_by_time.is_satisfied_by_height(chain_tip, mined_at).unwrap_err();
 
         let expected_time = NumberOf512Seconds::from_512_second_intervals(70);
-        assert_eq!(err, IsSatisfiedByHeightError::Incompatible(expected_time));
+        assert_eq!(
+            err,
+            IsSatisfiedByHeightError::Incompatible(IncompatibleHeightError::new(expected_time))
+        );
         assert!(!format!("{}", err).is_empty());
     }
 
@@ -897,7 +860,10 @@ mod tests {
         let err = lock_by_height.is_satisfied_by_time(chain_tip, mined_at).unwrap_err();
 
         let expected_height = NumberOfBlocks::from(10);
-        assert_eq!(err, IsSatisfiedByTimeError::Incompatible(expected_height));
+        assert_eq!(
+            err,
+            IsSatisfiedByTimeError::Incompatible(IncompatibleTimeError::new(expected_height))
+        );
         assert!(!format!("{}", err).is_empty());
     }
 
@@ -977,7 +943,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated_in_future)]
     fn sanity_check() {
         assert_eq!(LockTime::from(NumberOfBlocks::MAX).to_consensus_u32(), u32::from(u16::MAX));
         assert_eq!(

@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Bitcoin transaction input sequence number.
+//! Tidecoin transaction input sequence number.
 //!
 //! The sequence field is used for:
 //! - Indicating whether absolute lock-time (specified in `lock_time` field of `Transaction`) is enabled.
-//! - Indicating and encoding [BIP-0068] relative lock-times.
-//! - Indicating whether a transaction opts-in to [BIP-0125] replace-by-fee.
+//! - Indicating and encoding relative lock-times.
+//! - Indicating whether a transaction opts in to replace-by-fee.
 //!
 //! Note that transactions spending an output with `OP_CHECKLOCKTIMEVERIFY` MUST NOT use
-//! `Sequence::MAX` for the corresponding input. [BIP-0065]
-//!
-//! [BIP-0065]: <https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki>
-//! [BIP-0068]: <https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki>
-//! [BIP-0125]: <https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki>
+//! `Sequence::MAX` for the corresponding input.
 
 use core::fmt;
 
@@ -30,7 +26,7 @@ use crate::parse_int::{self, PrefixedHexError, UnprefixedHexError};
 #[doc(no_inline)]
 pub use self::error::SequenceDecoderError;
 
-/// Bitcoin transaction input sequence number.
+/// Tidecoin transaction input sequence number.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Sequence(pub u32);
@@ -49,10 +45,6 @@ impl Sequence {
     /// The sequence number that enables absolute lock time but disables replace-by-fee
     /// and relative lock time.
     pub const ENABLE_LOCKTIME_NO_RBF: Self = Self::MIN_NO_RBF;
-    /// The sequence number that enables replace-by-fee and absolute lock time but
-    /// disables relative lock time.
-    #[deprecated(since = "1.0.0-rc.0", note = "use `ENABLE_LOCKTIME_AND_RBF` instead")]
-    pub const ENABLE_RBF_NO_LOCKTIME: Self = Self(0xFFFF_FFFD);
     /// The maximum sequence number that enables replace-by-fee and absolute lock time but
     /// disables relative lock time.
     ///
@@ -64,15 +56,12 @@ impl Sequence {
 
     /// The lowest sequence number that does not opt-in for replace-by-fee.
     ///
-    /// A transaction is considered to have opted in to replacement of itself
-    /// if any of its inputs have a `Sequence` number less than this value
-    /// (Explicit Signalling [BIP-0125]).
-    ///
-    /// [BIP-0125]: <https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki>
+    /// A transaction is considered to have opted in to replacement of itself if any of its inputs
+    /// have a `Sequence` number less than this value.
     const MIN_NO_RBF: Self = Self(0xFFFF_FFFE);
-    /// BIP-0068 relative lock time disable flag mask.
+    /// Relative lock time disable flag mask.
     const LOCK_TIME_DISABLE_FLAG_MASK: u32 = 0x8000_0000;
-    /// BIP-0068 relative lock time type flag mask.
+    /// Relative lock time type flag mask.
     pub(super) const LOCK_TYPE_MASK: u32 = 0x0040_0000;
 
     /// Returns `true` if the sequence number enables absolute lock-time (`Transaction::lock_time`).
@@ -84,28 +73,15 @@ impl Sequence {
     /// Returns `true` if the sequence number indicates that the transaction is finalized.
     ///
     /// Instead of this method please consider using `!enables_absolute_lock_time` because it
-    /// is equivalent and improves readability for those not steeped in Bitcoin folklore.
+    /// is equivalent and improves readability.
     ///
-    /// # Historical note
-    ///
-    /// The term 'final' is an archaic Bitcoin term, it may have come about because the sequence
-    /// number in the original Bitcoin code was intended to be incremented in order to replace a
-    /// transaction, so once the sequence number got to `u32::MAX` it could no longer be increased,
-    /// hence it was 'final'.
-    ///
-    ///
-    /// Some other references to the term:
-    /// - `CTxIn::SEQUENCE_FINAL` in the Bitcoin Core code.
-    /// - [BIP-0112]: "BIP-0068 prevents a non-final transaction from being selected for inclusion in a
-    ///   block until the corresponding input has reached the specified age"
-    ///
-    /// [BIP-0112]: <https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki>
+    /// The term "final" means the sequence value disables absolute lock-time.
     #[inline]
     pub fn is_final(self) -> bool {
         !self.enables_absolute_lock_time()
     }
 
-    /// Returns true if the transaction opted-in to BIP-0125 replace-by-fee.
+    /// Returns true if the transaction opted in to replace-by-fee.
     ///
     /// Replace by fee is signaled by the sequence being less than 0xfffffffe which is checked by
     /// this method. Note, this is the highest "non-final" value (see [`Sequence::is_final`]).
@@ -165,7 +141,7 @@ impl Sequence {
     /// Constructs a new relative lock-time using time intervals where each interval is equivalent
     /// to 512 seconds.
     ///
-    /// Encoding finer granularity of time for relative lock-times is not supported in Bitcoin
+    /// Encoding finer granularity of time for relative lock-times is not supported.
     #[inline]
     pub fn from_512_second_intervals(intervals: u16) -> Self {
         Self(u32::from(intervals) | Self::LOCK_TYPE_MASK)
@@ -213,14 +189,6 @@ impl Sequence {
         self.0
     }
 
-    /// Gets the hex representation of this [`Sequence`].
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(self) -> alloc::string::String {
-        alloc::format!("{:x}", self)
-    }
-
     /// Constructs a new [`relative::LockTime`] from this [`Sequence`] number.
     #[inline]
     pub fn to_relative_lock_time(self) -> Option<relative::LockTime> {
@@ -241,7 +209,7 @@ impl Sequence {
 
     /// Returns the low 16 bits from sequence number.
     ///
-    /// BIP-0068 only uses the low 16 bits for relative lock value.
+    /// Relative lock values use the low 16 bits.
     #[inline]
     const fn low_u16(self) -> u16 {
         self.0 as u16

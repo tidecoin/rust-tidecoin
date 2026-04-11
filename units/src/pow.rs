@@ -18,11 +18,9 @@ pub use self::error::CompactTargetDecoderError;
 
 /// Encoding of 256-bit target as 32-bit float.
 ///
-/// This is used to encode a target into the block header. Satoshi made this part of consensus code
-/// in the original version of Bitcoin, likely copying an idea from OpenSSL.
+/// This is used to encode a target into the block header.
 ///
-/// OpenSSL's bignum (BN) type has an encoding, which is even called "compact" as in bitcoin, which
-/// is exactly this format.
+/// The format is the compact target representation used by Tidecoin consensus.
 ///
 /// # Note on order/equality
 ///
@@ -45,14 +43,6 @@ impl CompactTarget {
     #[inline]
     pub const fn to_consensus(self) -> u32 {
         self.0
-    }
-
-    /// Gets the hex representation of this [`CompactTarget`].
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[deprecated(since = "1.0.0-rc.0", note = "use `format!(\"{var:x}\")` instead")]
-    pub fn to_hex(self) -> alloc::string::String {
-        alloc::format!("{:x}", self)
     }
 
     /// Constructs a new `CompactTarget` from a prefixed hex string.
@@ -234,10 +224,9 @@ mod tests {
 
     #[test]
     #[cfg(feature = "alloc")]
-    #[allow(deprecated)]
     fn compact_target_to_hex() {
         let compact_target = CompactTarget::from_consensus(0x1d00_ffff);
-        assert_eq!(compact_target.to_hex(), "1d00ffff");
+        assert_eq!(format!("{compact_target:x}"), "1d00ffff");
     }
 
     #[test]

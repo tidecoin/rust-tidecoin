@@ -12,8 +12,7 @@ mod network_ext;
 
 #[cfg(feature = "std")]
 pub mod address;
-pub mod bip152;
-pub mod bip324_pq;
+pub mod compact_blocks;
 pub mod merkle_tree;
 #[cfg(feature = "std")]
 pub mod message;
@@ -23,6 +22,7 @@ pub mod message_compact_blocks;
 pub mod message_filter;
 #[cfg(feature = "std")]
 pub mod message_network;
+pub mod pq_v2_transport;
 
 extern crate alloc;
 #[cfg(feature = "std")]
@@ -92,7 +92,7 @@ impl ProtocolVersion {
     /// Support `sendheaders` message and announce new blocks via headers rather than inv
     pub const SENDHEADERS_VERSION: Self = Self(70012);
     /// Support `pong` message and nonce in `ping` message
-    pub const BIP0031_VERSION: Self = Self(60000);
+    pub const PONG_VERSION: Self = Self(60000);
     /// All connections will be terminated below this version.
     pub const MIN_PEER_PROTO_VERSION: Self = Self(31800);
 }
@@ -205,7 +205,7 @@ impl ServiceFlags {
 
     /// GETUTXO means the node is capable of responding to the getutxo protocol request. Tidecoin
     /// Core does not support this but a patch set called Tidecoin XT does.
-    /// See BIP-0064 for details on how this is implemented.
+    /// Retained for peers that advertise the legacy getutxo service bit.
     pub const GETUTXO: Self = Self(1 << 1);
 
     /// BLOOM means the node is capable and willing to handle bloom-filtered connections. Tidecoin
@@ -218,16 +218,16 @@ impl ServiceFlags {
     pub const WITNESS: Self = Self(1 << 3);
 
     /// `COMPACT_FILTERS` means the node will service basic block filter requests.
-    /// See BIP-0157 and BIP-0158 for details on how this is implemented.
+    /// Uses Tidecoin compact block filter messages.
     pub const COMPACT_FILTERS: Self = Self(1 << 6);
 
     /// `NETWORK_LIMITED` means the same as `NODE_NETWORK` with the limitation of only serving the last
     /// 288 (2 day) blocks.
-    /// See BIP-0159 for details on how this is implemented.
+    /// Used by peers that serve only a recent block window.
     pub const NETWORK_LIMITED: Self = Self(1 << 10);
 
     /// `P2P_V2` indicates that the node supports the P2P v2 encrypted transport protocol.
-    /// See BIP-0324 for details on how this is implemented.
+    /// Uses Tidecoin v2 encrypted transport.
     pub const P2P_V2: Self = Self(1 << 11);
 
     // NOTE: When adding new flags, remember to update the Display impl accordingly.
@@ -495,7 +495,7 @@ impl TryFrom<Magic> for Network {
 
 impl fmt::Display for Magic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        hex_unstable::fmt_hex_exact!(f, 4, &self.0, hex_unstable::Case::Lower)?;
+        internals::fmt_hex_exact!(f, 4, &self.0, internals::hex::Case::Lower)?;
         Ok(())
     }
 }
@@ -508,7 +508,7 @@ impl fmt::Debug for Magic {
 
 impl fmt::LowerHex for Magic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        hex_unstable::fmt_hex_exact!(f, 4, &self.0, hex_unstable::Case::Lower)?;
+        internals::fmt_hex_exact!(f, 4, &self.0, internals::hex::Case::Lower)?;
         Ok(())
     }
 }
@@ -516,7 +516,7 @@ impl_to_hex_from_lower_hex!(Magic, |_| 8);
 
 impl fmt::UpperHex for Magic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        hex_unstable::fmt_hex_exact!(f, 4, &self.0, hex_unstable::Case::Upper)?;
+        internals::fmt_hex_exact!(f, 4, &self.0, internals::hex::Case::Upper)?;
         Ok(())
     }
 }

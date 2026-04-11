@@ -8,7 +8,10 @@ use crate::{ScriptError, VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_WI
 use hashes::{sha256, sha512};
 use primitives::{
     opcodes::all,
-    script::{Builder as ScriptBuilderT, PushBytesBuf},
+    script::{
+        Builder as ScriptBuilderT, ParsedWitnessProgram, PushBytesBuf,
+        WitnessProgramClass as PrimitiveWitnessProgramClass,
+    },
     Witness,
 };
 
@@ -67,59 +70,46 @@ pub enum WitnessExecutionPlan {
 
 /// Parsed witness program view over a scriptPubKey byte slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WitnessProgram<'a> {
-    version: u8,
-    program: &'a [u8],
-}
+pub struct WitnessProgram<'a>(ParsedWitnessProgram<'a>);
 
 impl<'a> WitnessProgram<'a> {
     /// Creates a witness program view from an already-parsed version and program.
     pub fn parse_program(version: u8, program: &'a [u8]) -> Self {
-        Self { version, program }
+        Self(ParsedWitnessProgram::from_program(version, program))
     }
 
     /// Parses a witness program from scriptPubKey bytes.
     pub fn parse(script_bytes: &'a [u8]) -> Option<Self> {
-        if script_bytes.len() < 4 {
-            return None;
-        }
-
-        let version = match script_bytes[0] {
-            0x00 => 0,
-            0x51..=0x60 => script_bytes[0] - 0x50,
-            _ => return None,
-        };
-        let push_len = parse_direct_push_len(script_bytes.get(1).copied())?;
-        if script_bytes.len() != push_len + 2 {
-            return None;
-        }
-
-        Some(Self { version, program: &script_bytes[2..] })
+        ParsedWitnessProgram::parse_script_pubkey(script_bytes).map(Self)
     }
 
     /// Returns the witness version.
     pub fn version(self) -> u8 {
-        self.version
+        self.0.version()
     }
 
     /// Returns the witness program bytes.
     pub fn program(self) -> &'a [u8] {
-        self.program
+        self.0.program()
     }
 
     /// Returns whether the script is a Tidecoin witness-v1-512 program.
     pub fn is_v1_512(script_bytes: &'a [u8]) -> bool {
         Self::parse(script_bytes)
-            .is_some_and(|program| program.version == 1 && program.program.len() == 64)
+            .is_some_and(|program| program.0.class() == PrimitiveWitnessProgramClass::P2wsh512)
     }
 
     /// Classifies the parsed witness program under the provided verification flags.
     pub fn classify(self, flags: u32) -> Result<WitnessProgramClass, ScriptError> {
-        match self.version {
-            0 => match self.program.len() {
-                20 => Ok(WitnessProgramClass::P2wpkh),
-                32 => Ok(WitnessProgramClass::P2wsh),
-                _ => Err(ScriptError::WitnessProgramWrongLength),
+        match self.version() {
+            0 => match self.0.class() {
+                PrimitiveWitnessProgramClass::P2wpkh => Ok(WitnessProgramClass::P2wpkh),
+                PrimitiveWitnessProgramClass::P2wsh => Ok(WitnessProgramClass::P2wsh),
+                PrimitiveWitnessProgramClass::P2wsh512
+                | PrimitiveWitnessProgramClass::P2a
+                | PrimitiveWitnessProgramClass::Upgradable => {
+                    Err(ScriptError::WitnessProgramWrongLength)
+                }
             },
             1 => {
                 if flags & VERIFY_WITNESS_V1_512 == 0 {
@@ -128,10 +118,18 @@ impl<'a> WitnessProgram<'a> {
                     } else {
                         Ok(WitnessProgramClass::Upgradable)
                     }
-                } else if self.program.len() != 64 {
-                    Err(ScriptError::WitnessProgramWrongLength)
                 } else {
-                    Ok(WitnessProgramClass::WitnessV1_512)
+                    match self.0.class() {
+                        PrimitiveWitnessProgramClass::P2wsh512 => {
+                            Ok(WitnessProgramClass::WitnessV1_512)
+                        }
+                        PrimitiveWitnessProgramClass::P2wpkh
+                        | PrimitiveWitnessProgramClass::P2wsh
+                        | PrimitiveWitnessProgramClass::P2a
+                        | PrimitiveWitnessProgramClass::Upgradable => {
+                            Err(ScriptError::WitnessProgramWrongLength)
+                        }
+                    }
                 }
             }
             2..=16 => {
@@ -152,20 +150,13 @@ impl<'a> WitnessProgram<'a> {
         witness: &Witness,
     ) -> Result<WitnessExecutionPlan, ScriptError> {
         match self.classify(flags)? {
-            WitnessProgramClass::P2wpkh => build_p2wpkh_plan(self.program, witness),
-            WitnessProgramClass::P2wsh => build_p2wsh_plan(self.program, witness),
-            WitnessProgramClass::WitnessV1_512 => build_witness_v1_512_plan(self.program, witness),
+            WitnessProgramClass::P2wpkh => build_p2wpkh_plan(self.program(), witness),
+            WitnessProgramClass::P2wsh => build_p2wsh_plan(self.program(), witness),
+            WitnessProgramClass::WitnessV1_512 => {
+                build_witness_v1_512_plan(self.program(), witness)
+            }
             WitnessProgramClass::Upgradable => Ok(WitnessExecutionPlan::Upgradable),
         }
-    }
-}
-
-fn parse_direct_push_len(opcode: Option<u8>) -> Option<usize> {
-    let value = opcode?;
-    if value <= 75 {
-        Some(value as usize)
-    } else {
-        None
     }
 }
 

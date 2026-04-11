@@ -13,7 +13,7 @@
 ///
 /// * `name` - the name of the error type
 /// * `source` - the type of the source type
-/// * `subject` - the english description of the type being parsed (e.g. "a bitcoin amount")
+/// * `subject` - the english description of the type being parsed (e.g. "a Tidecoin amount")
 /// * `derive` - the list of derives to add
 #[macro_export]
 macro_rules! parse_error_type {

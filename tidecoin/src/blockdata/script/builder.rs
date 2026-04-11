@@ -6,7 +6,7 @@ use primitives::script::Builder as PrimitiveBuilder;
 
 use super::{Error, Script, ScriptBuf};
 use crate::locktime::absolute;
-use crate::{relative, Sequence};
+use crate::relative;
 
 /// An object used to construct scripts piece by piece.
 #[derive(PartialEq, Eq, Clone)]
@@ -78,15 +78,6 @@ impl<T> Builder<T> {
     /// Adds instructions to push a relative lock time onto the stack.
     pub fn push_relative_lock_time(self, lock_time: relative::LockTime) -> Self {
         self.push_int_unchecked(lock_time.to_consensus_u32().into())
-    }
-
-    /// Adds instructions to push a sequence number onto the stack.
-    #[deprecated(
-        since = "TBD",
-        note = "Use push_relative_lock_time instead for working with timelocks in scripts"
-    )]
-    pub fn push_sequence(self, sequence: Sequence) -> Self {
-        self.push_int_unchecked(sequence.to_consensus_u32().into())
     }
 
     /// Converts the `Builder` into `ScriptBuf`.

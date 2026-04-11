@@ -324,7 +324,7 @@ impl serde::Serialize for SerializeBytesAsHex<'_> {
     where
         S: serde::Serializer,
     {
-        use hex::DisplayHex;
+        use crate::hex::DisplayHex;
 
         serializer.collect_str(&format_args!("{:x}", self.0.as_hex()))
     }

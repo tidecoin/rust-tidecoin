@@ -42,10 +42,14 @@ mod sealed {
 mod test {
     use alloc::vec::Vec;
 
-    use hex_unstable::{hex, DisplayHex};
+    use internals::hex_lit as hex;
 
     use super::*;
-    use crate::Transaction;
+    use crate::transaction::Version;
+    use crate::{
+        absolute, Amount, OutPoint, ScriptPubKeyBuf, ScriptSigBuf, Sequence, Transaction, TxIn,
+        TxOut, Txid,
+    };
 
     #[test]
     fn exact_sized_iterator() {
@@ -92,24 +96,48 @@ mod test {
 
     #[test]
     fn tx() {
-        const S: &str = "02000000000102b44f26b275b8ad7b81146ba3dbecd081f9c1ea0dc05b97516f56045cfcd3df030100000000ffffffff1cb4749ae827c0b75f3d0a31e63efc8c71b47b5e3634a4c698cd53661cab09170100000000ffffffff020b3a0500000000001976a9143ea74de92762212c96f4dd66c4d72a4deb20b75788ac630500000000000016001493a8dfd1f0b6a600ab01df52b138cda0b82bb7080248304502210084622878c94f4c356ce49c8e33a063ec90f6ee9c0208540888cfab056cd1fca9022014e8dbfdfa46d318c6887afd92dcfa54510e057565e091d64d2ee3a66488f82c0121026e181ffb98ebfe5a64c983073398ea4bcd1548e7b971b4c175346a25a1c12e950247304402203ef00489a0d549114977df2820fab02df75bebb374f5eee9e615107121658cfa02204751f2d1784f8e841bff6d3bcf2396af2f1a5537c0e4397224873fbd3bfbe9cf012102ae6aa498ce2dd204e9180e71b4fb1260fe3d1a95c8025b34e56a9adf5f278af200000000";
-        let tx_bytes = hex!(S);
+        let expected_wit = [
+            {
+                let mut sig = vec![0x39];
+                sig.extend(core::iter::repeat_n(0xAA, 64));
+                sig
+            },
+            {
+                let mut pubkey = vec![crate::PqScheme::Falcon512.prefix()];
+                pubkey.extend(core::iter::repeat_n(0x42, crate::PqScheme::Falcon512.pubkey_len()));
+                pubkey
+            },
+        ];
+        let mut witness = Witness::new();
+        witness.push(&expected_wit[0]);
+        witness.push(&expected_wit[1]);
+        let original = Transaction {
+            version: Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint { txid: Txid::from_byte_array([0x11; 32]), vout: 1 },
+                script_sig: ScriptSigBuf::new(),
+                sequence: Sequence::MAX,
+                witness,
+            }],
+            outputs: vec![TxOut {
+                amount: Amount::from_sat_u32(1),
+                script_pubkey: ScriptPubKeyBuf::new(),
+            }],
+        };
+        let tx_bytes = encoding::encode_to_vec(&original);
         let tx: Transaction = encoding::decode_from_slice(&tx_bytes).unwrap();
 
-        let expected_wit = ["304502210084622878c94f4c356ce49c8e33a063ec90f6ee9c0208540888cfab056cd1fca9022014e8dbfdfa46d318c6887afd92dcfa54510e057565e091d64d2ee3a66488f82c01", "026e181ffb98ebfe5a64c983073398ea4bcd1548e7b971b4c175346a25a1c12e95"];
         for (i, wit_el) in tx.inputs[0].witness.iter().enumerate() {
-            assert_eq!(expected_wit[i], wit_el.to_lower_hex_string());
+            assert_eq!(expected_wit[i], wit_el);
         }
-        assert_eq!(expected_wit[1], tx.inputs[0].witness.last().unwrap().to_lower_hex_string());
-        assert_eq!(
-            expected_wit[0],
-            tx.inputs[0].witness.get_back(1).unwrap().to_lower_hex_string()
-        );
-        assert_eq!(expected_wit[0], tx.inputs[0].witness.get(0).unwrap().to_lower_hex_string());
-        assert_eq!(expected_wit[1], tx.inputs[0].witness.get(1).unwrap().to_lower_hex_string());
+        assert_eq!(expected_wit[1], tx.inputs[0].witness.last().unwrap());
+        assert_eq!(expected_wit[0], tx.inputs[0].witness.get_back(1).unwrap());
+        assert_eq!(expected_wit[0], tx.inputs[0].witness.get(0).unwrap());
+        assert_eq!(expected_wit[1], tx.inputs[0].witness.get(1).unwrap());
         assert_eq!(None, tx.inputs[0].witness.get(2));
-        assert_eq!(expected_wit[0], tx.inputs[0].witness[0].to_lower_hex_string());
-        assert_eq!(expected_wit[1], tx.inputs[0].witness[1].to_lower_hex_string());
+        assert_eq!(expected_wit[0], tx.inputs[0].witness[0]);
+        assert_eq!(expected_wit[1], tx.inputs[0].witness[1]);
 
         let tx_bytes_back = encoding::encode_to_vec(&tx);
         assert_eq!(tx_bytes_back, tx_bytes);

@@ -5,7 +5,7 @@
 //! Tidecoin script is conceptually a vector of bytes. As such it is consensus encoded with a
 //! CompactSize length prefix.
 
-use hex_unstable::DisplayHex as _;
+use internals::hex::DisplayHex as _;
 use tidecoin::key::WPubkeyHash;
 use tidecoin::{script, WitnessScriptBuf};
 

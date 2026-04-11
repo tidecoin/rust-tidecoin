@@ -12,7 +12,7 @@ use consensus_core::{
     VERIFY_PQ_STRICT, VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS_V1_512,
 };
 use consensus_core::{VERIFY_CLEANSTACK, VERIFY_P2SH, VERIFY_WITNESS};
-use hex_unstable::DisplayHex as _;
+use internals::hex::DisplayHex as _;
 pub use node_parity::ScriptError;
 use node_parity::{NodeParityError, TidecoinNodeHarness};
 
@@ -236,7 +236,9 @@ mod tests {
 
     use super::*;
     use crate::absolute;
-    use crate::crypto::pq::{PqPublicKey, PqScheme, PqSecretKey, PqSignature};
+    use crate::crypto::pq::{
+        PqPublicKey, PqScheme, PqSchemeCryptoExt as _, PqSecretKey, PqSignature,
+    };
     use crate::opcodes::all::{
         OP_ADD, OP_CHECKMULTISIG, OP_CHECKSIG, OP_DUP, OP_EQUAL, OP_EQUALVERIFY, OP_FROMALTSTACK,
         OP_HASH160, OP_NUMEQUAL, OP_SHA256, OP_SHA512, OP_TOALTSTACK, OP_TRUE,
@@ -660,10 +662,10 @@ mod tests {
         } else if let Some(sats) = value.as_u64() {
             Amount::from_sat(sats).unwrap()
         } else if let Some(text) = value.as_str() {
-            let btc: f64 = text.parse().unwrap();
-            Amount::from_sat((btc * 100_000_000.0).round() as u64).unwrap()
-        } else if let Some(btc) = value.as_f64() {
-            Amount::from_sat((btc * 100_000_000.0).round() as u64).unwrap()
+            let tdc: f64 = text.parse().unwrap();
+            Amount::from_sat((tdc * 100_000_000.0).round() as u64).unwrap()
+        } else if let Some(tdc) = value.as_f64() {
+            Amount::from_sat((tdc * 100_000_000.0).round() as u64).unwrap()
         } else {
             panic!("unsupported amount json {}", value);
         }
@@ -678,10 +680,7 @@ mod tests {
     }
 
     fn parse_tx_outpoint(txid_hex: &str, vout: u32) -> OutPoint {
-        let mut encoded = parse_hex_bytes(txid_hex);
-        encoded.reverse();
-        encoded.extend_from_slice(&vout.to_le_bytes());
-        encoding::decode_from_slice(&encoded).unwrap()
+        OutPoint { txid: txid_hex.parse().unwrap(), vout }
     }
 
     fn parse_tx_inputs(value: &Value) -> (BTreeMap<OutPoint, TxOut>, Vec<OutPoint>) {

@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn fee_wu() {
+    fn fee_by_weight() {
         let fee_rate = FeeRate::from_sat_per_vb(2);
         let weight = Weight::from_vb(3).unwrap();
         assert_eq!(fee_rate.to_fee(weight), Amount::from_sat_u32(6));

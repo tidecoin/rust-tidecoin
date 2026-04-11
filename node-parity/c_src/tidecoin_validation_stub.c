@@ -7,6 +7,20 @@ int tidecoin_node_check_transaction(const char* tx_hex)
     return -1;
 }
 
+int64_t tidecoin_node_pq_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
+{
+    (void)sig_len;
+    (void)pubkey_len;
+    return -1;
+}
+
+int64_t tidecoin_node_pq_p2sh_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
+{
+    (void)sig_len;
+    (void)pubkey_len;
+    return -1;
+}
+
 int tidecoin_node_pq_keygen_from_seed(
     uint8_t scheme_prefix,
     const uint8_t* seed,

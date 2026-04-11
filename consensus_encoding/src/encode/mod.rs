@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 pub mod encoders;
 
-/// A Bitcoin object which can be consensus-encoded.
+/// A Tidecoin object which can be consensus-encoded.
 ///
 /// To encode something, use the [`Self::encoder`] method to obtain a [`Self::Encoder`], which will
 /// behave like an iterator yielding byte slices.
@@ -288,5 +288,11 @@ impl<T: Encoder> Encoder for Option<T> {
             Some(encoder) => encoder.advance(),
             None => false,
         }
+    }
+}
+
+impl<T: Encoder + ExactSizeEncoder> ExactSizeEncoder for Option<T> {
+    fn len(&self) -> usize {
+        self.as_ref().map_or(0, ExactSizeEncoder::len)
     }
 }
