@@ -1,7 +1,7 @@
 //! The Tidecoin segregated witness version byte.
 //!
 //! > A script pubkey consisting of a 1-byte push opcode (for 0 to 16) followed by a data push
-//! > between 2 and 40 bytes is a witness program. The value of the first push is the "version
+//! > between 2 and 64 bytes is a witness program. The value of the first push is the "version
 //! > byte"; the following byte vector is the witness program.
 //!
 use core::convert::Infallible;

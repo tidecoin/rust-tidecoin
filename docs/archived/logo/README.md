@@ -1,7 +1,7 @@
 # Archived Upstream Logo Material
 
 The files in this directory are archived upstream Rust Bitcoin logo assets. They are retained only
-for provenance while repository identity is migrated and are not active Tidecoin branding.
+for provenance and are not active Tidecoin branding.
 
 ## Files
 

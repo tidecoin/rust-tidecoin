@@ -19,7 +19,7 @@ alloc = ["hashes/alloc", "internals/alloc"]
 
 [dependencies]
 hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.20.0", default-features = false }
-internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0" }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false }
 
 [dev-dependencies]
 hex = { package = "hex-conservative", version = "1.0.0", default-features = false }

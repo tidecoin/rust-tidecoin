@@ -4,9 +4,11 @@ This report captures the Falcon/PQ behaviors revalidated against the Rust port a
 
 Validation basis:
 
-- Tidecoin node source under `/home/kiel/work/tidecoin-node`
-- Rust port source under `/home/kiel/work/rust-tidecoin`
-- multi-agent re-scan after the AuxPoW, `Sighash512`, PSBT, PQHD, and PQ crypto bridge work
+- Tidecoin node source under `~/dev/tidecoin/tidecoin`
+- Rust port source under `/home/yaroslav/dev/tidecoin/rust-tidecoin`
+- re-scan after AuxPoW header/modeling work, `Sighash512`, PQHD, PQ crypto
+  bridge work, `consensus-core` extraction, and node-backed validation/runtime
+  migration
 
 ## What Exists In Rust Today
 
@@ -15,14 +17,13 @@ Validation basis:
 - node-compatible public-key derivation from secret keys in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
 - node-compatible Falcon-512 legacy signing and verification helpers in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
 - scheme-height gating helper in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
-- `Sighash512` and `p2wsh512_signature_hash()` in [tidecoin/src/crypto/sighash.rs](../tidecoin/src/crypto/sighash.rs)
+- `Sighash512` and `p2wsh512_signature_hash()` in [consensus-core/src/sighash.rs](../consensus-core/src/sighash.rs)
 - PQHD v1 KDF/path validation in [tidecoin/src/pqhd.rs](../tidecoin/src/pqhd.rs)
 - deterministic PQHD key generation from stream-key material in [tidecoin/src/pqhd.rs](../tidecoin/src/pqhd.rs)
 - prefixed and legacy raw PQ secret-key codecs in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
 - node-compatible PQ base58 secret import/export in [tidecoin/src/crypto/key.rs](../tidecoin/src/crypto/key.rs)
 - ML-KEM-512 keypair, deterministic keypair, encapsulate, deterministic encapsulate, and decapsulate helpers in [tidecoin/src/crypto/pq.rs](../tidecoin/src/crypto/pq.rs)
 - `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in [tidecoin/src/key_expression.rs](../tidecoin/src/key_expression.rs)
-- Tidecoin PSBT PQHD origin and PQ partial-signature helpers in [tidecoin/src/psbt/tidecoin.rs](../tidecoin/src/psbt/tidecoin.rs)
 - PQ witness helper `Witness::p2wsh512_pq()` in [tidecoin/src/blockdata/witness.rs](../tidecoin/src/blockdata/witness.rs)
 - Tidecoin v2 PQ packet cipher parity in [p2p/src/pq_v2_transport.rs](../p2p/src/pq_v2_transport.rs)
 - Tidecoin validation/runtime behavior for PQ scripts in [tidecoin/src/consensus_validation.rs](../tidecoin/src/consensus_validation.rs), [tidecoin/src/consensus_validation_node.rs](../tidecoin/src/consensus_validation_node.rs), and [tidecoin/src/consensus_validation_tidecoin.rs](../tidecoin/src/consensus_validation_tidecoin.rs)
@@ -50,6 +51,9 @@ Optional future expansion areas, if the library needs to expose more of the node
 
 - additional node policy helpers layered above the current validation bridge
 - future node PQ vectors beyond the currently imported script, transaction, asset, and multisig cases
+- chain-level AuxPoW, yespower/scrypt PoW-hash selection, and difficulty
+  coverage are outside this Falcon/PQ report; they are tracked in the master
+  plan and validation backlog.
 
 ## Bottom Line
 

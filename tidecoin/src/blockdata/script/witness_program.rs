@@ -1,7 +1,7 @@
 //! The Tidecoin segregated witness program.
 //!
 //! > A script pubkey consisting of a 1-byte push opcode (for 0 to 16) followed by a data push
-//! > between 2 and 40 bytes is a witness program. The value of the first push is the "version
+//! > between 2 and 64 bytes is a witness program. The value of the first push is the "version
 //! > byte"; the following byte vector is the witness program.
 //!
 use internals::array_vec::ArrayVec;
@@ -32,7 +32,7 @@ pub(crate) use primitives::script::P2A_PROGRAM;
 pub struct WitnessProgram {
     /// The SegWit version associated with this witness program.
     version: WitnessVersion,
-    /// The witness program (between 2 and 40 bytes).
+    /// The witness program (between 2 and 64 bytes).
     program: ArrayVec<u8, MAX_SIZE>,
 }
 
@@ -70,7 +70,7 @@ impl WitnessProgram {
         script.wscript_hash().map(Self::p2wsh_from_hash)
     }
 
-    /// Constructs a new [`WitnessProgram`] from `script` for a P2WSH output.
+    /// Constructs a new [`WitnessProgram`] from a script hash for a P2WSH output.
     pub fn p2wsh_from_hash(hash: WScriptHash) -> Self {
         Self::new_p2wsh(hash.to_byte_array())
     }

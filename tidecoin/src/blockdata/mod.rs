@@ -9,6 +9,7 @@ pub mod block;
 pub mod constants;
 pub mod opcodes;
 pub mod script;
+pub mod subsidy;
 pub mod transaction;
 pub mod witness;
 

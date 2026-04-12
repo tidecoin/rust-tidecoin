@@ -1401,15 +1401,13 @@ fn num_op_result_ops_integer() {
 // Verify we have implemented all `Neg` for the amount types.
 #[test]
 fn amount_op_result_neg() {
-    // TODO: Implement Neg all round.
-
-    // let sat = Amount::from_sat(1).unwrap();
     let ssat = SignedAmount::from_sat(1).unwrap();
+    let sres: NumOpResult<SignedAmount> = ssat + ssat;
 
-    // let _ = -sat;
-    let _ = -ssat;
-    // let _ = -res;
-    // let _ = -sres;
+    assert_eq!(-ssat, SignedAmount::from_sat(-1).unwrap());
+    assert_eq!(-&ssat, SignedAmount::from_sat(-1).unwrap());
+    assert_eq!(-sres, NumOpResult::Valid(SignedAmount::from_sat(-2).unwrap()));
+    assert_eq!(-&sres, NumOpResult::Valid(SignedAmount::from_sat(-2).unwrap()));
 }
 
 // Verify we have implemented all `Sum` for the `NumOpResult` type.

@@ -13,7 +13,7 @@ record of what was removed and how it was replaced.
 Two tests in the main crate were tied directly to the old Bitcoin-only
 `bitcoinconsensus` backend:
 
-- [`tidecoin/src/blockdata/script/tests.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/script/tests.rs)
+- `tidecoin/src/blockdata/script/tests.rs` (deleted with the old test module)
   - removed test: `bitcoinconsensus()`
 - [`tidecoin/src/blockdata/transaction.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/transaction.rs)
   - removed test: `transaction_verify()`
@@ -171,7 +171,7 @@ rewriting if the goal is broader Tidecoin-only semantics in the main crate.
 
 Candidate examples:
 
-- [tidecoin/src/blockdata/script/tests.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/script/tests.rs)
+- `tidecoin/src/blockdata/script/tests.rs` (deleted with the old test module)
   - `p2sh_p2wsh_conversion()`
   - `script_generators()` uses `new_p2wpkh()` / `new_p2wsh()`
 

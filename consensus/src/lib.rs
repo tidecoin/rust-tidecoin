@@ -346,20 +346,24 @@ impl std::error::Error for Error {}
 mod tests {
     use super::*;
     use crate::Utxo;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
     use encoding::encode_to_vec;
     use hashes::{hash160, sha256, sha512};
     use primitives::{
         absolute::LockTime,
         opcodes::all,
         script::{
-            Builder as BuilderT, PushBytesBuf, ScriptBuf as RawScriptBufT, ScriptHash,
+            Builder as BuilderT, PushBytesBuf, ScriptBuf as PrimitiveScriptBuf, ScriptHash,
             ScriptPubKeyBuf, ScriptSigBuf,
         },
         Amount, OutPoint, Sequence, Transaction, TransactionVersion, TxIn, TxOut, Txid, Witness,
     };
+    #[cfg(feature = "std")]
+    use std::vec;
 
     type Builder = BuilderT<()>;
-    type ScriptBuf = RawScriptBufT<()>;
+    type ScriptBuf = PrimitiveScriptBuf<()>;
 
     fn sat(value: u64) -> Amount {
         Amount::from_sat(value).expect("test amount in range")

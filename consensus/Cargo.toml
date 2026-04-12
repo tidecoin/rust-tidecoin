@@ -14,16 +14,16 @@ categories = ["cryptography", "science::cryptography"]
 
 [features]
 default = ["std"]
-std = ["encoding/std", "hashes/std", "io/std", "primitives/std"]
+std = ["consensus_core/std", "encoding/std", "hashes/std", "io/std", "primitives/std"]
 
 [dependencies]
-consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core" }
+consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core", default-features = false }
 encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", default-features = false, features = ["alloc"] }
 hashes = { package = "tidecoin_hashes", path = "../hashes", default-features = false, features = ["alloc"] }
 io = { package = "tidecoin-io", path = "../io", default-features = false, features = ["alloc", "hashes"] }
 primitives = { package = "tidecoin-primitives", path = "../primitives", default-features = false, features = ["alloc", "hex"] }
 
 [dev-dependencies]
-internals = { package = "tidecoin-internals", path = "../internals", features = ["alloc", "hex"] }
+internals = { package = "tidecoin-internals", path = "../internals", default-features = false, features = ["alloc", "hex"] }
 serde_json = "1.0.145"
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity" }

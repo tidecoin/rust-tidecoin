@@ -8,7 +8,7 @@ use hashes::{hash160, sha256};
 use primitives::{
     absolute::LockTime,
     opcodes::all,
-    script::{Builder as BuilderT, ScriptBuf as RawScriptBufT, ScriptPubKeyBuf, ScriptSigBuf},
+    script::{Builder as BuilderT, ScriptBuf as PrimitiveScriptBuf, ScriptPubKeyBuf, ScriptSigBuf},
     Amount, OutPoint, Sequence, Transaction, TransactionVersion, TxIn, TxOut, Witness,
 };
 
@@ -19,7 +19,7 @@ use tidecoin_test_support::{
 };
 
 type Builder = BuilderT<()>;
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 fn sat(value: u64) -> Amount {
     Amount::from_sat(value).expect("test amount in range")

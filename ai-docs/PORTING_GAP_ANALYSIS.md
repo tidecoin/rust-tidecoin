@@ -1,10 +1,12 @@
 # Porting Gap Analysis: rust-tidecoin Library
 
 Generated: 2026-04-01
-Revalidated after the AuxPoW, `Sighash512`, PQHD/PSBT, PQ crypto-bridge, ML-KEM-512, Tidecoin PQ v2 transport, and node-backed validation/runtime passes.
+Revalidated after AuxPoW header/modeling work, `Sighash512`, PQHD, PQ
+crypto-bridge, ML-KEM-512, Tidecoin PQ v2 transport, `consensus-core`
+extraction, and node-backed validation/runtime passes.
 
-Node source: `/home/kiel/work/tidecoin-node`
-Rust source: `/home/kiel/work/rust-tidecoin`
+Node source: `~/dev/tidecoin/tidecoin`
+Rust source: `/home/yaroslav/dev/tidecoin/rust-tidecoin`
 
 ## Scope
 
@@ -45,9 +47,15 @@ Out of scope:
 - Tidecoin-facing dust/sighash docs that still used `BTC/kB` or "today's Bitcoin network" wording
 - P2P message cleanup audit: `NetworkMessage` already demotes legacy `reject` payloads to `Unknown`, while `message_network::Alert` is intentionally retained because Tidecoin node still sends the final alert to peers at protocol version `<= 70012`
 
-## Remaining Library-Scope Gaps
+## Remaining Library-Scope Gaps From The Original Report
 
-No confirmed library-scope protocol gaps remain from the original report.
+No confirmed library-scope protocol gaps remain from the original PQ/runtime
+porting report.
+
+This statement is deliberately scoped. It does not close chain-level consensus
+coverage that was identified later, especially AuxPoW validation vectors,
+yespower/scrypt PoW-hash selection, and exact difficulty-retargeting node
+parity.
 
 Taproot status note:
 
@@ -59,9 +67,10 @@ Follow-up work that may still be desirable, but was not part of the original lib
 - expose additional node policy entry points such as witness-standardness or standard-tx helpers if callers need policy parity instead of consensus/runtime parity
 - continue expanding imported node cases as new Tidecoin node behavior lands upstream
 
-## Remaining Executable Coverage Debt
+## Remaining Executable Coverage Debt From The Original Report
 
-No confirmed residual executable-coverage debt remains from the previously tracked node test list.
+No confirmed residual executable-coverage debt remains from the previously
+tracked PQ/runtime node test list.
 
 ## Priority Order
 

@@ -51,8 +51,8 @@ pub const MAX_REDEEM_SCRIPT_SIZE: usize = primitives::script::MAX_REDEEM_SCRIPT_
 pub const MAX_WITNESS_SCRIPT_SIZE: usize = 65_536;
 /// The maximum allowed size of any single witness stack element.
 pub const MAX_STACK_ELEMENT_SIZE: usize = 8_192;
-/// How many blocks between halvings.
-pub const SUBSIDY_HALVING_INTERVAL: u32 = 262_800;
+/// Mainnet/testnet initial interval for the Tidecoin doubling-interval subsidy schedule.
+pub const SUBSIDY_INITIAL_INTERVAL: u32 = 262_800;
 /// Number of blocks needed for an output from a coinbase transaction to be spendable.
 pub const COINBASE_MATURITY: u32 = 100;
 /// The maximum allowed size for a serialized block, in bytes (only for buffer size limits)

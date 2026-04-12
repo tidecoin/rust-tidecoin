@@ -1,6 +1,6 @@
 # primitives 1.0.0
 
-Design considerations and TODOs for the `tidecoin-primitives 1.0.0` release.
+Design considerations for the `tidecoin-primitives 1.0.0` release.
 
 ## Current ownership rule
 

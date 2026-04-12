@@ -165,7 +165,7 @@ internal_macros::define_extension_trait! {
         /// The witness version if this script is found to conform to the Tidecoin witness rules:
         ///
         /// > A script pubkey consisting of a 1-byte push opcode (for 0 to 16) followed by a data
-        /// > push between 2 and 40 bytes is a witness program. The value of the first push is the
+        /// > push between 2 and 64 bytes is a witness program. The value of the first push is the
         /// > version byte, and the following byte vector is the witness program.
         #[inline]
         fn witness_version(&self) -> Option<WitnessVersion>

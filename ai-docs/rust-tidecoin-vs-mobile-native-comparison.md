@@ -210,7 +210,7 @@ The mobile app hardcodes `FALCON_SIG_SIZE = 690` for all fee calculations. A fut
 
 ## WIF Key Import/Export
 
-At the `rust-core` layer, there is no node-compatible PQ WIF type today. At the whole-`mobile-native` repo layer, the apps implement Falcon-512-only WIF/hex helpers in Swift/Kotlin using an app-local format.
+`rust-tidecoin` now exposes node-compatible PQ WIF import/export through `PqWifKey`. At the whole-`mobile-native` repo layer, the apps still implement Falcon-512-only WIF/hex helpers in Swift/Kotlin using an app-local format.
 
 ### Migration Decision
 

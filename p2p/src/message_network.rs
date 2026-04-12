@@ -382,8 +382,8 @@ impl UserAgent {
     }
 }
 
-impl std::fmt::Display for UserAgent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for UserAgent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.user_agent.fmt(f)
     }
 }
@@ -431,8 +431,8 @@ impl UserAgentVersion {
     }
 }
 
-impl std::fmt::Display for UserAgentVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for UserAgentVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut software_version = self.version.to_string();
         if let Some(comments) = &self.comments {
             let comments = format!("({comments})");
@@ -465,8 +465,8 @@ pub enum ClientSoftwareVersion {
     },
 }
 
-impl std::fmt::Display for ClientSoftwareVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ClientSoftwareVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Date { yyyy, mm, dd } => format!("{yyyy}{mm:02}{dd:02}").fmt(f),
             Self::SemVer { major, minor, revision } => format!("{major}.{minor}.{revision}").fmt(f),

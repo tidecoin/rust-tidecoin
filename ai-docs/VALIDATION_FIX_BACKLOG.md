@@ -4,11 +4,11 @@ This file is updated as issues are validated and moved through the state machine
 
 ## Open
 
-### Tidecoin shared consensus core boundary cleanup (planned)
+### Tidecoin shared consensus core boundary cleanup (current)
 
 The main open architecture problem is no longer missing PQ primitives, missing node-backed validation tails, or a missing shared interpreter. `tidecoin-consensus-core` now owns the shared interpreter, typed transaction context, sighash subset, PQ verification facade, witness execution planning, and flag core. The remaining problem is boundary cleanup: some wrapper/orchestration logic and node-parity adapter behavior still lives in the top-level `tidecoin` crate, while `consensus/` should remain the byte-oriented standalone adapter over the shared core.
 
-That leaves the repo in an unstable shape:
+That leaves the repo with active boundary-polish debt:
 
 - the top-level `tidecoin` crate still owns public validation orchestration and node-backed test adapters
 - the in-repo `consensus/` crate is now Tidecoin-native, but its historical byte-oriented test/proof surface still needs cleanup
@@ -29,7 +29,7 @@ Needed:
 - keep the node bridge outside the shared core crate
 - make both the top-level `tidecoin` crate and any compatibility-facing `consensus` crate depend on the shared core instead of duplicating validation logic
 
-### Shared Tidecoin node-parity harness matrix reconciliation (planned)
+### Shared Tidecoin node-parity harness matrix reconciliation (current)
 
 The repository now has the right shared Tidecoin-specific node bridge
 infrastructure and the active consumers are migrated:
@@ -62,7 +62,7 @@ Needed:
 - do not restore archived Core-diff files to the active test set unless they are
   rewritten as Tidecoin-native node-parity tests
 
-### `consensus/` crate migration to Tidecoin semantics (planned)
+### `consensus/` crate migration to Tidecoin semantics (current)
 
 The active `consensus/` crate is now a Tidecoin-native byte-oriented adapter
 over `tidecoin-consensus-core`. Remaining migration debt is historical and
@@ -90,13 +90,13 @@ Needed:
   - legacy code-separator signature behavior
   - multisig intermediate-mismatch behavior, if still meaningful under Tidecoin rules
 
-### Tidecoin consensus vector and parity migration (planned)
+### Tidecoin consensus vector and parity migration (current)
 
-Once the shared core boundary exists, the next missing layer is a Tidecoin-oriented executable corpus around it. The priority is not “invent a second standalone interpreter”, but “re-anchor the existing imported test surface on Tidecoin semantics”.
+The shared core boundary and first Tidecoin-oriented executable corpora now exist. The remaining work is not “invent a second standalone interpreter”, but “finish reconciling the old imported proof classes against the Tidecoin-native corpus and add only the missing parity tails”.
 
 Needed:
 
-- import Tidecoin node fixtures and corpora into the shared core / `consensus` test surface:
+- keep the imported Tidecoin node fixtures and corpora wired through the shared core / `consensus` test surface:
   - `script_tests_pq.json`
   - `tx_valid_pq.json`
   - `tx_invalid_pq.json`
@@ -153,7 +153,7 @@ Priority note:
   is archived historical material now, so remaining work is matrix reconciliation,
   fixture provenance cleanup, and filling explicitly documented node-parity gaps
 
-### Chain-rule coverage below the new core boundary (planned)
+### Chain-rule coverage below the new core boundary (current)
 
 Below the architecture work, a few protocol checks still deserve explicit coverage once the shared core and migrated harnesses are in place.
 
@@ -161,23 +161,98 @@ Below the architecture work, a few protocol checks still deserve explicit covera
 
 No tests currently exercise AuxPoW chain-ID validation, merge-mining branch verification, or coinbase commitment checking. The struct and serialization layer is solid but the consensus-rule enforcement is untested.
 
+Implementation direction:
+- keep `primitives` as the owner of AuxPoW/header wire structures and codecs
+- implement consensus-context checks in `tidecoin::pow`, not in the codec layer:
+  auxpow flag/payload consistency, pre-activation rejection, strict chain ID
+  enforcement, chain ID without AuxPoW flag rejection, merge-mining merkle and
+  coinbase commitment checks, and parent scrypt PoW verification
+- match the Tidecoin node's `CheckAuxPowContext(...)` path in
+  `/home/yaroslav/dev/tidecoin/tidecoin/src/validation.cpp`
+- do not route AuxPoW parent validation through `HeaderExt::validate_pow(...)`;
+  the parent proof is checked with the parent header's scrypt PoW hash against
+  the child block's `nBits`, matching `CAuxPow::getParentBlockHash()`
+
 Needed:
 - Known mainnet AuxPoW block headers with verified chain_id = 8
 - Invalid AuxPoW blocks: wrong chain ID, invalid merkle branch, missing coinbase commitment
 - Boundary: blocks at auxpow_start_height transition
 - Parent block header validation (pure 80-byte, no nested AuxPoW)
+- Parent PoW validation using the Tidecoin node's AuxPoW rule: parent headers
+  are checked with scrypt PoW, not with the child header's yespower-era hash
+
+#### PoW hash algorithm selection
+
+Rust currently has target arithmetic and `nBits` checks around the block header
+hash, but it does not yet implement the Tidecoin node's height-gated PoW hash
+selection. The node uses yespower 1.0 (`N = 2048`, `r = 8`) for
+`GetPoWHash()` before auxpow activation and scrypt-1024-1-1-256 for
+`GetScryptPoWHash()` after auxpow activation. `CheckProofOfWork(block, params,
+height)` selects between those two through `UsePostAuxpowPowRules(...)`.
+
+The inherited rust-bitcoin helper model is not enough here. Upstream
+rust-bitcoin's `HeaderExt::validate_pow(required_target)` is a narrow helper for
+Bitcoin's SHA256d header-hash PoW: it decodes `nBits`, compares the result with a
+caller-supplied target, and checks `target.is_met_by(header.block_hash())`. That
+shape only works for Bitcoin because Bitcoin's mining hash is the block header
+hash. Tidecoin must keep the same target comparison primitive, but feed it the
+selected Tidecoin mining hash instead of `header.block_hash()`.
+
+Implementation direction:
+- remove or narrow `HeaderExt::validate_pow(required_target)` because that API
+  lacks the height, chain params, and AuxPoW payload context required for
+  Tidecoin consensus
+- add a Tidecoin-native API shaped around node consensus context, for example
+  `validate_pow_at_height(header, params, height)` for pure-header checks and a
+  block/header context API that can inspect AuxPoW payloads
+- derive target validity from `nBits` and the active network pow limit, matching
+  node `DeriveTarget(...)`; do not accept a caller-supplied target as the
+  consensus source of truth
+- select the mining hash with the same rule as the node:
+  `UsePostAuxpowPowRules(params, height)` selects scrypt at and after
+  AuxPoW activation, otherwise yespower
+- add pure 80-byte header hash functions matching node
+  `CPureBlockHeader::GetPoWHash()` and `CPureBlockHeader::GetScryptPoWHash()`
+  from `/home/yaroslav/dev/tidecoin/tidecoin/src/primitives/pureheader.cpp`
+
+Needed:
+- expose a Tidecoin-native PoW hash API for pure 80-byte headers:
+  `yespower_pow_hash`, `scrypt_pow_hash`, and height-gated selection
+- validate the hash against `nBits` using the selected algorithm, not the header
+  identity hash
+- add node-parity vectors at pre-activation, activation height, and
+  post-activation heights
+- add `CheckProofOfWorkAny`-style coverage if the library needs to mirror the
+  node's anti-DoS/header-sync path
 
 #### Subsidy/reward schedule
 
-The Tidecoin reward schedule uses doubling-interval quartering (40 TDC base, right-shift by 2 per era), distinct from Bitcoin's simple halving. No tests validate this schedule. SUBSIDY_HALVING_INTERVAL is defined but never exercised.
+Status: `done` for the library-scope schedule.
 
-Needed:
-- Block reward at height 0, at each era boundary, and after final halving
-- Comparison with the Tidecoin node's GetBlockSubsidy output
+The Tidecoin reward schedule uses doubling-interval quartering (40 TDC base,
+right-shift by 2 per era), distinct from Bitcoin's simple halving. It is now
+implemented in `tidecoin::blockdata::subsidy::block_subsidy(...)` and covered
+against the node `GetBlockSubsidy` formula from `validation.cpp` for mainnet and
+regtest boundary cases. The public interval constant is
+`SUBSIDY_INITIAL_INTERVAL`, matching the active semantics.
 
 #### Difficulty retargeting edge cases
 
 Basic retargeting tests exist (4 cases in pow.rs), but the following are missing:
+- Add missing node parameter fields to `tidecoin::network::Params` before
+  porting the algorithm: strict AuxPoW chain ID, post-AuxPoW averaging window,
+  max adjust up/down, and any post-AuxPoW min-difficulty activation height used
+  by the node.
+- Port the Tidecoin node's switch in `GetNextWorkRequired(...)`: legacy
+  interval-based retargeting before AuxPoW activation and post-AuxPoW per-block
+  averaging-window retargeting after activation.
+- Port `CalculateNextWorkRequiredNew(...)`, including median-time-past inputs,
+  `AveragingWindowTimespan`, `MinActualTimespan`, and `MaxActualTimespan`.
+- Port `PermittedDifficultyTransition(...)` so header-window validation can
+  check both pre-activation legacy bounds and post-activation max-adjust bounds.
+- Exact `GetNextWorkRequired` switch at `auxpow_start_height`: legacy
+  interval-based retargeting before activation and per-block averaging-window
+  retargeting after activation
 - AuxPoW-era difficulty adjustment
 - Historical chain difficulty walk with known block headers
 - Overflow and minimum-difficulty boundary cases
@@ -218,7 +293,7 @@ The `tidecoin-node-validation` feature covers PQ execution through the C++ bridg
   - corrupted signature failure path
   - exact record and remaining broader cleanup candidates are documented in [ai-docs/REMOVED_VALIDATION_TEST_SURFACES.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/REMOVED_VALIDATION_TEST_SURFACES.md)
 - `done` Record the validated Falcon/PQ runtime gap report in `FALCON_PQ_GAP_REPORT.md` and align the tracker with the current node-vs-Rust compatibility status.
-- `done` Implement the first PQHD parity slice: node-mirrored PQHD v1 KDF/path validation in `tidecoin/src/pqhd.rs`, Tidecoin PSBT PQHD origin helpers in `tidecoin/src/psbt/tidecoin.rs`, and regression coverage for roundtrip/combine/malformed cases.
+- `done` Implement the first PQHD parity slice: node-mirrored PQHD v1 KDF/path validation in `tidecoin/src/pqhd.rs`, with regression coverage for roundtrip/combine/malformed cases. PSBT PQHD helper work was part of the earlier migration history and is not a current live module.
 - `done` Implement PQ public-key derivation and Falcon legacy-mode signing/verification parity in `tidecoin/src/crypto/pq.rs` using a small node-compatible PQClean bridge, with regression coverage across all five schemes.
 - `done` Implement deterministic PQHD key generation and PQ secret-key codec parity in `tidecoin/src/pqhd.rs` and `tidecoin/src/crypto/pq.rs`, with exact node hash vectors and prefixed/raw-secret roundtrip coverage.
 - `done` Implement `pqhd(...)` parsing, deterministic derivation, and wallet descriptor string generation in `tidecoin/src/key_expression.rs`, with node-style parsing and policy tests.

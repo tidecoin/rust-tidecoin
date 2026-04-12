@@ -7,8 +7,11 @@
 
 use alloc::vec::Vec;
 use core::convert::Infallible;
-use core::{fmt, iter};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
+use core::fmt;
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
+#[cfg(feature = "std")]
+use std::net::ToSocketAddrs;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
@@ -103,11 +106,12 @@ impl fmt::Debug for Address {
     }
 }
 
+#[cfg(feature = "std")]
 impl ToSocketAddrs for Address {
-    type Iter = iter::Once<SocketAddr>;
+    type Iter = core::iter::Once<SocketAddr>;
     fn to_socket_addrs(&self) -> Result<Self::Iter, std::io::Error> {
         self.socket_addr()
-            .map(iter::once)
+            .map(core::iter::once)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
     }
 }
@@ -702,11 +706,12 @@ impl AddrV2Message {
     }
 }
 
+#[cfg(feature = "std")]
 impl ToSocketAddrs for AddrV2Message {
-    type Iter = iter::Once<SocketAddr>;
+    type Iter = core::iter::Once<SocketAddr>;
     fn to_socket_addrs(&self) -> Result<Self::Iter, std::io::Error> {
         self.socket_addr()
-            .map(iter::once)
+            .map(core::iter::once)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
     }
 }
@@ -843,7 +848,7 @@ pub enum AddrV2ToIpAddrError {
 }
 
 impl fmt::Display for AddrV2ToIpAddrError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TorV3 => write!(f, "TorV3 addresses cannot be converted to IpAddr"),
             Self::I2p => write!(f, "I2P addresses cannot be converted to IpAddr"),
@@ -853,6 +858,7 @@ impl fmt::Display for AddrV2ToIpAddrError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for AddrV2ToIpAddrError {}
 
 /// Error types for [`AddrV2`] to [`Ipv4Addr`] conversion.
@@ -871,7 +877,7 @@ pub enum AddrV2ToIpv4AddrError {
 }
 
 impl fmt::Display for AddrV2ToIpv4AddrError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ipv6 => write!(f, "Ipv6 addresses cannot be converted to Ipv4Addr"),
             Self::TorV3 => write!(f, "TorV3 addresses cannot be converted to Ipv4Addr"),
@@ -882,6 +888,7 @@ impl fmt::Display for AddrV2ToIpv4AddrError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for AddrV2ToIpv4AddrError {}
 
 /// Error types for [`AddrV2`] to [`Ipv6Addr`] conversion.
@@ -900,7 +907,7 @@ pub enum AddrV2ToIpv6AddrError {
 }
 
 impl fmt::Display for AddrV2ToIpv6AddrError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ipv4 => write!(f, "Ipv4 addresses cannot be converted to Ipv6Addr"),
             Self::TorV3 => write!(f, "TorV3 addresses cannot be converted to Ipv6Addr"),
@@ -911,6 +918,7 @@ impl fmt::Display for AddrV2ToIpv6AddrError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for AddrV2ToIpv6AddrError {}
 
 #[cfg(feature = "arbitrary")]
@@ -1004,7 +1012,7 @@ impl<'a> Arbitrary<'a> for AddrV2Message {
 #[cfg(test)]
 mod test {
     use alloc::{format, vec};
-    use std::net::IpAddr;
+    use core::net::IpAddr;
 
     use internals::hex_lit as hex;
 

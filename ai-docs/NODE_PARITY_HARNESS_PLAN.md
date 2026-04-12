@@ -1,6 +1,6 @@
 # Tidecoin Node Parity Harness Plan
 
-This note defines the shared Tidecoin node-backed parity layer that should sit
+This note defines the shared Tidecoin node-backed parity layer that sits
 next to, but not inside, `tidecoin-consensus-core`.
 
 It is intentionally a test/dev support layer, not part of the main production
@@ -28,10 +28,9 @@ We want both:
 
 ## Decision Summary
 
-The node-backed parity layer should be extracted into a shared internal support
-crate.
+The node-backed parity layer is extracted into a shared internal support crate.
 
-Suggested shape:
+Current shape:
 
 - directory: `node-parity/`
 - package name: `tidecoin-node-parity`
@@ -45,7 +44,7 @@ This is not a product/API crate. It is shared parity infrastructure for:
 
 ## Current State
 
-The first extraction slice is already in place:
+The extraction is in place:
 
 - [`node-parity/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity) exists in the workspace
 - shared `ScriptError` mapping lives in
@@ -150,9 +149,9 @@ Do not copy:
 - Bitcoin Core subprocess helper as the primary Tidecoin path
 - Bitcoin/Taproot-specific flag assumptions
 
-## Target Responsibilities
+## Current Responsibilities
 
-The parity support crate should own:
+The parity support crate owns:
 
 ### 1. Native Build Support
 
@@ -177,14 +176,16 @@ The parity support crate should own:
 
 ### 4. Harness API
 
-Suggested public test-support API:
+Current public test-support API:
 
 - `TidecoinNodeHarness::from_env()`
 - `backend_label()`
-- `supported_flags_mask()`
-- `verify_script_input(...)`
+- `node_repo()`
+- `check_transaction_hex(...)`
+- `pq_p2wpkh_input_vsize(...)`
+- `pq_p2sh_p2wpkh_input_vsize(...)`
+- `verify_tx_input_hex(...)`
 - `verify_script_case(...)`
-- `check_transaction(...)`
 - `parse_script_asm(...)`
 - `pq_keypair_from_seed(...)`
 - `pq_keypair_from_stream_key(...)`
@@ -204,52 +205,48 @@ Suggested public test-support API:
 - capability reporting for tests to skip unsupported combinations explicitly
 - standardized mismatch reporting
 
-## Proposed Module Layout
+## Current Module Layout
 
-Current first-pass crate layout:
+Current crate layout:
 
 - `node-parity/Cargo.toml`
 - `node-parity/build.rs`
 - `node-parity/c_src/tidecoin_validation_bridge.cpp`
 - `node-parity/c_src/randombytes_stub.c`
 - `node-parity/src/lib.rs`
+- `node-parity/src/build_support.rs`
 - `node-parity/src/error.rs`
 - `node-parity/src/ffi.rs`
 - `node-parity/src/harness.rs`
 - `node-parity/src/fixtures.rs`
-- `node-parity/src/pq.rs`
-- `node-parity/src/script.rs`
 
-Suggested ownership:
+Current ownership:
 
 - `error.rs`
   - bridge error enum
   - node script error enum or mapping table
+- `build_support.rs`
+  - shared build.rs support for compiling the Tidecoin node bridge
 - `ffi.rs`
   - raw `extern "C"` declarations
 - `harness.rs`
   - `TidecoinNodeHarness`
   - env/build/capability surface
+  - script/input/tx verification wrappers
+  - PQ/PQHD parity helper wrappers
 - `fixtures.rs`
   - fixture root discovery
   - test-data loaders
-- `pq.rs`
-  - PQ/PQHD parity helper wrappers
-- `script.rs`
-  - script/input/tx verification wrappers
-  - script ASM parsing helpers
 
 ## Migration Map
 
-### Move Out Of `tidecoin/`
+### Moved Out Of `tidecoin/`
 
-Move:
+Moved:
 
 - build-side node compilation logic from
   [node-parity/build.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity/build.rs)
-- bridge sources from
-  [tidecoin/c_src/](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/c_src)
-  into
+- bridge sources from the old `tidecoin/c_src/` location into
   [node-parity/c_src/](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity/c_src)
 - remaining FFI wrapper code from
   [tidecoin/src/consensus_validation_node.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_node.rs#L209)
@@ -292,7 +289,7 @@ That means:
 - keep [consensus/tests/archived/core_diff_bridge.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/core_diff_bridge.rs)
   archived as historical reference only
 - keep the ported harness shape in the Tidecoin parity crate
-- make `consensus/tests` depend on `tidecoin-node-parity` for node-backed
+- keep `consensus/tests` depending on `tidecoin-node-parity` for node-backed
   comparisons
 
 ## Checklist

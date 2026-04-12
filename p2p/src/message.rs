@@ -242,6 +242,7 @@ impl fmt::Display for CommandStringError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for CommandStringError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
@@ -2411,7 +2412,7 @@ impl<'a> Arbitrary<'a> for V1NetworkMessage {
 mod test {
     use alloc::string::ToString;
     use alloc::vec;
-    use std::net::Ipv4Addr;
+    use core::net::Ipv4Addr;
 
     use internals::hex_lit as hex;
     use primitives::locktime::absolute;

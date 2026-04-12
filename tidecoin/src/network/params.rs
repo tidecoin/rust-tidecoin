@@ -5,6 +5,12 @@
 //! This module provides a predefined set of parameters for different Tidecoin
 //! chains (mainnet, testnet, regtest).
 //!
+//! Some field names intentionally keep the node's inherited BIP identifiers
+//! (`bip16_time`, `bip34_height`, `bip65_height`, `bip66_height`,
+//! `enforce_bip94`) because those are the names used for Tidecoin consensus
+//! activation parameters in the node. In this module they describe active
+//! Tidecoin node semantics, not upstream Bitcoin compatibility.
+//!
 //! # Custom Parameters Example
 //!
 //! In various places in this crate we take `AsRef<Params>` as a parameter, in order to create a
@@ -64,18 +70,35 @@ pub struct Params {
     /// Network for which parameters are valid.
     pub network: Network,
     /// Time when pay-to-script-hash validation becomes active.
+    ///
+    /// The `bip16_time` name is retained to match the Tidecoin node consensus
+    /// parameter name.
     pub bip16_time: u32,
     /// Block height at which coinbase height validation becomes active.
+    ///
+    /// The `bip34_height` name is retained to match the Tidecoin node consensus
+    /// parameter name.
     pub bip34_height: BlockHeight,
     /// Block height at which CHECKLOCKTIMEVERIFY validation becomes active.
+    ///
+    /// The `bip65_height` name is retained to match the Tidecoin node consensus
+    /// parameter name.
     pub bip65_height: BlockHeight,
     /// Block height at which strict signature encoding validation becomes active.
+    ///
+    /// The `bip66_height` name is retained to match the Tidecoin node consensus
+    /// parameter name.
     pub bip66_height: BlockHeight,
     /// Block height at which auxpow activates, if any.
     pub auxpow_start_height: Option<BlockHeight>,
     /// Auxpow chain ID encoded into header version bits.
     pub auxpow_chain_id: u32,
+    /// Initial block interval for the Tidecoin doubling-interval subsidy schedule.
+    pub subsidy_initial_interval: u32,
     /// Enforce Tidecoin block storm mitigation.
+    ///
+    /// The `enforce_bip94` name is retained to match the Tidecoin node consensus
+    /// parameter name.
     pub enforce_bip94: bool,
     /// Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
     /// (nPowTargetTimespan / nPowTargetSpacing).
@@ -124,6 +147,7 @@ impl Params {
         bip66_height: BlockHeight::from_u32(1),
         auxpow_start_height: None,
         auxpow_chain_id: 8,
+        subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
         miner_confirmation_window: BlockHeightInterval::from_u32(8064),
@@ -143,6 +167,7 @@ impl Params {
         bip66_height: BlockHeight::from_u32(1),
         auxpow_start_height: Some(BlockHeight::from_u32(1000)),
         auxpow_chain_id: 8,
+        subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
         miner_confirmation_window: BlockHeightInterval::from_u32(8064),
@@ -162,6 +187,7 @@ impl Params {
         bip66_height: BlockHeight::from_u32(1),
         auxpow_start_height: Some(BlockHeight::from_u32(0)),
         auxpow_chain_id: 8,
+        subsidy_initial_interval: 20,
         enforce_bip94: true,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(108),
         miner_confirmation_window: BlockHeightInterval::from_u32(144),
@@ -231,6 +257,7 @@ mod tests {
 
     fn assert_chainparam_sanity(params: &'static Params) {
         assert_eq!(params.pow_target_timespan % params.pow_target_spacing, 0);
+        assert_ne!(params.subsidy_initial_interval, 0);
 
         let genesis_target = Target::from(genesis_block(params).header().bits);
         assert!(genesis_target <= params.max_attainable_target);

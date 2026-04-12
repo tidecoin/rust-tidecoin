@@ -23,7 +23,7 @@ hex = ["dep:hex-stable", "hashes/hex", "internals/hex"]
 [dependencies]
 encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", version = "0.1.0", default-features = false }
 hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.20.0", default-features = false }
-internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0" }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = [ "encoding" ] }
 
 arbitrary = { version = "1.4.1", optional = true }

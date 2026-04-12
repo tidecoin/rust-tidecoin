@@ -1,14 +1,22 @@
 # Consensus Core Extraction Plan
 
-This note turns the shared-core idea into a concrete extraction map.
+This note records the current shared-core architecture and the remaining
+boundary work.
 
-It is now a current-state architecture note. The extraction itself is complete; remaining work is
-cleanup, narrowing, and proof-surface reconciliation.
+The extraction itself is complete; remaining work is cleanup, narrowing, and
+proof-surface reconciliation.
 
 Priority for the next implementation pass:
 
-- first audit the runtime/API surface in [`consensus/src/lib.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs) and decide what must be deleted, rewritten, or replaced through the shared core
-- then use that result to retire the old Bitcoin-shaped differential tests in `consensus/tests/**`
+- keep the shared-core boundary narrow and avoid speculative new
+  `consensus-core` APIs
+- centralize any remaining consensus/protocol logic only when a code audit
+  shows real duplicate behavior
+- reconcile the archived proof classes against active Tidecoin-native tests
+  before deleting the historical material
+- fill the chain-rule coverage gaps that sit below script execution, especially
+  AuxPoW validation, yespower/scrypt PoW-hash selection, and exact difficulty
+  behavior
 
 Current status:
 
@@ -21,7 +29,9 @@ Current status:
     [consensus-core/src/tx.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/tx.rs)
   - [consensus/src/lib.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs) is now the byte-oriented wrapper over that shared engine
   - the old local engine files `consensus/src/script.rs` and `consensus/src/tx.rs` have been removed
-- the next implementation task is to keep lowering reusable Tidecoin validation/runtime pieces out of the top-level [`tidecoin/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate into the shared core where they are truly engine responsibilities, now that the duplicate top-level fallback interpreter has been removed
+- the next implementation task is not another broad extraction pass; it is a
+  targeted boundary audit for any newly discovered duplicate validation or
+  protocol logic
 
 Audit standard:
 
@@ -31,13 +41,13 @@ Audit standard:
 
 ## Decision Summary
 
-The new shared crate should be:
+The shared crate is:
 
 - directory: `consensus-core/`
 - package name: `tidecoin-consensus-core`
 
-It should become the single reusable Tidecoin consensus-validation engine inside
-this monorepo.
+It is the single reusable Tidecoin consensus-validation engine inside this
+monorepo.
 
 The dependency direction should be:
 
@@ -64,8 +74,8 @@ Follow-up audit for the next lowering phase:
   now serves as the guide for any narrower follow-up lowering from the
   top-level validation surface
 
-The Tidecoin node-backed bridge itself should not live inside
-`tidecoin-consensus-core`. That bridge should be extracted into a separate
+The Tidecoin node-backed bridge itself must not live inside
+`tidecoin-consensus-core`. That bridge now lives in the separate
 shared parity/test-support layer; see
 [NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_HARNESS_PLAN.md).
 
@@ -102,14 +112,21 @@ The opcode ownership boundary is now explicit too:
 - [`tidecoin/src/blockdata/opcodes.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/opcodes.rs)
   is now only a reexport/public-API layer
 
-However, some consensus-critical pieces still live in the top-level crate today:
+Remaining boundary work is now narrower than the original extraction plan:
 
-- [`tidecoin/src/crypto/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/crypto/sighash.rs)
-- [`tidecoin/src/blockdata/script/witness_program.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/script/witness_program.rs)
-- [`tidecoin/src/blockdata/script/witness_version.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/script/witness_version.rs)
-- [`tidecoin/src/crypto/pq.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/crypto/pq.rs)
+- [`consensus-core/src/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/sighash.rs)
+  owns the consensus sighash engine used by validation; there is no longer a
+  live `tidecoin/src/crypto/sighash.rs` implementation to lower.
+- [`consensus-core/src/witness.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/witness.rs)
+  owns consensus witness-program classification and execution planning; the
+  top-level script layer should remain a convenience facade only.
+- [`consensus-core/src/pq.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/pq.rs)
+  owns verification-side PQ parsing and verification; top-level
+  [`tidecoin/src/crypto/pq.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/crypto/pq.rs)
+  should keep signing, keygen, key I/O, and transport helpers.
 
-Those are the main lowering tasks that must be handled during extraction.
+Future work should audit only real remaining duplication or facade leakage
+against the Tidecoin node, not replay the original extraction checklist.
 
 ## Ownership Map
 
@@ -145,9 +162,9 @@ Concretely, the shared core now owns logic equivalent to:
 The remaining top-level file should stay thin and keep only wrapper/routing
 responsibilities.
 
-#### From `tidecoin/src/crypto/sighash.rs`
+#### Sighash Ownership
 
-Move the consensus-critical sighash engine needed by validation:
+Moved:
 
 - `SighashCache`
 - legacy/base sighash support
@@ -155,23 +172,30 @@ Move the consensus-critical sighash engine needed by validation:
 - `Sighash512` / witness-v1-512 sighash support
 - script-code handling required by verification
 
-This is consensus logic, not wallet-only signing ergonomics.
+The consensus-critical sighash engine now lives in
+[`consensus-core/src/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/sighash.rs).
+There is no active top-level `tidecoin/src/crypto/sighash.rs` module; future
+cleanup should focus on keeping public signing ergonomics as thin wrappers over
+the shared core when those ergonomics are needed.
 
-#### From `tidecoin/src/blockdata/script/witness_program.rs` and related script modules
+#### Witness-Program Ownership
 
-Move or re-home the witness-program semantics required by validation:
+Moved:
 
 - `WitnessProgram`
 - witness-v0 / witness-v1-512 recognition used by the verifier
 - any Tidecoin-specific witness-program length rules that are part of consensus
 
-If only a subset is consensus-critical, split that subset out and leave
-formatting/convenience methods in the top-level crate.
+The consensus-critical witness-program parser, classifier, commitment checks,
+stack preparation, executed-script selection, and sigop mode now live in
+[`consensus-core/src/witness.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/witness.rs).
+
+The top-level script layer should keep only address/script-construction
+ergonomics and public wrappers.
 
 #### From `tidecoin/src/crypto/pq.rs`
 
-Move or factor out the minimal PQ verification surface needed by script
-validation:
+Moved:
 
 - PQ public-key parsing needed by `CHECKSIG` / `CHECKMULTISIG`
 - PQ signature parsing needed by script evaluation
@@ -180,8 +204,8 @@ validation:
   - Falcon legacy-accepting mode
   - ML-DSA
 
-The shared core does not need wallet key generation, WIF codecs, PQHD, or
-ML-KEM transport logic.
+The shared core does not need and must not grow wallet key generation, WIF
+codecs, PQHD, signing, or ML-KEM transport logic.
 
 Status:
 
@@ -251,8 +275,8 @@ This module is not the shared core. It is an optional parity/bridge layer.
 
 Current direction:
 
-- raw FFI, native bridge wiring, and reusable harness code should move into the
-  planned shared node-parity support crate
+- raw FFI, native bridge wiring, and reusable harness code now live in
+  [`node-parity/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity)
 - the top-level `tidecoin` crate should keep only thin adapter/routing code here
 
 #### In `tidecoin/src/crypto/pq.rs`
@@ -265,7 +289,8 @@ Keep:
 - WIF and secret serialization helpers
 - ML-KEM transport helpers
 
-Only the verification-facing subset should move down.
+Only signing, keygen, key I/O, PQHD, and transport ergonomics should remain
+high-level.
 
 ### Keep Out Of The Shared Core Entirely
 
@@ -280,13 +305,13 @@ Do not move these into `tidecoin-consensus-core`:
 - node bridge build glue
 - repo-specific test harness code
 
-That node bridge and harness code should instead move into the shared parity
-support layer described in
+That node bridge and harness code now lives in the shared parity support layer
+described in
 [NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_HARNESS_PLAN.md).
 
 ## Concrete Module Plan
 
-The first extracted module layout should be small and explicit:
+The current extracted module layout is small and explicit:
 
 - `consensus-core/src/lib.rs`
 - `consensus-core/src/flags.rs`
@@ -295,18 +320,19 @@ The first extracted module layout should be small and explicit:
 - `consensus-core/src/witness.rs`
 - `consensus-core/src/pq.rs`
 - `consensus-core/src/interpreter.rs`
-- `consensus-core/src/verify.rs`
+- `consensus-core/src/tx.rs`
 
-Suggested ownership:
+Current ownership:
 
 - `flags.rs`
   - validation flags
   - supported-flag checks
   - default flag bundles
-  - future `verification_flags_for_height(...)`
+  - future central height/activation mapping if the wrapper-level helper is
+    lowered
 - `error.rs`
   - `ScriptError`
-  - `ValidationError`
+  - `TidecoinValidationError`
 - `sighash.rs`
   - consensus-critical sighash engine
 - `witness.rs`
@@ -318,18 +344,19 @@ Suggested ownership:
   - opcode execution
   - `CHECKSIG` / `CHECKMULTISIG`
   - `OP_SHA512`
-- `verify.rs`
-  - `verify_script_input`
-  - `verify_transaction_inputs`
-  - dispatch between base / p2sh / witness / witness-v1-512 paths
+  - script-input verification dispatch between base / P2SH / witness /
+    witness-v1-512 paths
+- `tx.rs`
+  - typed transaction context
+  - prevout context and precompute inputs used by the interpreter
 
 The node-backed bridge does not belong in this module layout.
 
 ## Wrapper Surface After Extraction
 
-After the first extraction pass, the top-level
+Now that extraction has landed, the top-level
 [`tidecoin/src/consensus_validation.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation.rs)
-should reduce to:
+should stay limited to:
 
 1. deserialize transaction bytes
 2. choose backend:
@@ -338,59 +365,70 @@ should reduce to:
 3. map errors into the existing public wrapper enums
 4. preserve the current ergonomic API surface
 
-The byte API stays in `tidecoin`. The engine moves down.
+The byte API stays in `tidecoin`. The engine is already lowered.
 
 ## Dependency-Lowering Tasks
 
-These are the real blockers to a clean extraction. They should be treated as
-part of the consensus-core work, not as side issues.
+These are the boundary rules that keep the completed extraction clean. Treat
+new violations as consensus-core work, not as side issues.
 
-### 1. Lower `SighashCache`
+### 1. Keep `SighashCache` Lowered
 
-`SighashCache` currently lives in
-[`tidecoin/src/crypto/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/crypto/sighash.rs).
+`SighashCache` and the verification-facing sighash types now live in
+[`consensus-core/src/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/sighash.rs).
 
 Action:
 
-- move the consensus-critical parts into `tidecoin-consensus-core`, or
-- split `crypto/sighash.rs` so the core owns verification-facing sighash logic
-  and `tidecoin` only re-exports it
+- keep the lowered engine as the only consensus implementation
+- add any future signing convenience surface as wrappers over `consensus-core`,
+  not as a second top-level sighash implementation
 
 Current state:
 
-- a verification-only sighash subset now exists in
+- a verification-facing sighash implementation exists in
   [`consensus-core/src/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/sighash.rs)
 - the pure-Rust Tidecoin validator now uses the lowered `SighashCache`,
   `TxSighashType`, `LegacySighash`, `SegwitV0Sighash`, and `Sighash512`
-- the full top-level public signing API in
-  [`tidecoin/src/crypto/sighash.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/crypto/sighash.rs)
-  still exists and has not been migrated yet
+- no live `tidecoin/src/crypto/sighash.rs` implementation remains
 
-### 2. Lower witness-program consensus types
+### 2. Keep witness-program consensus types lowered
 
-`WitnessProgram` and related witness-version logic currently live under
-[`tidecoin/src/blockdata/script/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/blockdata/script).
+`WitnessProgram` and related witness-version logic now live under
+[`consensus-core/src/witness.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/witness.rs).
 
 Action:
 
-- move the consensus-critical witness-program representation into the shared
-  core or into `primitives`
+- keep the consensus-critical witness-program representation in the shared core
 - leave non-critical formatting helpers in `tidecoin`
 
 ### 3. Lower PQ verification dependencies
 
-The shared core cannot depend on the whole top-level crypto module.
+Done for verification: the shared core does not depend on the whole top-level
+crypto module.
 
 Action:
 
-- split verification-only PQ parsing and verification from
+- keep verification-only PQ parsing and verification in
+  [`consensus-core/src/pq.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/pq.rs)
+- keep signing/keygen/key I/O in
   [`tidecoin/src/crypto/pq.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/crypto/pq.rs)
-- make that lower verification surface available to the shared core
+- avoid reintroducing a top-level verification implementation
 
 The important distinction is:
 
 - keygen / secret handling / PQHD stay high-level
-- verification needed by consensus moves low
+- verification needed by consensus stays low
+
+Dependency hygiene note:
+
+- [`consensus-core/Cargo.toml`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/Cargo.toml)
+  depends directly on `tide-fn-dsa-vrfy` with `default-features = false`
+- [`tidecoin/Cargo.toml`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/Cargo.toml)
+  depends directly on `tide-fn-dsa-kgen` and `tide-fn-dsa-sign` with
+  `default-features = false`
+- upstream `tide-fn-dsa-comm` still pulls default-featured `rand_core` and
+  backend defaults internally; fixing that requires an upstream
+  `tide-fn-dsa` feature-hygiene change
 
 ### 4. Height-to-flags logic belongs in the core
 
@@ -401,8 +439,13 @@ AuxPoW-era activation of:
 - `WITNESS_V1_512`
 - `SHA512`
 
-That mapping should be added in `flags.rs` inside the shared core, not bolted
-onto the wrapper layer.
+Current status:
+
+- [`consensus/src/lib.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs)
+  exposes an auxpow-aware wrapper helper today.
+- If this helper becomes a shared consensus rule rather than a standalone
+  wrapper convenience, lower it into `consensus-core/src/flags.rs` instead of
+  duplicating it in another caller.
 
 ## Migration Order
 
@@ -425,14 +468,15 @@ This is the smallest safe first slice.
 
 ### Step 3: Move Sighash And Witness Support
 
-- [~] Extract consensus-critical sighash code.
+- [x] Extract consensus-critical sighash code.
 - [x] Extract witness-program parsing/recognition pieces.
 - [~] Extract witness-program validation pieces beyond parsing/recognition.
   - shared-core now owns parsing, classification, commitment checks, stack
     preparation, executed-script selection, and sigop mode
   - remaining work is mainly the generic post-execution success path and any
     further interpreter extraction
-- [ ] Keep the public top-level API stable through re-exports.
+- [x] Remove compatibility-shaped top-level sighash API baggage instead of
+  preserving a second public implementation.
 
 ### Step 4: Move The Interpreter
 

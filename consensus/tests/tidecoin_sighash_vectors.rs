@@ -1,12 +1,12 @@
 use consensus_core::SighashCache;
 use encoding::decode_from_slice;
-use primitives::{opcodes::all, script::ScriptBuf as RawScriptBufT, Transaction};
+use primitives::{opcodes::all, script::ScriptBuf as PrimitiveScriptBuf, Transaction};
 
 mod tidecoin_test_support;
 
 use tidecoin_test_support::{parse_hex_bytes, read_fixture, try_harness};
 
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 fn to_fixture_hex(bytes: &[u8]) -> String {
     bytes.iter().rev().map(|byte| format!("{byte:02x}")).collect()

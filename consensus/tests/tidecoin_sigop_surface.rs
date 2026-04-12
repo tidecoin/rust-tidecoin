@@ -4,7 +4,7 @@ use hashes::{hash160, sha256};
 use primitives::{
     absolute::LockTime,
     opcodes::all,
-    script::{Builder as BuilderT, ScriptBuf as RawScriptBufT, ScriptPubKeyBuf, ScriptSigBuf},
+    script::{Builder as BuilderT, ScriptBuf as PrimitiveScriptBuf, ScriptPubKeyBuf, ScriptSigBuf},
     Amount, OutPoint, Sequence, Transaction, TransactionVersion, TxIn, TxOut, Txid, Witness,
 };
 
@@ -13,7 +13,7 @@ mod tidecoin_test_support;
 use tidecoin_test_support::{node_script_result, try_harness};
 
 type Builder = BuilderT<()>;
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 fn dummy_outpoint() -> OutPoint {
     OutPoint { txid: Txid::from_byte_array([2u8; 32]), vout: 0 }

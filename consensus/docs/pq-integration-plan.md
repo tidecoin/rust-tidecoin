@@ -63,19 +63,25 @@ Tidecoin proof coverage.
 
 ## Remaining Architecture Work
 
-- [ ] Remove stale upstream-era assumptions from live crate metadata, README,
-  docs, features, and comments.
-- [ ] Continue reducing high-level wrapper duplication in `tidecoin/` and
-  `consensus/`; lower reusable protocol or validation logic into
-  `primitives` or `consensus-core`.
+- [ ] Finish metadata/provenance cleanup only where inherited upstream-era
+  wording still appears in live public crate docs or package metadata.
+- [ ] Audit new wrapper code for real duplicate validation/protocol logic before
+  lowering anything else; do not create speculative `consensus-core` APIs.
+- [ ] Keep `consensus/` as a byte-oriented standalone adapter over
+  `tidecoin-consensus-core`; it must not regain its own transaction, script,
+  witness, PQ, or sighash model.
 - [x] Remove the old compatibility-shaped public APIs from the active Rust
   surface; any remaining naming cleanup is tracked as metadata/provenance
   cleanup rather than API compatibility work.
-- [ ] Keep wallet, address, descriptor, p2p, RPC, policy, and node-runtime code
+- [x] Keep wallet, address, descriptor, p2p, RPC, policy, and node-runtime code
   out of `consensus-core` unless a rule is genuinely required by consensus
   validation.
-- [ ] Keep the node bridge outside `consensus-core`; it is a test and optional
+- [x] Keep the node bridge outside `consensus-core`; it is a test and optional
   parity surface, not production consensus logic.
+- [ ] Track the upstream `tide-fn-dsa` feature-hygiene limitation separately:
+  this repo now depends on direct verification/signing/keygen FN-DSA subcrates
+  with `default-features = false`, but upstream `tide-fn-dsa-comm` still
+  enables default-featured backend dependencies internally.
 
 ## Active Test Surface
 

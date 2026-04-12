@@ -37,8 +37,14 @@ This preserves:
 - `tidecoin`: high-level crate; it does not expose a `tidecoin::consensus` codec compatibility
   namespace. Callers use `encoding`/`tidecoin-consensus-encoding` APIs directly, while serde users
   use `primitives::serde_as_consensus`.
-- `p2p`: message codecs; V1 network framing may buffer payload bytes for checksum/length handling,
-  but payload type codecs use `consensus_encoding`.
+- `p2p`: message codecs; V1 network framing uses one no-allocation frame-planning pass for
+  checksum/length and one emission pass because the header commits to payload metadata before the
+  payload bytes. Payload type codecs use `consensus_encoding`.
+
+This P2P V1 double walk is frame-layer metadata work, not a second payload codec. It is acceptable
+current architecture because it avoids buffering payloads and keeps transaction/block/script/witness
+serialization under the canonical codec layer. A future one-pass streaming frame builder is a
+performance and implementation-polish target, not a consensus or codec-ownership blocker.
 
 ## API Sketch
 

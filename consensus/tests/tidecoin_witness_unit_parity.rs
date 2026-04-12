@@ -2,7 +2,7 @@ use consensus::{verify_with_flags_detailed, ScriptFailure, VERIFY_P2SH, VERIFY_W
 use hashes::{hash160, sha256};
 use primitives::{
     opcodes::all,
-    script::{Builder as BuilderT, ScriptBuf as RawScriptBufT},
+    script::{Builder as BuilderT, ScriptBuf as PrimitiveScriptBuf},
     Amount, Witness,
 };
 
@@ -13,7 +13,7 @@ use tidecoin_test_support::{
 };
 
 type Builder = BuilderT<()>;
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 fn sat(value: u64) -> Amount {
     Amount::from_sat(value).expect("test amount in range")

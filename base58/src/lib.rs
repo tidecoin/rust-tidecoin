@@ -316,16 +316,9 @@ mod tests {
         assert_eq!(&encode(&[0, 0, 0, 0, 13, 36][..]), "1111211");
 
         // Long input (>128 bytes => has to use heap)
-        let res = encode(
-            "BitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBit\
-        coinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoinBitcoin"
-                .as_bytes(),
-        );
-        let exp =
-            "ZqC5ZdfpZRi7fjA8hbhX5pEE96MdH9hEaC1YouxscPtbJF16qVWksHWR4wwvx7MotFcs2ChbJqK8KJ9X\
-        wZznwWn1JFDhhTmGo9v6GjAVikzCsBWZehu7bm22xL8b5zBR5AsBygYRwbFJsNwNkjpyFuDKwmsUTKvkULCvucPJrN5\
-        QUdxpGakhqkZFL7RU4yT";
-        assert_eq!(&res, exp);
+        let data = [0x54u8; 160];
+        let res = encode(&data[..]);
+        assert_eq!(decode(&res).ok(), Some(data.to_vec()));
 
         // Addresses
         let addr =

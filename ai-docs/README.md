@@ -11,11 +11,12 @@ The repository has moved well past the original "port from rust-bitcoin" phase.
 Most Tidecoin protocol-library work is already implemented and validated against
 the Tidecoin node.
 
-The main open problem is now architectural:
+The main open problem is now coverage and boundary maintenance, not the original
+extraction:
 
-- the top-level [`tidecoin`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate contains the real Tidecoin validation/runtime behavior
+- the top-level [`tidecoin`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate owns public validation orchestration, key/signing ergonomics, and node-backed adapter entry points
 - the standalone [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) crate is now a Tidecoin-native byte-oriented wrapper over the shared engine in [`consensus-core/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core)
-- the shared Tidecoin consensus core now owns the interpreter, typed transaction context, sighash, PQ verification facade, and witness execution planning, but more reusable validation/runtime logic still needs to be lowered out of the top-level crate
+- the shared Tidecoin consensus core owns the interpreter, typed transaction context, sighash, PQ verification facade, and witness execution planning
 - the canonical Tidecoin script representation/parsing/building layer now lives in
   [`primitives/src/script/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/primitives/src/script)
   and is consumed by both [`consensus-core/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core)
@@ -37,21 +38,35 @@ The main open problem is now architectural:
   owning lower crates and callers use
   [`consensus_encoding/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus_encoding)
   APIs directly
-- the Tidecoin node-backed bridge/parity surface is now shared between `tidecoin` and `consensus/`, but the wider harness migration and the pure-Rust core extraction are still incomplete
+- the Tidecoin node-backed bridge/parity surface is shared between `tidecoin`
+  and `consensus/` through
+  [`node-parity/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity)
+- chain-level coverage still has real gaps: AuxPoW validation, yespower/scrypt
+  PoW-hash selection, and exact difficulty-retargeting parity vectors remain
+  open; the subsidy schedule is now implemented and tested against the node
+  formula
 
 That is the primary workstream now.
 
 Priority rule for the next phase:
 
-- first convert [`consensus/src/lib.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs) and the runtime/API surface away from Bitcoin/Taproot/`bitcoinconsensus` assumptions
-- then retire the old Bitcoin differential tests in step with that runtime conversion, so the test suite follows the new Tidecoin model instead of preserving the old one
+- first fill chain-rule coverage gaps against the Tidecoin node, especially
+  AuxPoW validation, yespower/scrypt PoW-hash selection, and exact difficulty
+  behavior
+- then reconcile the archived proof-class matrix against the active
+  Tidecoin-native tests so the historical files can be deleted deliberately
+- keep auditing new wrapper code for real duplicate validation/protocol logic,
+  but do not re-open completed `consensus-core` extraction decisions
 
 Audit rule for that work:
 
-- audit [`consensus/src/lib.rs`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs) and related runtime code against the actual Tidecoin core node checkout at `~/dev/tidecoin/tidecoin`
+- audit consensus-sensitive behavior against the actual Tidecoin core node checkout at `~/dev/tidecoin/tidecoin`
 - treat the Tidecoin node as the primary source of truth
 - treat the already-ported [`tidecoin/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate as secondary internal evidence
 - do not use upstream Bitcoin or `bitcoinconsensus` behavior as the acceptance standard
+- BIP-labeled chain parameter names may stay only where they match active
+  Tidecoin node consensus parameter names; they are node-parity identifiers,
+  not upstream Bitcoin compatibility promises
 
 Type-system rule for that work:
 
@@ -66,6 +81,8 @@ Current status note:
 - the live interpreter/typed tx engine now lives in `consensus-core`, not in `consensus/src/`
 - the completed top-level validation audit and adapter refactor are captured in
   [TIDECOIN_VALIDATION_CORE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/TIDECOIN_VALIDATION_CORE_AUDIT.md)
+- the current node-vs-Rust consensus/settings gap audit is captured in
+  [NODE_CONSENSUS_SETTINGS_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_CONSENSUS_SETTINGS_AUDIT.md)
 - archived Bitcoin/Core-era materials remain only as historical reference
 
 ## Master Status
@@ -117,6 +134,10 @@ Current status note:
     [p2p/src/message.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/p2p/src/message.rs)
     and the shared codec traits directly, instead of a parallel reader/writer
     implementation
+  - known P2P framing polish remains: V1 currently performs one no-allocation
+    planning pass to compute payload length/checksum and a second pass to emit
+    the payload, because the frame header commits to payload metadata before
+    the payload bytes; this is not duplicate transaction/block codec logic
   - raw transaction deserialization remains non-semantic: duplicate-input and
     missing-output rejection belongs in validation, not in byte decoding
 - The top-level [`tidecoin`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate no longer depends on or routes through `bitcoinconsensus`.
@@ -176,11 +197,11 @@ Current status note:
     - explicit witness amount authority coverage
     - legacy code-separator signature coverage
     - the old Bitcoin-only multisig intermediate-mismatch edge case
-- The node-backed bridge design direction is now explicit:
+- The node-backed bridge ownership is now explicit:
   - keep the Tidecoin bridge semantics and Tidecoin-node truth
-  - extract the bridge into a shared internal parity harness
+  - keep the bridge in the shared internal parity harness
   - keep that parity harness outside `tidecoin-consensus-core`
-- The first shared node-parity extraction slice is in place:
+- The shared node-parity extraction is in place:
   - [`node-parity/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity) exists in the workspace
   - shared `ScriptError` mapping lives there now
   - raw bridge FFI declarations live there now
@@ -194,19 +215,19 @@ Current status note:
     - script-ASM parsing
     - isolated script-case verification
     - PQ/PQHD parity helper calls used by the node-backed tests
-  - [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) now has its first shared-harness Tidecoin parity test in
+  - [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) now has shared-harness Tidecoin parity coverage in
     [consensus/tests/tidecoin_node_parity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_node_parity.rs)
     covering:
     - `script_tests_pq.json`
     - `tx_valid_pq.json`
     - `tx_invalid_pq.json`
-  - [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) now also has its first Tidecoin-native runtime diff/error suite in
+  - [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) now also has a Tidecoin-native runtime diff/error suite in
     [consensus/tests/tidecoin_runtime_diff.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_runtime_diff.rs)
     covering:
     - script corpus accept/reject parity
     - script-error parity
     - tx corpus accept/reject parity
-  - [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) now has its first Tidecoin-native `script_assets` replacement in
+  - [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) now has a Tidecoin-native `script_assets` replacement in
     [consensus/tests/tidecoin_script_assets.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_script_assets.rs),
     replaying the Tidecoin node `script_assets_test.json` corpus with the same
     subset/superset monotonicity rules the node uses
@@ -283,7 +304,8 @@ Current status note:
   adaptation.
 - Delete the archived Bitcoin/Core-era materials later; they are temporary
   migration reference only and not part of the intended steady-state repo.
-- Restore the removed `consensus` unit-test surfaces with Tidecoin/PQ-native coverage instead of the deleted Bitcoin/ECDSA fixtures.
+- Reconcile the archived `consensus` proof classes against Tidecoin/PQ-native
+  replacements before deleting the historical files.
 - Keep the Tidecoin node as the only external parity target.
 - Keep explicitly archived Bitcoin/Core-diff tests archived unless they are
   being rewritten as Tidecoin-native parity coverage.
@@ -291,6 +313,9 @@ Current status note:
   not by accepting a smaller Tidecoin test surface.
 - Keep expanding the proof surface until the archived depth is matched,
   especially any remaining stale fixture debt and any still-useful targeted cases.
+- Add chain-level parity coverage that remains open below the script
+  interpreter: AuxPoW validation, yespower/scrypt PoW-hash selection, and exact
+  difficulty retargeting vectors.
 
 ## Master Plan
 
@@ -320,10 +345,13 @@ Checklist:
   - top-level `tidecoin` crate -> `tidecoin-consensus-core`
   - compatibility-facing `consensus` crate -> `tidecoin-consensus-core`
 - [x] Confirm the Tidecoin node remains the only external parity reference.
-- [ ] Lower consensus-owned types that still live in the top-level crate:
-  - public signing-facing `SighashCache` surface
-  - `WitnessProgram`
-  - remaining interpreter/runtime pieces that still depend on the top-level crate
+- [x] Lower the consensus sighash engine into `tidecoin-consensus-core`.
+- [x] Lower witness-program consensus classification and execution planning
+  into `tidecoin-consensus-core`.
+- [x] Lower PQ verification into `tidecoin-consensus-core`.
+- [ ] Continue auditing only real remaining facade leakage from the top-level
+  crate; signing/keygen/key I/O and user-facing helpers stay high-level unless
+  the Tidecoin node requires them for consensus validation.
 
 The shared core should contain:
 - verification flags and supported-flag checks
@@ -355,7 +383,7 @@ Checklist:
   - not part of `tidecoin-consensus-core`
   - not a public end-user API
 - [x] Create the shared harness crate.
-- [x] Move native bridge sources out of [`tidecoin/c_src/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/c_src).
+- [x] Move native bridge sources into [`node-parity/c_src/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity/c_src).
 - [x] Move node build wiring into the shared parity crate.
 - [x] Move raw FFI declarations out of
   [tidecoin/src/consensus_validation_node.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_node.rs).
@@ -387,7 +415,7 @@ Checklist:
 - [x] Audit [tidecoin/src/consensus_validation.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation.rs).
 - [x] Audit [tidecoin/src/consensus_validation_tidecoin.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_tidecoin.rs).
 - [x] Audit [tidecoin/src/consensus_validation_node.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_node.rs).
-- [ ] Decide which parts are:
+- [x] Decide which parts are:
   - shared-core logic
   - top-level ergonomic wrappers
   - node-bridge-specific code
@@ -395,8 +423,8 @@ Checklist:
   - done: the duplicate pure-Rust fallback interpreter was removed from
     [tidecoin/src/consensus_validation_tidecoin.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_tidecoin.rs)
     and replaced with a thin adapter over `consensus-core`
-  - open: review the remaining wrapper/error seams and lower only genuinely
-    reusable helpers
+  - open: continue reviewing only new or still-unclear wrapper/error seams;
+    do not replay the already-completed interpreter extraction
 - [x] Rewire the top-level crate to depend on the shared core.
 
 ### Phase 5: Rebase The Imported `consensus/` Crate
@@ -474,12 +502,13 @@ Checklist:
   - done: PQ multisig replacement landed in
     [consensus/tests/tidecoin_pq_multisig_parity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_pq_multisig_parity.rs)
 - [x] Remove or rewrite Taproot-specific fixtures and tests from the active test surface.
-- [ ] Import Tidecoin node fixtures:
+- [x] Import Tidecoin node fixtures:
   - [x] `script_tests_pq.json`
   - [x] `tx_valid_pq.json`
   - [x] `tx_invalid_pq.json`
   - [x] direct node-backed use of `script_assets_test.json`
   - [x] Tidecoin-native generated large-corpus/provenance replacement derived from `tx_valid_pq.json` and `tx_invalid_pq.json`
+  - [x] active `sighash.json` replay through lowered Tidecoin types
   - [x] archive the stale vendored
     [consensus/tests/archived/data/script_assets_test.json](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data/script_assets_test.json)
   - [x] archive the old Core-era roadmap at
@@ -487,7 +516,6 @@ Checklist:
   - [x] archive the remaining Core-era corpora under
     [consensus/tests/archived/data](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data),
     leaving only active Tidecoin-generated metadata in `consensus/tests/data`
-  - applicable sighash fixtures
 - [x] Rewrite token/flag parsing around:
   - `PQ_STRICT`
   - `WITNESS_V1_512`
@@ -501,9 +529,18 @@ Goal:
 
 Checklist:
 - [ ] AuxPoW validation vectors
-- [ ] Subsidy/reward schedule tests
+  - required architecture: wire structures/codecs stay in `primitives`;
+    consensus-context checks live in `tidecoin::pow` and match the node's
+    `CheckAuxPowContext(...)`, including parent scrypt PoW verification
+- [ ] yespower/scrypt PoW-hash selection and target-check vectors
+  - required architecture: replace the context-free `HeaderExt::validate_pow`
+    model with a Tidecoin-native API that derives target from `nBits`, takes
+    `Params` plus height, and selects yespower or scrypt exactly like the node
+- [x] Subsidy/reward schedule tests
 - [ ] Difficulty retargeting edge-case tests
-- [ ] Standalone PQ signature operation tests where still useful below the node-backed layer
+  - required architecture: port the node's pre/post-AuxPoW retarget switch,
+    post-AuxPoW averaging-window algorithm, and `PermittedDifficultyTransition`
+- [x] Standalone PQ signature operation tests where still useful below the node-backed layer
 - [ ] Keep the `hashes/embedded` smoke test supported at a limited level:
   target-specific `thumbv7m-none-eabi` check documented, no host-target check,
   and no broad embedded matrix until intentionally scheduled.

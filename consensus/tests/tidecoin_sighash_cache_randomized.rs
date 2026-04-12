@@ -4,11 +4,11 @@ use hashes::sha256d;
 use primitives::{
     absolute::LockTime,
     opcodes::all,
-    script::{ScriptBuf as RawScriptBufT, ScriptPubKeyBuf, ScriptSigBuf},
+    script::{ScriptBuf as PrimitiveScriptBuf, ScriptPubKeyBuf, ScriptSigBuf},
     Amount, OutPoint, Sequence, Transaction, TransactionVersion, TxIn, TxOut, Txid, Witness,
 };
 
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 const SIGHASH_NONE: u32 = 0x02;
 const SIGHASH_SINGLE: u32 = 0x03;

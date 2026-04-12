@@ -17,10 +17,12 @@ use hashes::hash160;
 use ml_kem::kem::{Decapsulate, Encapsulate};
 use ml_kem::{EncapsulateDeterministic, EncodedSizeUser, KemCore, MlKem512, B32};
 use rand_core::{CryptoRng, RngCore};
-use tide_fn_dsa::{
-    sign_key_size, vrfy_key_size, FalconProfile, KeyPairGeneratorStandard,
-    SigningKey as TideSigningKey, SigningKeyStandard, FN_DSA_LOGN_1024, FN_DSA_LOGN_512,
-    TIDECOIN_LEGACY_FALCON512_SIG_MAX,
+use tide_fn_dsa_kgen::{
+    sign_key_size, vrfy_key_size, KeyPairGeneratorStandard, FN_DSA_LOGN_1024, FN_DSA_LOGN_512,
+};
+use tide_fn_dsa_sign::{
+    FalconProfile, SigningKey as TideSigningKey, SigningKeyStandard, FALCON_NONCE_LEN,
+    TIDECOIN_LEGACY_FALCON512_SIG_BODY_MAX,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -28,6 +30,9 @@ use crate::network::Params;
 use crate::prelude::Vec;
 
 pub use primitives::PqScheme;
+
+const TIDECOIN_LEGACY_FALCON512_SIG_MAX: usize =
+    1 + FALCON_NONCE_LEN + TIDECOIN_LEGACY_FALCON512_SIG_BODY_MAX;
 
 #[cfg(test)]
 pub(crate) struct DeterministicTestRng(u64);

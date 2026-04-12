@@ -26,7 +26,9 @@ This repository provides:
 
 Key Tidecoin-specific behavior:
 
-- AuxPoW merged-mining support with Tidecoin-specific chain parameters
+- AuxPoW header/data and chain-parameter support; full validation-vector parity,
+  yespower/scrypt PoW-hash selection, and AuxPoW parent-PoW validation remain
+  tracked as active consensus coverage work
 - post-quantum signature and KEM support
 - `OP_SHA512` and witness-v1-512 support
 - Tidecoin-native validation flags and node-parity-tested consensus behavior

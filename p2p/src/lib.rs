@@ -10,17 +10,14 @@
 
 mod network_ext;
 
-#[cfg(feature = "std")]
 pub mod address;
 pub mod compact_blocks;
 pub mod merkle_tree;
-#[cfg(feature = "std")]
 pub mod message;
 pub mod message_blockdata;
 pub mod message_bloom;
 pub mod message_compact_blocks;
 pub mod message_filter;
-#[cfg(feature = "std")]
 pub mod message_network;
 pub mod pq_v2_transport;
 

@@ -101,20 +101,21 @@ Tidecoin replacement:
   executable script corpus imported from the node
 
 Status:
-- `partial`
+- `done` for the active Tidecoin corpus replacement
 
 What already exists:
 - [consensus/tests/tidecoin_node_parity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_node_parity.rs)
   covers `script_tests_pq.json`
+- [consensus/tests/tidecoin_runtime_diff.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_runtime_diff.rs)
+  compares script-corpus accept/reject and error behavior against the Tidecoin
+  node.
+- [consensus/tests/tidecoin_test_support.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_test_support.rs)
+  centralizes Tidecoin flag-token parsing, fixture parsing, and Rust/node error
+  mapping for the active parity tests.
 
 What is still needed:
-- full Tidecoin flag-token parser:
-  - `PQ_STRICT`
-  - `WITNESS_V1_512`
-  - `SHA512`
-- expected-error mapping using Tidecoin node `script_error.h`
-- corpus-level stats/reporting comparable to the archived runner
-- any remaining useful parser/fixture helper logic split out of the archived file
+- only optional richer corpus diagnostics if a future audit needs more detail;
+  flag parsing and error mapping are not open blockers.
 
 ### `core_tx_vectors.rs`
 
@@ -131,16 +132,18 @@ Tidecoin replacement:
 - shared `TidecoinNodeHarness`
 
 Status:
-- `partial`
+- `done` for the active Tidecoin corpus replacement
 
 What already exists:
 - [consensus/tests/tidecoin_node_parity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_node_parity.rs)
   covers `tx_valid_pq.json` and `tx_invalid_pq.json`
+- [consensus/tests/tidecoin_runtime_diff.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_runtime_diff.rs)
+  compares tx-corpus accept/reject behavior against the Tidecoin node and
+  reports exercised flag/error classes.
 
 What is still needed:
-- richer per-case diagnostics
-- explicit flag-coverage accounting
-- any meaningful spent-output shape validation needed for future corpora
+- only future-corpus diagnostics if new Tidecoin node vectors need additional
+  spent-output shape reporting.
 
 ### `core_cpp_runtime_diff.rs`
 
@@ -158,12 +161,12 @@ Tidecoin replacement:
   - relevant flag behavior
 
 Status:
-- `partial`
+- `done` for the active Tidecoin runtime-diff replacement
 
 Why it matters:
 - this is the archived file closest to “proof harness”
-- without a Tidecoin-native analogue, we do not yet have archived-level
-  runtime differential depth
+- the active Tidecoin-native analogue is the shared `node-parity` harness plus
+  `tidecoin_runtime_diff.rs`
 
 What already exists:
 - [consensus/tests/tidecoin_runtime_diff.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_runtime_diff.rs)
@@ -177,6 +180,10 @@ What already exists:
   - normalized flag-bit accounting
   - flag-combination accounting
   - Rust/node error-class distribution reporting
+
+Remaining work:
+- optional diagnostics and counters only; the runtime-diff replacement itself
+  exists and uses the Tidecoin node as the external authority.
 
 ### `script_assets.rs`
 
@@ -449,7 +456,16 @@ Tidecoin replacement:
 
 Status:
 - `delete` as a direct analogue
-- `planned` as partial replacement via Tidecoin sighash/precompute tests
+- `done` for the generic sighash/precompute intent that still maps to Tidecoin
+  behavior
+
+What already exists:
+- [consensus/tests/tidecoin_sighash_vectors.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_sighash_vectors.rs)
+  replays the active Tidecoin node `sighash.json` corpus.
+- [consensus/tests/tidecoin_sighash_cache_randomized.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_sighash_cache_randomized.rs)
+  covers base and witness-v0 cache/no-cache behavior on lowered Tidecoin types.
+- [consensus/src/lib.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/src/lib.rs)
+  carries Tidecoin witness-v1-512 coverage instead of BIP341/Taproot coverage.
 
 ### `core_cpp_helper/`
 
@@ -519,30 +535,34 @@ These tests are already part of the new proof surface:
 
 ## Gaps Versus Archived Coverage
 
-The current Tidecoin-native test surface is good enough to keep migration
-moving, but it is not yet equal to the archived proof depth.
+The current Tidecoin-native test surface now covers the major archived proof
+classes with Tidecoin-node parity or Tidecoin-native local invariants.
 
 Main remaining gaps:
 
 1. The stale vendored Core-era corpora have been archived under [consensus/tests/archived/data](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data); they are temporary migration reference only and should be deleted later once the Tidecoin-native proof surface is accepted.
+2. Some optional diagnostics and coverage counters could still be richer, but
+   they are not blockers for the active runtime architecture.
 
 ## Implementation Order
 
-1. Expand corpus runners
-- deepen the current `tidecoin_node_parity.rs`
-- deepen `tidecoin_runtime_diff.rs`
-- add richer diagnostics and coverage accounting
+1. Decide when archived Core-era files can be deleted.
 
-2. Deepen targeted replacements where useful
-- partially replace `core_bip341_wallet_vectors.rs` where there is a genuine
-  Tidecoin analogue
+Verify the active Tidecoin replacement for each archived proof class, then
+delete the archive only after the project accepts that historical material is no
+longer useful.
+
+2. Add richer diagnostics only where useful.
+
+Deepen `tidecoin_node_parity.rs` and `tidecoin_runtime_diff.rs` only if new node
+corpora require additional accounting. Do not restore Taproot/BIP341-only cases.
 
 ## Acceptance Standard
 
 We are done with the archived-suite migration only when:
 
-- the active Tidecoin-native suite covers the same proof classes as the
-  archived suite
+- the active Tidecoin-native suite covers the same proof classes that still map
+  to Tidecoin behavior
 - all external parity is against the Tidecoin node only
 - no active test depends on Bitcoin/Taproot/`bitcoinconsensus`
 - the archived files are no longer needed to explain missing proof depth

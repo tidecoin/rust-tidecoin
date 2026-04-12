@@ -356,9 +356,7 @@ impl HashEngine {
         let mut i = 0;
         let count = inputs.len();
 
-        // TODO: 8-way AVX2
-        // TODO: 4-way SSE4.1
-        // TODO: 2-way x86 SHA-NI
+        // Future performance work: 8-way AVX2, 4-way SSE4.1, and 2-way x86 SHA-NI.
 
         // 2-way ARM SHA2
         #[cfg(all(feature = "std", target_arch = "aarch64"))]

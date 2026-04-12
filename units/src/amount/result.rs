@@ -217,6 +217,33 @@ impl ops::Neg for SignedAmount {
     }
 }
 
+impl ops::Neg for &SignedAmount {
+    type Output = SignedAmount;
+
+    fn neg(self) -> Self::Output {
+        -*self
+    }
+}
+
+impl ops::Neg for NumOpResult<SignedAmount> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Self::Valid(amount) => Self::Valid(-amount),
+            Self::Error(error) => Self::Error(error),
+        }
+    }
+}
+
+impl ops::Neg for &NumOpResult<SignedAmount> {
+    type Output = NumOpResult<SignedAmount>;
+
+    fn neg(self) -> Self::Output {
+        -*self
+    }
+}
+
 impl core::iter::Sum<Self> for NumOpResult<Amount> {
     fn sum<I>(iter: I) -> Self
     where

@@ -8,7 +8,7 @@ use consensus_core::{
 use hashes::{hash160, sha256, sha512};
 use primitives::{
     opcodes::all,
-    script::{Builder as BuilderT, ScriptBuf as RawScriptBufT},
+    script::{Builder as BuilderT, ScriptBuf as PrimitiveScriptBuf},
     Witness,
 };
 
@@ -19,7 +19,7 @@ use tidecoin_test_support::{
 };
 
 type Builder = BuilderT<()>;
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 const RANDOM_CASES: usize = 1024;
 

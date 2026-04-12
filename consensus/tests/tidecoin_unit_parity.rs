@@ -4,7 +4,7 @@ use hashes::hash160;
 use primitives::{
     absolute::LockTime,
     opcodes::{all, Opcode},
-    script::{Builder as BuilderT, ScriptBuf as RawScriptBufT, ScriptPubKeyBuf, ScriptSigBuf},
+    script::{Builder as BuilderT, ScriptBuf as PrimitiveScriptBuf, ScriptPubKeyBuf, ScriptSigBuf},
     Amount, OutPoint, Sequence, Transaction, TransactionVersion, TxIn, TxOut, Txid, Witness,
 };
 
@@ -13,7 +13,7 @@ mod tidecoin_test_support;
 use tidecoin_test_support::{map_rust_script_error, node_script_result, try_harness};
 
 type Builder = BuilderT<()>;
-type ScriptBuf = RawScriptBufT<()>;
+type ScriptBuf = PrimitiveScriptBuf<()>;
 
 const VALUES: [i64; 13] = [
     0,
