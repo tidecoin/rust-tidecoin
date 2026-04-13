@@ -53,8 +53,6 @@ differential suites, not only with local unit tests.
 
 This library should compile with any combination of features on **Rust 1.94.1**.
 
-Use `Cargo-minimal.lock` to build the MSRV by copying to `Cargo.lock` and building.
-
 ## No-std support
 
 The `std` cargo feature is enabled by default. To build without the Rust standard library, use

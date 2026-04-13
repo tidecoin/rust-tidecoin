@@ -16,7 +16,7 @@ exclude = ["tests", "contrib"]
 # If you change features or optional dependencies in any way please update the "# Cargo features" section in lib.rs as well.
 [features]
 default = [ "std", "rand" ]
-std = ["base58/std", "bech32/std", "consensus_core/std", "encoding/std", "hashes/std", "hex-stable/std", "internals/std", "io/std", "network/std", "primitives/std", "units/std", "ml-kem/std"]
+std = ["base58/std", "bech32/std", "consensus_core/std", "encoding/std", "hashes/std", "hex-stable/std", "internals/std", "io/std", "network/std", "primitives/std", "units/std"]
 tidecoin-node-validation = ["std", "rand", "dep:node_parity"]
 rand = ["rand_core/getrandom"]
 serde = ["dep:serde", "consensus_core/serde", "hashes/serde", "internals/serde", "network/serde", "primitives/serde", "units/serde"]
@@ -35,10 +35,10 @@ network = { package = "tidecoin-network-kind", path = "../network", version = "0
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc", "hex"] }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = ["alloc"] }
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity", version = "0.1.0", optional = true }
-tide-fn-dsa-kgen = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "27f47ec28af52ceb650f5cd93eba0a8c4ac5ea45", default-features = false }
-tide-fn-dsa-sign = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "27f47ec28af52ceb650f5cd93eba0a8c4ac5ea45", default-features = false }
+tide-fn-dsa-kgen = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "30e5695f4c5718b1625d8f4227bed1ff0e872692", default-features = false }
+tide-fn-dsa-sign = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "30e5695f4c5718b1625d8f4227bed1ff0e872692", default-features = false }
 rand_core = { version = "0.6", default-features = false }
-ml-kem = { version = "0.2.3", default-features = false, features = ["deterministic", "zeroize"] }
+ml-kem = { version = "0.3.0-rc.2", default-features = false, features = ["zeroize"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
 zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
 

@@ -118,6 +118,61 @@ int tidecoin_node_pq_verify_message(
     return -1;
 }
 
+int tidecoin_node_mlkem512_keypair_from_coins(
+    const uint8_t* coins,
+    size_t coins_len,
+    uint8_t* pk_out,
+    size_t pk_len,
+    uint8_t* sk_out,
+    size_t sk_len)
+{
+    (void)coins;
+    (void)coins_len;
+    (void)pk_out;
+    (void)pk_len;
+    (void)sk_out;
+    (void)sk_len;
+    return -1;
+}
+
+int tidecoin_node_mlkem512_encaps_deterministic(
+    const uint8_t* pk,
+    size_t pk_len,
+    const uint8_t* coins,
+    size_t coins_len,
+    uint8_t* ct_out,
+    size_t ct_len,
+    uint8_t* ss_out,
+    size_t ss_len)
+{
+    (void)pk;
+    (void)pk_len;
+    (void)coins;
+    (void)coins_len;
+    (void)ct_out;
+    (void)ct_len;
+    (void)ss_out;
+    (void)ss_len;
+    return -1;
+}
+
+int tidecoin_node_mlkem512_decaps(
+    const uint8_t* ct,
+    size_t ct_len,
+    const uint8_t* sk,
+    size_t sk_len,
+    uint8_t* ss_out,
+    size_t ss_len)
+{
+    (void)ct;
+    (void)ct_len;
+    (void)sk;
+    (void)sk_len;
+    (void)ss_out;
+    (void)ss_len;
+    return -1;
+}
+
 int tidecoin_node_verify_tx_input(
     const char* tx_hex,
     size_t input_index,

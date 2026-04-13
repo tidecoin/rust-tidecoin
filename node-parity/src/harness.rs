@@ -5,12 +5,13 @@ use std::path::PathBuf;
 
 use crate::error::{NodeParityError, ScriptError};
 use crate::ffi::{
-    tidecoin_node_check_transaction, tidecoin_node_parse_script_asm,
-    tidecoin_node_pq_compute_public_key, tidecoin_node_pq_keygen_from_seed,
-    tidecoin_node_pq_p2sh_p2wpkh_input_vsize, tidecoin_node_pq_p2wpkh_input_vsize,
-    tidecoin_node_pq_sign_message, tidecoin_node_pq_verify_message,
-    tidecoin_node_pqhd_keygen_from_stream_key, tidecoin_node_verify_script_case,
-    tidecoin_node_verify_tx_input,
+    tidecoin_node_check_transaction, tidecoin_node_mlkem512_decaps,
+    tidecoin_node_mlkem512_encaps_deterministic, tidecoin_node_mlkem512_keypair_from_coins,
+    tidecoin_node_parse_script_asm, tidecoin_node_pq_compute_public_key,
+    tidecoin_node_pq_keygen_from_seed, tidecoin_node_pq_p2sh_p2wpkh_input_vsize,
+    tidecoin_node_pq_p2wpkh_input_vsize, tidecoin_node_pq_sign_message,
+    tidecoin_node_pq_verify_message, tidecoin_node_pqhd_keygen_from_stream_key,
+    tidecoin_node_verify_script_case, tidecoin_node_verify_tx_input,
 };
 use crate::fixtures::TIDECOIN_NODE_REPO_ENV;
 
@@ -315,6 +316,83 @@ impl TidecoinNodeHarness {
             1 => Ok(true),
             0 => Ok(false),
             _ => Err(NodeParityError::BridgeFailure("tidecoin_node_pq_verify_message")),
+        }
+    }
+
+    /// Deterministically generates an ML-KEM-512 keypair using the Tidecoin node.
+    pub fn mlkem512_keypair_from_coins(
+        &self,
+        coins: &[u8],
+        pubkey_len: usize,
+        seckey_len: usize,
+    ) -> Result<(Vec<u8>, Vec<u8>), NodeParityError> {
+        let mut pk = vec![0u8; pubkey_len];
+        let mut sk = vec![0u8; seckey_len];
+        let rc = unsafe {
+            tidecoin_node_mlkem512_keypair_from_coins(
+                coins.as_ptr(),
+                coins.len(),
+                pk.as_mut_ptr(),
+                pk.len(),
+                sk.as_mut_ptr(),
+                sk.len(),
+            )
+        };
+        match rc {
+            1 => Ok((pk, sk)),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_mlkem512_keypair_from_coins")),
+        }
+    }
+
+    /// Deterministically encapsulates an ML-KEM-512 shared secret using the Tidecoin node.
+    pub fn mlkem512_encaps_deterministic(
+        &self,
+        public_key: &[u8],
+        coins: &[u8],
+        ciphertext_len: usize,
+        shared_secret_len: usize,
+    ) -> Result<(Vec<u8>, Vec<u8>), NodeParityError> {
+        let mut ct = vec![0u8; ciphertext_len];
+        let mut ss = vec![0u8; shared_secret_len];
+        let rc = unsafe {
+            tidecoin_node_mlkem512_encaps_deterministic(
+                public_key.as_ptr(),
+                public_key.len(),
+                coins.as_ptr(),
+                coins.len(),
+                ct.as_mut_ptr(),
+                ct.len(),
+                ss.as_mut_ptr(),
+                ss.len(),
+            )
+        };
+        match rc {
+            1 => Ok((ct, ss)),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_mlkem512_encaps_deterministic")),
+        }
+    }
+
+    /// Decapsulates an ML-KEM-512 ciphertext using the Tidecoin node.
+    pub fn mlkem512_decaps(
+        &self,
+        ciphertext: &[u8],
+        secret_key: &[u8],
+        shared_secret_len: usize,
+    ) -> Result<Vec<u8>, NodeParityError> {
+        let mut ss = vec![0u8; shared_secret_len];
+        let rc = unsafe {
+            tidecoin_node_mlkem512_decaps(
+                ciphertext.as_ptr(),
+                ciphertext.len(),
+                secret_key.as_ptr(),
+                secret_key.len(),
+                ss.as_mut_ptr(),
+                ss.len(),
+            )
+        };
+        match rc {
+            1 => Ok(ss),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_mlkem512_decaps")),
         }
     }
 

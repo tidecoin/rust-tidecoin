@@ -33,7 +33,5 @@ jobs:
           components: miri
       - name: "Setup miri"
         run: cargo miri setup
-      - name: "Set dependencies"
-        run: cp Cargo-recent.lock Cargo.lock
       - name: "Run test script"
         run: ./contrib/test-miri.sh

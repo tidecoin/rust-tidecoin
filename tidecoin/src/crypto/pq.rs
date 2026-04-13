@@ -14,8 +14,10 @@ use consensus_core::{
 };
 use fips204::traits::{KeyGen, SerDes, Signer};
 use hashes::hash160;
-use ml_kem::kem::{Decapsulate, Encapsulate};
-use ml_kem::{EncapsulateDeterministic, EncodedSizeUser, KemCore, MlKem512, B32};
+use ml_kem::kem::{Decapsulate, FromSeed, Kem, Key, KeyExport};
+#[allow(deprecated)]
+use ml_kem::ExpandedKeyEncoding;
+use ml_kem::{MlKem512, Seed, B32};
 use rand_core::{CryptoRng, RngCore};
 use tide_fn_dsa_kgen::{
     sign_key_size, vrfy_key_size, KeyPairGeneratorStandard, FN_DSA_LOGN_1024, FN_DSA_LOGN_512,
@@ -33,6 +35,9 @@ pub use primitives::PqScheme;
 
 const TIDECOIN_LEGACY_FALCON512_SIG_MAX: usize =
     1 + FALCON_NONCE_LEN + TIDECOIN_LEGACY_FALCON512_SIG_BODY_MAX;
+
+type MlKem512DecapsulationKey = <MlKem512 as Kem>::DecapsulationKey;
+type MlKem512EncapsulationKey = <MlKem512 as Kem>::EncapsulationKey;
 
 #[cfg(test)]
 pub(crate) struct DeterministicTestRng(u64);
@@ -826,14 +831,11 @@ impl MlKem512Keypair {
     where
         R: RngCore + CryptoRng,
     {
-        let (dk, ek) = MlKem512::generate(rng);
-        let mut dk_bytes = dk.as_bytes();
-        let secret_key = MlKem512SecretKey { data: dk_bytes.as_slice().to_vec() };
-        dk_bytes.as_mut_slice().zeroize();
-        Self {
-            public_key: MlKem512PublicKey { data: ek.as_bytes().as_slice().to_vec() },
-            secret_key,
-        }
+        let mut coins = [0_u8; MLKEM512_KEYPAIR_COINS_BYTES];
+        rng.fill_bytes(&mut coins);
+        let keypair = Self::generate_deterministic(&coins).expect("valid ML-KEM-512 coin length");
+        coins.zeroize();
+        keypair
     }
 
     /// Generates a deterministic ML-KEM-512 keypair from Tidecoin-node coins.
@@ -845,16 +847,15 @@ impl MlKem512Keypair {
             });
         }
 
-        let mut d = B32::try_from(&coins[..32]).map_err(|_| PqError::BackendFailure)?;
-        let mut z = B32::try_from(&coins[32..64]).map_err(|_| PqError::BackendFailure)?;
-        let (dk, ek) = MlKem512::generate_deterministic(&d, &z);
-        let mut dk_bytes = dk.as_bytes();
+        let mut seed = Seed::try_from(coins).map_err(|_| PqError::BackendFailure)?;
+        let (dk, ek) = MlKem512::from_seed(&seed);
+        #[allow(deprecated)]
+        let mut dk_bytes = dk.to_expanded_bytes();
         let secret_key = MlKem512SecretKey { data: dk_bytes.as_slice().to_vec() };
         dk_bytes.as_mut_slice().zeroize();
-        d.as_mut_slice().zeroize();
-        z.as_mut_slice().zeroize();
+        seed.as_mut_slice().zeroize();
         Ok(Self {
-            public_key: MlKem512PublicKey { data: ek.as_bytes().as_slice().to_vec() },
+            public_key: MlKem512PublicKey { data: ek.to_bytes().as_slice().to_vec() },
             secret_key,
         })
     }
@@ -898,15 +899,11 @@ impl MlKem512PublicKey {
     where
         R: RngCore + CryptoRng,
     {
-        let ek_arr =
-            <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
-                .map_err(|_| PqError::BackendFailure)?;
-        let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
-        let (ct, ss) = ek.encapsulate(rng).map_err(|_| PqError::BackendFailure)?;
-        let mut ss = ss;
-        let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
-        ss.as_mut_slice().zeroize();
-        Ok((MlKem512Ciphertext { data: ct.as_slice().to_vec() }, shared_secret))
+        let mut coins = [0_u8; MLKEM512_SHARED_SECRET_BYTES];
+        rng.fill_bytes(&mut coins);
+        let result = self.encapsulate_deterministic(&coins);
+        coins.zeroize();
+        result
     }
 
     /// Deterministically encapsulates using Tidecoin-node coins.
@@ -921,13 +918,11 @@ impl MlKem512PublicKey {
             });
         }
 
-        let ek_arr =
-            <ml_kem::Encoded<<MlKem512 as KemCore>::EncapsulationKey>>::try_from(self.as_bytes())
-                .map_err(|_| PqError::BackendFailure)?;
-        let ek = <<MlKem512 as KemCore>::EncapsulationKey as EncodedSizeUser>::from_bytes(&ek_arr);
+        let ek_arr = Key::<MlKem512EncapsulationKey>::try_from(self.as_bytes())
+            .map_err(|_| PqError::BackendFailure)?;
+        let ek = MlKem512EncapsulationKey::new(&ek_arr).map_err(|_| PqError::BackendFailure)?;
         let mut m = B32::try_from(coins).map_err(|_| PqError::BackendFailure)?;
-        let (ct, ss) = ek.encapsulate_deterministic(&m).map_err(|_| PqError::BackendFailure)?;
-        let mut ss = ss;
+        let (ct, mut ss) = ek.encapsulate_deterministic(&m);
         let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
         m.as_mut_slice().zeroize();
         ss.as_mut_slice().zeroize();
@@ -941,14 +936,14 @@ impl MlKem512SecretKey {
         &self,
         ciphertext: &MlKem512Ciphertext,
     ) -> Result<MlKem512SharedSecret, PqError> {
-        let mut dk_arr =
-            <ml_kem::Encoded<<MlKem512 as KemCore>::DecapsulationKey>>::try_from(self.as_bytes())
-                .map_err(|_| PqError::BackendFailure)?;
-        let dk = <<MlKem512 as KemCore>::DecapsulationKey as EncodedSizeUser>::from_bytes(&dk_arr);
+        let mut dk_arr = ml_kem::ExpandedDecapsulationKey::<MlKem512>::try_from(self.as_bytes())
+            .map_err(|_| PqError::BackendFailure)?;
+        #[allow(deprecated)]
+        let dk = MlKem512DecapsulationKey::from_expanded_bytes(&dk_arr)
+            .map_err(|_| PqError::BackendFailure)?;
         let ct_arr = <ml_kem::Ciphertext<MlKem512>>::try_from(ciphertext.as_bytes())
             .map_err(|_| PqError::BackendFailure)?;
-        let ss = dk.decapsulate(&ct_arr).map_err(|_| PqError::BackendFailure)?;
-        let mut ss = ss;
+        let mut ss = dk.decapsulate(&ct_arr);
         let shared_secret = MlKem512SharedSecret::from_slice(ss.as_slice())?;
         dk_arr.as_mut_slice().zeroize();
         ss.as_mut_slice().zeroize();
@@ -1461,6 +1456,50 @@ mod tests {
         assert_eq!(ct1, ct2);
         assert_eq!(ss1, ss2);
         assert_eq!(recovered, ss1);
+    }
+
+    #[cfg(feature = "tidecoin-node-validation")]
+    #[test]
+    fn mlkem512_deterministic_paths_match_node() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping ML-KEM node-backed validation test: {err}");
+                return;
+            }
+        };
+        let coins = [0x44_u8; MLKEM512_KEYPAIR_COINS_BYTES];
+        let enc_coins = [0x45_u8; MLKEM512_SHARED_SECRET_BYTES];
+
+        let rust_pair = MlKem512Keypair::generate_deterministic(&coins).unwrap();
+        let (node_pk, node_sk) = harness
+            .mlkem512_keypair_from_coins(&coins, MLKEM512_PUBLICKEY_BYTES, MLKEM512_SECRETKEY_BYTES)
+            .unwrap();
+        assert_eq!(rust_pair.public_key().as_bytes(), node_pk.as_slice());
+        assert_eq!(rust_pair.secret_key().as_bytes(), node_sk.as_slice());
+
+        let (rust_ct, rust_ss) =
+            rust_pair.public_key().encapsulate_deterministic(&enc_coins).unwrap();
+        let (node_ct, node_ss) = harness
+            .mlkem512_encaps_deterministic(
+                rust_pair.public_key().as_bytes(),
+                &enc_coins,
+                MLKEM512_CIPHERTEXT_BYTES,
+                MLKEM512_SHARED_SECRET_BYTES,
+            )
+            .unwrap();
+        assert_eq!(rust_ct.as_bytes(), node_ct.as_slice());
+        assert_eq!(rust_ss.as_bytes().as_slice(), node_ss.as_slice());
+
+        let rust_recovered = rust_pair.secret_key().decapsulate(&rust_ct).unwrap();
+        let node_recovered = harness
+            .mlkem512_decaps(
+                rust_ct.as_bytes(),
+                rust_pair.secret_key().as_bytes(),
+                MLKEM512_SHARED_SECRET_BYTES,
+            )
+            .unwrap();
+        assert_eq!(rust_recovered.as_bytes().as_slice(), node_recovered.as_slice());
     }
 
     #[test]

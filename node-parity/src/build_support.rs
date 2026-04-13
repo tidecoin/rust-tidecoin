@@ -35,6 +35,7 @@ pub fn build_tidecoin_node_validation(local_c_src: &Path) {
     println!("cargo:rerun-if-env-changed=TIDECOIN_NODE_REPO");
     println!("cargo:rerun-if-changed={}", node_src.join("script/interpreter.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pubkey.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("pq/kem.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_kdf.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_keygen.cpp").display());
     println!(
@@ -67,6 +68,7 @@ pub fn build_tidecoin_node_validation(local_c_src: &Path) {
         .file(node_src.join("crypto/sha1.cpp"))
         .file(node_src.join("crypto/sha256.cpp"))
         .file(node_src.join("crypto/sha512.cpp"))
+        .file(node_src.join("pq/kem.cpp"))
         .file(node_src.join("pq/pqhd_kdf.cpp"))
         .file(node_src.join("pq/pqhd_keygen.cpp"))
         .file(node_src.join("util/strencodings.cpp"))

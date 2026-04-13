@@ -20,6 +20,6 @@ artifacts may remain temporarily during migration, but they are not part of the 
 steady-state architecture and should be deleted once their Tidecoin-native replacement coverage is
 accepted.
 
-Dependency versions are tracked in the workspace manifests and lockfile. Prefer committed `version`
-or pinned `git` dependencies for reproducibility; local developer overrides should not be committed
-as external path dependencies.
+Dependency versions are tracked in the workspace manifests. Lockfiles are local generated build
+artifacts for this library workspace; prefer committed `version` or pinned `git` dependencies for
+reproducibility, and do not commit local developer overrides as external path dependencies.

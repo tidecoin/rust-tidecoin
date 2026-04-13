@@ -57,10 +57,60 @@ The most important current facts:
   API because it lacks height, network params, target-derivation context, and
   AuxPoW payload context.
 
+## Current Implementation Matrix
+
+| Surface | Current Rust owner | Node owner | Status |
+| --- | --- | --- | --- |
+| Script interpreter and witness/PQ spend rules | `consensus-core`; exposed by `consensus` and `tidecoin` | `script/interpreter.*`, `validation.cpp` script-flag scheduling | Mostly implemented. Needs exact Params/block-hash flag scheduling only if Rust grows block-context validation. |
+| Byte-oriented single-input spend verification | `consensus/src/lib.rs` | No direct equivalent; node validates spends during `ConnectBlock` | Implemented as a library adapter. It is not a block, header, or chain validator. |
+| Transaction, block, header, AuxPoW wire codecs | `primitives` | `primitives/block.*`, `primitives/transaction.*`, serialization code | Mostly implemented. AuxPoW is wire-modeled but not context-validated. |
+| Exposed consensus params | `tidecoin/src/network/params.rs` | `consensus/params.h`, `kernel/chainparams.cpp` | Partial. Missing several fields required for PoW/AuxPoW/difficulty parity; also exposes a `bip16_time` field that is not present in node `Consensus::Params`. |
+| Subsidy schedule | `tidecoin/src/blockdata/subsidy.rs` | node subsidy code and `nSubsidyHalvingInterval` | Implemented and node-parity tested for the current schedule. |
+| Target/work integer math | `tidecoin/src/pow.rs` | `pow.cpp`, `arith_uint256` | Partially implemented. Generic compact target helpers exist; exact node `DeriveTarget` error semantics and proof-class selection are missing. |
+| Header PoW validation | `tidecoin/src/blockdata/block.rs::HeaderExt::validate_pow` | `CheckProofOfWork`, `CheckProofOfWorkAny`, `CheckBlockHeader`, `CheckAuxPowContext` | Not Tidecoin-consensus-correct. Rust validates `block_hash()` against a caller target; node selects yespower/scrypt/AuxPoW based on params and height. |
+| Difficulty retargeting | `tidecoin/src/pow.rs::next_target_after` | `GetNextWorkRequired*`, `CalculateNextWorkRequired*`, `PermittedDifficultyTransition` | Old/legacy-shaped only. Post-AuxPoW averaging-window retargeting is missing. |
+| AuxPoW validation | Wire structs in `primitives`; no chain validator | `CheckAuxPowContext`, `CAuxPow::check` | Missing as consensus validation. |
+| Context-free transaction sanity | Transaction decoder in `primitives` | `CheckTransaction` | Partially implemented, but mixed into decoding and not node-exact. Zero-input rejection is missing and coinbase scriptSig max is wrong. |
+| Context-free block sanity | `primitives::Block::validate` | `CheckBlock` | Structural only. Missing PoW/AuxPoW, size, extra coinbase, transaction sanity, and sigop limit parity. |
+| Contextual header/block validation | No complete Rust owner | `ContextualCheckBlockHeader`, `ContextualCheckBlock`, `AcceptBlockHeader`, `ConnectBlock` | Missing. Requires previous-header/index abstraction and chain params. |
+| UTXO/chain connect | No Rust owner | `ConnectBlock`, `CheckTxInputs`, chainstate code | Missing and should not be claimed unless intentionally built. |
+
 ## Consensus Parameter Audit
 
 Node `Consensus::Params` contains more fields than Rust currently exposes in
 `tidecoin::network::Params`.
+
+### Node Values by Network
+
+These are the current node values observed in
+`/home/yaroslav/dev/tidecoin/tidecoin/src/kernel/chainparams.cpp`.
+
+| Field | Mainnet | Testnet | Regtest | Rust status |
+| --- | --- | --- | --- | --- |
+| `nSubsidyHalvingInterval` | `262800` | `262800` | `20` | Exposed as `subsidy_initial_interval`. |
+| `BIP34Height` | `1` | `1` | `1`, overrideable in node regtest options | Exposed as `bip34_height`; no regtest override model. |
+| `BIP65Height` | `1` | `1` | `1`, overrideable in node regtest options | Exposed as `bip65_height`; no regtest override model. |
+| `BIP66Height` | `1` | `1` | `1` | Exposed as `bip66_height`. |
+| `CSVHeight` | `1` | `1` | `1`, overrideable in node regtest options | Not exposed. |
+| `SegwitHeight` | `1` | `1` | `0`, overrideable in node regtest options | Not exposed. |
+| `nAuxpowStartHeight` | disabled | `1000` | `0` | Exposed as `auxpow_start_height`. |
+| `nAuxpowChainId` | `8` | `8` | `8` | Exposed as `auxpow_chain_id`. |
+| `fStrictChainId` | `true` | `true` | `true` | Not exposed. |
+| `powLimit` | `01ff...ffff` | `01ff...ffff` | `0f0f...0f0f` | Exposed indirectly as `max_attainable_target`; exact raw target derivation API is missing. |
+| `nPowTargetTimespan` | `432000` | `432000` | `14400` | Exposed as `pow_target_timespan`. |
+| `nPowTargetSpacing` | `60` | `60` | `60` | Exposed as `pow_target_spacing`. |
+| `fPowAllowMinDifficultyBlocks` | `false` | `true` | `true` | Exposed as `allow_min_difficulty_blocks`; only legacy path currently uses it. |
+| `enforce_BIP94` | `false` | `false` | `true` | Exposed as `enforce_bip94`; contextual header use is missing. |
+| `fPowNoRetargeting` | `false` | `false` | `true` | Exposed as `no_pow_retargeting`; only legacy path currently uses it. |
+| `nPowAllowMinDifficultyBlocksAfterHeight` | `nullopt` | `nullopt` | `nullopt` | Not exposed. |
+| `nPowAveragingWindow` | `17` | `17` | `17` | Not exposed. |
+| `nPowMaxAdjustDown` | `32` | `32` | `0` | Not exposed. |
+| `nPowMaxAdjustUp` | `16` | `16` | `0` | Not exposed. |
+| P2P message start | `ec fa ce a5` | `ba ce 3f da` | `ba ce 3f da` | Implemented in `p2p`; not consensus params. |
+| Default P2P port | `8755` | `18755` | `18778` | Implemented in `p2p`; not consensus params. |
+| Bech32 HRP | `tbc` | `ttbc` | `rtbc` | Implemented in address/network-facing APIs. |
+
+### Field-Level Status
 
 | Node field | Rust status | Required action |
 | --- | --- | --- |
@@ -90,6 +140,12 @@ Node `Consensus::Params` contains more fields than Rust currently exposes in
 | `nPowMaxAdjustUp` | Not exposed. Node sets `16` on main/testnet and `0` on regtest. | Add `pow_max_adjust_up`. Required for `PermittedDifficultyTransition`. |
 | `nMinimumChainWork` | Not exposed. | Out of scope unless Rust implements chain selection/header sync. |
 | `defaultAssumeValid` | Not exposed. | Out of scope unless Rust implements node-like chain validation shortcuts. |
+
+Rust-only exposed field:
+
+| Rust field | Node status | Required action |
+| --- | --- | --- |
+| `bip16_time` | Not present in node `Consensus::Params`. The node's `GetBlockScriptFlags` starts from `SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS` and then applies `script_flag_exceptions`. | Remove from consensus params or clearly move to a historical/provenance-only compatibility surface. It should not be treated as an active Tidecoin node consensus parameter. |
 
 Regtest-specific node options are also not represented: the node can override
 buried deployment heights and versionbits params through `RegTestOptions`. Rust
@@ -206,7 +262,7 @@ Required node parity tests:
 
 | Node behavior | Rust status | Required action |
 | --- | --- | --- |
-| `GetBlockScriptFlags(block_index, chainman)` derives flags from buried deployment state, script exceptions, and AuxPoW height. | Rust has `height_to_flags_with_auxpow_start_height(height, auxpow_start_height)` and manual flags. | Add a Params-based helper if the library wants node-like block validation: `block_script_flags(params, height, block_hash)`. It should include P2SH/WITNESS defaults, CLTV/CSV/NULLDUMMY activation, script exceptions if any, and AuxPoW-era PQ flags. |
+| `GetBlockScriptFlags(block_index, chainman)` derives flags from buried deployment state, script exceptions, and AuxPoW height. | Rust has `height_to_flags_with_auxpow_start_height(height, auxpow_start_height)` and manual flags. The helper enables CLTV/CSV/NULLDUMMY unconditionally in its base set, so it is not exact for pre-activation heights, genesis/regtest overrides, or future script exceptions. | Add a Params-based helper if the library wants node-like block validation: `block_script_flags(params, height, block_hash)`. It should start from P2SH/WITNESS, apply script exceptions, then add CLTV/CSV/NULLDUMMY from deployment heights, and add PQ_STRICT/WITNESS_V1_512/SHA512 at AuxPoW height. |
 | Node script flags for historical blocks can be exception-mapped. | Not represented. No active exception assignments were found in current `chainparams.cpp`. | Document no active Tidecoin exceptions or add an empty exception table for forward compatibility. |
 | `verify(...)` in `consensus` defaults to `VERIFY_ALL_TIDECOIN`. | Works for post-AuxPoW validation but is not height-aware. | Keep for explicit post-AuxPoW verification. For chain validation, call a height-derived flag helper instead. |
 
@@ -331,6 +387,75 @@ as full chain consensus coverage.
 9. Add block/header contextual validation APIs only after the PoW and
    transaction sanity foundations are node-parity tested.
 
+## Concrete Implementation Backlog
+
+This is the current code-facing backlog implied by the audit.
+
+### Params and Settings
+
+- Add `strict_chain_id`, `csv_height`, `segwit_height`,
+  `pow_allow_min_difficulty_blocks_after_height`, `pow_averaging_window`,
+  `pow_max_adjust_down`, and `pow_max_adjust_up` to
+  `tidecoin::network::Params`.
+- Decide whether `Params` should also carry `genesis_hash`, `BIP34Hash`,
+  `script_flag_exceptions`, `MinBIP9WarningHeight`, `vDeployments`,
+  `nMinimumChainWork`, and `defaultAssumeValid`. If Rust remains a protocol
+  library rather than a header-sync/full-node library, keep these out and
+  document that boundary.
+- Remove or demote `bip16_time` from active consensus params because the node
+  no longer models it as a consensus-param field.
+- Add a regtest override settings type only if node-style regtest parameter
+  mutation becomes part of the public Rust API.
+
+### PoW and Difficulty
+
+- Implement Tidecoin pure-header yespower and scrypt mining hashes against
+  node fixtures from `CPureBlockHeader::GetPoWHash()` and
+  `CPureBlockHeader::GetScryptPoWHash()`.
+- Implement `use_post_auxpow_pow_rules(params, height)` and
+  `pow_hash_for_height(header, params, height)` as direct equivalents of the
+  node switch.
+- Implement exact `derive_target(bits, params)` with node rejection semantics:
+  negative, zero, overflow, and above-`powLimit` targets all fail.
+- Replace the public meaning of `HeaderExt::validate_pow(required_target)` with
+  either a non-consensus helper name or a deprecated/internal status; add a new
+  params/height-aware PoW validation API.
+- Port `GetNextWorkRequiredOld`, `CalculateNextWorkRequiredOld`,
+  `GetNextWorkRequiredNew`, `CalculateNextWorkRequiredNew`, and
+  `PermittedDifficultyTransition` exactly.
+
+### AuxPoW
+
+- Keep `AuxPow` and header wire codecs in `primitives`.
+- Add chain-context AuxPoW validation in a higher Tidecoin validation layer:
+  flag/payload consistency, activation height, chain ID, parent chain ID,
+  parent coinbase merkle branch, merged-mining commitment placement,
+  chain-merkle size/nonce/index, branch length, and parent scrypt PoW.
+- Add node-generated positive and negative AuxPoW fixtures before claiming
+  this surface covered.
+
+### Transaction and Block Validation
+
+- Split node `CheckTransaction` parity out of decoding into an explicit sanity
+  validator, or make the decoder validation exactly node-equivalent. The clean
+  design is explicit validation, not consensus rejection hidden in byte
+  decoding.
+- Fix coinbase scriptSig max length from `100` to node `106`.
+- Reject zero-input transactions in the context-free transaction sanity layer.
+- Enforce stripped transaction weight limit.
+- Add `check_block`/`contextual_check_block_header`/`contextual_check_block`
+  APIs only after the Params, PoW, AuxPoW, and transaction-sanity foundations
+  are implemented.
+
+### Consensus Adapter Boundary
+
+- Keep `consensus` as byte-oriented spend verification over `consensus-core`.
+- Do not add block/header chain validation to `consensus` unless the crate is
+  explicitly re-scoped.
+- Add Params-derived script flag scheduling to the high-level validation layer,
+  then make `consensus` expose only explicit-flag or post-AuxPoW convenience
+  APIs.
+
 ## Required Node-Parity Fixtures
 
 Minimum fixture set before claiming this layer is covered:
@@ -363,4 +488,3 @@ adapter unless a real chain validator is built:
 - mempool standardness and relay policy
 - wallet signing policy
 - P2P peer punishment or anti-DoS scoring
-

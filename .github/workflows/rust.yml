@@ -12,7 +12,7 @@ permissions: {}
 
 jobs:
   Test:
-    name: Test - ${{ matrix.toolchain }} toolchain, ${{ matrix.dep }} deps
+    name: Test - ${{ matrix.toolchain }} toolchain
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -20,14 +20,13 @@ jobs:
       fail-fast: false
       matrix:
         toolchain: [stable, nightly, msrv]
-        dep: [minimal, recent]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: false
       - uses: rust-bitcoin/rust-bitcoin-maintainer-tools/.github/actions/setup-rbmt@64715bab0d6fa1f3ebd6f9be336c4c5089bb5eb9
       - name: "Run tests"
-        run: cargo rbmt test --toolchain ${{ matrix.toolchain }} --lock-file ${{ matrix.dep }}
+        run: cargo rbmt test --toolchain ${{ matrix.toolchain }}
 
   Check:
     runs-on: ubuntu-24.04
@@ -166,10 +165,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        dep: [recent]
     steps:
       - name: "Checkout repo"
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -181,8 +176,6 @@ jobs:
           toolchain: ${{ needs.Prepare.outputs.nightly_version }}
       - name: "Install rust-src"
         run: rustup component add rust-src
-      - name: "Set dependencies"
-        run: cp Cargo-${{ matrix.dep }}.lock Cargo.lock
       - name: "Run sanitizer script"
         run: cd ./hashes && ./contrib/sanitizer.sh
 
@@ -191,9 +184,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      # Note we do not use the recent lock file for wasm testing.
     steps:
       - name: "Checkout repo"
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0

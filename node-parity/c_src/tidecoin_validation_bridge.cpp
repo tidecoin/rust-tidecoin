@@ -457,6 +457,77 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_verify_tx_input(const char* tx_hex,
     }
 }
 
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_mlkem512_keypair_from_coins(
+    const uint8_t* coins,
+    size_t coins_len,
+    uint8_t* pk_out,
+    size_t pk_len,
+    uint8_t* sk_out,
+    size_t sk_len)
+{
+    try {
+        if (coins == nullptr || pk_out == nullptr || sk_out == nullptr) return -1;
+        if (pk_len != pq::MLKEM512_PUBLICKEY_BYTES ||
+            sk_len != pq::MLKEM512_SECRETKEY_BYTES ||
+            coins_len != pq::MLKEM512_KEYPAIR_COINS_BYTES) {
+            return 0;
+        }
+
+        pq::MLKEM512Keypair keypair;
+        if (!keypair.GenerateDeterministic(std::span<const uint8_t>(coins, coins_len))) return 0;
+        const auto pk = keypair.PublicKey();
+        const auto sk = keypair.SecretKey();
+        std::copy(pk.begin(), pk.end(), pk_out);
+        std::copy(sk.begin(), sk.end(), sk_out);
+        return 1;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_mlkem512_encaps_deterministic(
+    const uint8_t* pk,
+    size_t pk_len,
+    const uint8_t* coins,
+    size_t coins_len,
+    uint8_t* ct_out,
+    size_t ct_len,
+    uint8_t* ss_out,
+    size_t ss_len)
+{
+    try {
+        if (pk == nullptr || coins == nullptr || ct_out == nullptr || ss_out == nullptr) return -1;
+        const bool ok = pq::MLKEM512EncapsDeterministic(
+            std::span<const uint8_t>(pk, pk_len),
+            std::span<const uint8_t>(coins, coins_len),
+            std::span<uint8_t>(ct_out, ct_len),
+            std::span<uint8_t>(ss_out, ss_len));
+        return ok ? 1 : 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_mlkem512_decaps(
+    const uint8_t* ct,
+    size_t ct_len,
+    const uint8_t* sk,
+    size_t sk_len,
+    uint8_t* ss_out,
+    size_t ss_len)
+{
+    try {
+        if (ct == nullptr || sk == nullptr || ss_out == nullptr) return -1;
+        const bool ok = pq::MLKEM512Decaps(
+            std::span<const uint8_t>(ct, ct_len),
+            std::span<const uint8_t>(sk, sk_len),
+            std::span<uint8_t>(ss_out, ss_len));
+        return ok ? 1 : 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
 TIDECOIN_BRIDGE_EXPORT int tidecoin_node_parse_script_asm(
     const char* script_asm,
     uint8_t* out,

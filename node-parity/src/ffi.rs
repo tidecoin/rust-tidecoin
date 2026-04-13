@@ -78,6 +78,38 @@ unsafe extern "C" {
         legacy_mode: c_int,
     ) -> c_int;
 
+    /// Deterministically generates an ML-KEM-512 keypair using the Tidecoin node.
+    pub fn tidecoin_node_mlkem512_keypair_from_coins(
+        coins: *const u8,
+        coins_len: usize,
+        pk_out: *mut u8,
+        pk_len: usize,
+        sk_out: *mut u8,
+        sk_len: usize,
+    ) -> c_int;
+
+    /// Deterministically encapsulates an ML-KEM-512 shared secret using the Tidecoin node.
+    pub fn tidecoin_node_mlkem512_encaps_deterministic(
+        pk: *const u8,
+        pk_len: usize,
+        coins: *const u8,
+        coins_len: usize,
+        ct_out: *mut u8,
+        ct_len: usize,
+        ss_out: *mut u8,
+        ss_len: usize,
+    ) -> c_int;
+
+    /// Decapsulates an ML-KEM-512 ciphertext using the Tidecoin node.
+    pub fn tidecoin_node_mlkem512_decaps(
+        ct: *const u8,
+        ct_len: usize,
+        sk: *const u8,
+        sk_len: usize,
+        ss_out: *mut u8,
+        ss_len: usize,
+    ) -> c_int;
+
     /// Parses script assembly text using Tidecoin node helpers.
     pub fn tidecoin_node_parse_script_asm(
         script_asm: *const c_char,

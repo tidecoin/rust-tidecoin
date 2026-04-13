@@ -51,6 +51,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", node_src.join("script/interpreter.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pubkey.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("pq/kem.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_kdf.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_keygen.cpp").display());
     println!(
@@ -83,6 +84,7 @@ fn main() {
         .file(node_src.join("crypto/sha1.cpp"))
         .file(node_src.join("crypto/sha256.cpp"))
         .file(node_src.join("crypto/sha512.cpp"))
+        .file(node_src.join("pq/kem.cpp"))
         .file(node_src.join("pq/pqhd_kdf.cpp"))
         .file(node_src.join("pq/pqhd_keygen.cpp"))
         .file(node_src.join("util/strencodings.cpp"))
