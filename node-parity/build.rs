@@ -50,7 +50,22 @@ fn main() {
     let node_pq = node_src.join("pq");
 
     println!("cargo:rerun-if-changed={}", node_src.join("script/interpreter.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("auxpow.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("consensus/merkle.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pubkey.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("primitives/block.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("primitives/pureheader.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("crypto/hmac_sha256.cpp").display());
+    println!("cargo:rerun-if-changed={}", node_src.join("crypto/scrypt.cpp").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        node_src.join("crypto/yespower/tidecoin_pow.cpp").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        node_src.join("crypto/yespower/yespower-opt.c").display()
+    );
+    println!("cargo:rerun-if-changed={}", node_src.join("crypto/yespower/sha256.c").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/kem.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_kdf.cpp").display());
     println!("cargo:rerun-if-changed={}", node_src.join("pq/pqhd_keygen.cpp").display());
@@ -70,8 +85,12 @@ fn main() {
         .include(&local_c_src)
         .file(local_c_src.join("tidecoin_validation_bridge.cpp"))
         .file(node_src.join("arith_uint256.cpp"))
+        .file(node_src.join("auxpow.cpp"))
+        .file(node_src.join("consensus/merkle.cpp"))
         .file(node_src.join("hash.cpp"))
         .file(node_src.join("pubkey.cpp"))
+        .file(node_src.join("primitives/block.cpp"))
+        .file(node_src.join("primitives/pureheader.cpp"))
         .file(node_src.join("primitives/transaction.cpp"))
         .file(node_src.join("script/interpreter.cpp"))
         .file(node_src.join("script/script.cpp"))
@@ -79,11 +98,14 @@ fn main() {
         .file(node_src.join("uint256.cpp"))
         .file(node_src.join("consensus/tx_check.cpp"))
         .file(node_src.join("crypto/hex_base.cpp"))
+        .file(node_src.join("crypto/hmac_sha256.cpp"))
         .file(node_src.join("crypto/hmac_sha512.cpp"))
         .file(node_src.join("crypto/ripemd160.cpp"))
+        .file(node_src.join("crypto/scrypt.cpp"))
         .file(node_src.join("crypto/sha1.cpp"))
         .file(node_src.join("crypto/sha256.cpp"))
         .file(node_src.join("crypto/sha512.cpp"))
+        .file(node_src.join("crypto/yespower/tidecoin_pow.cpp"))
         .file(node_src.join("pq/kem.cpp"))
         .file(node_src.join("pq/pqhd_kdf.cpp"))
         .file(node_src.join("pq/pqhd_keygen.cpp"))
@@ -103,8 +125,11 @@ fn main() {
         .include(node_pq.join("ml-dsa-65"))
         .include(node_pq.join("ml-dsa-87"))
         .include(node_pq.join("ml-kem-512"))
+        .include(node_src.join("crypto/yespower"))
         .include(&local_c_src)
         .file(local_c_src.join("randombytes_stub.c"))
+        .file(node_src.join("crypto/yespower/sha256.c"))
+        .file(node_src.join("crypto/yespower/yespower-opt.c"))
         .file(node_src.join("pq/fips202.c"))
         .file(node_src.join("pq/falcon512.c"))
         .file(node_src.join("pq/falcon1024.c"))

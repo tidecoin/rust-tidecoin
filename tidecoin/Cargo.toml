@@ -38,6 +38,8 @@ node_parity = { package = "tidecoin-node-parity", path = "../node-parity", versi
 tide-fn-dsa-kgen = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "30e5695f4c5718b1625d8f4227bed1ff0e872692", default-features = false }
 tide-fn-dsa-sign = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "30e5695f4c5718b1625d8f4227bed1ff0e872692", default-features = false }
 rand_core = { version = "0.6", default-features = false }
+scrypt = { version = "0.11", default-features = false }
+rust-yespower = { version = "0.2.0", default-features = false }
 ml-kem = { version = "0.3.0-rc.2", default-features = false, features = ["zeroize"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
 zeroize = { version = "1.8", default-features = false, features = ["alloc"] }

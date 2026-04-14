@@ -41,18 +41,20 @@ extraction:
 - the Tidecoin node-backed bridge/parity surface is shared between `tidecoin`
   and `consensus/` through
   [`node-parity/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/node-parity)
-- chain-level coverage still has real gaps: AuxPoW validation, yespower/scrypt
-  PoW-hash selection, and exact difficulty-retargeting parity vectors remain
-  open; the subsidy schedule is now implemented and tested against the node
-  formula
+- chain-level coverage still has real gaps: node-generated AuxPoW fixtures and
+  deeper historical difficulty vectors remain open; node-style target
+  derivation, params/height-aware yespower/scrypt PoW validation, heightless
+  `CheckProofOfWorkAny` parity, AuxPoW context rules, subsidy schedule, and
+  difficulty transition envelopes now follow the node's active semantics with
+  focused tests
 
 That is the primary workstream now.
 
 Priority rule for the next phase:
 
 - first fill chain-rule coverage gaps against the Tidecoin node, especially
-  AuxPoW validation, yespower/scrypt PoW-hash selection, and exact difficulty
-  behavior
+  node-generated AuxPoW fixtures, target-check APIs, and deeper historical
+  difficulty-vector coverage
 - then reconcile the archived proof-class matrix against the active
   Tidecoin-native tests so the historical files can be deleted deliberately
 - keep auditing new wrapper code for real duplicate validation/protocol logic,
@@ -314,8 +316,8 @@ Current status note:
 - Keep expanding the proof surface until the archived depth is matched,
   especially any remaining stale fixture debt and any still-useful targeted cases.
 - Add chain-level parity coverage that remains open below the script
-  interpreter: AuxPoW validation, yespower/scrypt PoW-hash selection, and exact
-  difficulty retargeting vectors.
+  interpreter: AuxPoW validation, yespower mining hash, target-check APIs, and
+  broader difficulty retargeting vectors.
 
 ## Master Plan
 
@@ -528,18 +530,72 @@ Goal:
 - cover chain-rule areas that remain under-tested once the shared core exists
 
 Checklist:
-- [ ] AuxPoW validation vectors
-  - required architecture: wire structures/codecs stay in `primitives`;
-    consensus-context checks live in `tidecoin::pow` and match the node's
-    `CheckAuxPowContext(...)`, including parent scrypt PoW verification
-- [ ] yespower/scrypt PoW-hash selection and target-check vectors
-  - required architecture: replace the context-free `HeaderExt::validate_pow`
-    model with a Tidecoin-native API that derives target from `nBits`, takes
-    `Params` plus height, and selects yespower or scrypt exactly like the node
+- [~] AuxPoW validation vectors
+  - current state: wire structures/codecs stay in `primitives`
+  - current state: `tidecoin::pow::validate_auxpow_context` covers the
+    node-shaped pure-header context rules, including flag/payload consistency,
+    activation, strict chain ID, merge-mining commitment shape, deterministic
+    chain index, and parent scrypt PoW verification
+  - current state: the node-parity bridge now exposes a focused
+    `HasValidProofOfWork`-style header PoW path without linking full
+    `validation.cpp`
+  - current state: `tidecoin/tests/data/auxpow_headers.json` contains
+    node-generated regtest AuxPoW fixtures for the Rust validator and the
+    node-parity header PoW bridge, covering valid AuxPoW, parent PoW failure,
+    wrong chain ID, parent chain ID collision, wrong chain index, invalid
+    transaction merkle branch, invalid chain merkle branch, missing chain merkle
+    root, missing and duplicated merged-mining headers, misplaced merged-mining
+    header, merkle-size mismatch, missing size/nonce metadata, testnet
+    activation acceptance, pre-activation rejection, and missing payload decode
+    rejection
+  - current state: `tidecoin/tests/data/testnet_retarget_windows.json` now
+    includes real testnet headers around activation and the first local AuxPoW
+    payload; mainnet AuxPoW vectors do not apply while mainnet AuxPoW
+    activation is disabled
+  - remaining gap: add any remaining historical real-chain edge fixtures if
+    they are discovered in node data
+- [~] yespower/scrypt PoW-hash selection and target-check vectors
+  - current state: `validate_pow_at_height` now mirrors the node-shaped
+    pure-header check by deriving target validity from `nBits`, selecting the
+    height-dependent Tidecoin mining hash, and checking that hash against the
+    header target
+  - current state: `HeaderExt::validate_pow` remains the expected-target facade
+    for callers that have also computed the contextual difficulty target
+  - current state: the node-parity bridge now exposes node yespower and scrypt
+    pure-header hash oracles, and tests pin both hash classes plus the
+    pure-header validation entry point, heightless header PoW bridge path, and
+    AuxPoW parent proof path against node-shaped C++ bridge data
+  - current state: real testnet retarget windows now cover activation and the
+    first local AuxPoW-adjacent target predictions
+  - remaining gap: broader long-range height-window target-check vectors are
+    still open
 - [x] Subsidy/reward schedule tests
-- [ ] Difficulty retargeting edge-case tests
-  - required architecture: port the node's pre/post-AuxPoW retarget switch,
-    post-AuxPoW averaging-window algorithm, and `PermittedDifficultyTransition`
+- [~] Difficulty retargeting edge-case tests
+  - current state: `tidecoin::pow::next_target_after` now switches at
+    `auxpow_start_height`, uses the node legacy overflow-guarded scaling path,
+    pins the first mainnet historical retarget, and implements the post-AuxPoW
+    averaging-window algorithm
+  - current state: `tidecoin::pow::permitted_difficulty_transition` now ports
+    the node transition-envelope rule, with focused node-bridge comparison for
+    mainnet legacy bounds and synthetic post-AuxPoW coverage
+  - current state: real testnet activation/first-AuxPoW windows now verify
+    observed `nBits` against `next_target_after`
+  - remaining gap: broader long-range historical/node-vector coverage
+- [~] Contextual header and non-UTXO block validation
+  - current state: `tidecoin::block_validation::contextual_check_block_header`
+    validates previous-hash linkage, exact next `nBits`, previous MTP,
+    BIP94 timewarp bounds, optional future-time bounds, buried version gates,
+    post-AuxPoW base-version validity, and selected PoW/AuxPoW proof
+  - current state: `tidecoin::block_validation::contextual_check_block`
+    validates context-free block sanity plus transaction finality, BIP34
+    coinbase height, and pre-activation witness rejection over the same
+    previous-header/history callback
+  - current state: real testnet activation and first-AuxPoW fixture headers
+    exercise the new contextual header path
+  - deferred separate-crate scope: UTXO-dependent chain-connect validation,
+    including BIP30, sequence locks, spend availability, and fee/value checks.
+    This requires chainstate/database ownership and is intentionally not folded
+    into the current protocol-library crate.
 - [x] Standalone PQ signature operation tests where still useful below the node-backed layer
 - [ ] Keep the `hashes/embedded` smoke test supported at a limited level:
   target-specific `thumbv7m-none-eabi` check documented, no host-target check,

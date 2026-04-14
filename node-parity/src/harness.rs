@@ -5,13 +5,16 @@ use std::path::PathBuf;
 
 use crate::error::{NodeParityError, ScriptError};
 use crate::ffi::{
-    tidecoin_node_check_transaction, tidecoin_node_mlkem512_decaps,
+    tidecoin_node_block_subsidy, tidecoin_node_check_block, tidecoin_node_check_transaction,
+    tidecoin_node_has_valid_header_pow, tidecoin_node_mlkem512_decaps,
     tidecoin_node_mlkem512_encaps_deterministic, tidecoin_node_mlkem512_keypair_from_coins,
-    tidecoin_node_parse_script_asm, tidecoin_node_pq_compute_public_key,
-    tidecoin_node_pq_keygen_from_seed, tidecoin_node_pq_p2sh_p2wpkh_input_vsize,
-    tidecoin_node_pq_p2wpkh_input_vsize, tidecoin_node_pq_sign_message,
-    tidecoin_node_pq_verify_message, tidecoin_node_pqhd_keygen_from_stream_key,
+    tidecoin_node_parse_script_asm, tidecoin_node_permitted_difficulty_transition,
+    tidecoin_node_pq_compute_public_key, tidecoin_node_pq_keygen_from_seed,
+    tidecoin_node_pq_p2sh_p2wpkh_input_vsize, tidecoin_node_pq_p2wpkh_input_vsize,
+    tidecoin_node_pq_sign_message, tidecoin_node_pq_verify_message,
+    tidecoin_node_pqhd_keygen_from_stream_key, tidecoin_node_scrypt_pow_hash,
     tidecoin_node_verify_script_case, tidecoin_node_verify_tx_input,
+    tidecoin_node_yespower_pow_hash,
 };
 use crate::fixtures::TIDECOIN_NODE_REPO_ENV;
 
@@ -58,6 +61,117 @@ impl TidecoinNodeHarness {
             1 => Ok(()),
             0 => Err(NodeParityError::BridgeFailure("invalid transaction")),
             _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_transaction")),
+        }
+    }
+
+    /// Computes the Tidecoin node scrypt mining hash for a pure 80-byte header.
+    pub fn scrypt_pow_hash(&self, header: &[u8; 80]) -> Result<[u8; 32], NodeParityError> {
+        let mut out = [0u8; 32];
+        let rc = unsafe {
+            tidecoin_node_scrypt_pow_hash(
+                header.as_ptr(),
+                header.len(),
+                out.as_mut_ptr(),
+                out.len(),
+            )
+        };
+        match rc {
+            1 => Ok(out),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_scrypt_pow_hash")),
+        }
+    }
+
+    /// Computes the Tidecoin node yespower mining hash for a pure 80-byte header.
+    pub fn yespower_pow_hash(&self, header: &[u8; 80]) -> Result<[u8; 32], NodeParityError> {
+        let mut out = [0u8; 32];
+        let rc = unsafe {
+            tidecoin_node_yespower_pow_hash(
+                header.as_ptr(),
+                header.len(),
+                out.as_mut_ptr(),
+                out.len(),
+            )
+        };
+        match rc {
+            1 => Ok(out),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_yespower_pow_hash")),
+        }
+    }
+
+    /// Runs node-equivalent header PoW validation, including AuxPoW context.
+    pub fn has_valid_header_pow_hex(
+        &self,
+        header_hex: &str,
+        network: i32,
+        height: Option<i32>,
+    ) -> Result<(), NodeParityError> {
+        let header_hex =
+            CString::new(header_hex).map_err(|_| NodeParityError::InvalidCString("header hex"))?;
+        let rc = unsafe {
+            tidecoin_node_has_valid_header_pow(
+                header_hex.as_ptr(),
+                network,
+                i32::from(height.is_some()),
+                height.unwrap_or_default(),
+            )
+        };
+        match rc {
+            1 => Ok(()),
+            0 => Err(NodeParityError::BridgeFailure("invalid header proof of work")),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_has_valid_header_pow")),
+        }
+    }
+
+    /// Runs node-equivalent context-free block sanity validation.
+    pub fn check_block_hex(
+        &self,
+        block_hex: &str,
+        network: i32,
+        check_pow: bool,
+        check_merkle_root: bool,
+    ) -> Result<(), NodeParityError> {
+        let block_hex =
+            CString::new(block_hex).map_err(|_| NodeParityError::InvalidCString("block hex"))?;
+        let rc = unsafe {
+            tidecoin_node_check_block(
+                block_hex.as_ptr(),
+                network,
+                i32::from(check_pow),
+                i32::from(check_merkle_root),
+            )
+        };
+        match rc {
+            1 => Ok(()),
+            0 => Err(NodeParityError::BridgeFailure("invalid block")),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_block")),
+        }
+    }
+
+    /// Runs node-equivalent permitted difficulty transition validation.
+    pub fn permitted_difficulty_transition(
+        &self,
+        network: i32,
+        height: i64,
+        old_nbits: u32,
+        new_nbits: u32,
+    ) -> Result<bool, NodeParityError> {
+        let rc = unsafe {
+            tidecoin_node_permitted_difficulty_transition(network, height, old_nbits, new_nbits)
+        };
+        match rc {
+            1 => Ok(true),
+            0 => Ok(false),
+            _ => {
+                Err(NodeParityError::BridgeFailure("tidecoin_node_permitted_difficulty_transition"))
+            }
+        }
+    }
+
+    /// Returns the node block subsidy in satoshis for the selected network and height.
+    pub fn block_subsidy(&self, network: i32, height: i32) -> Result<u64, NodeParityError> {
+        match unsafe { tidecoin_node_block_subsidy(network, height) } {
+            subsidy if subsidy >= 0 => Ok(subsidy as u64),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_block_subsidy")),
         }
     }
 

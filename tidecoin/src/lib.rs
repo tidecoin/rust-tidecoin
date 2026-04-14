@@ -101,6 +101,7 @@ pub mod ext {
     };
 }
 pub mod address;
+pub mod block_validation;
 pub mod blockdata;
 pub mod compact_filter;
 pub mod consensus_validation;

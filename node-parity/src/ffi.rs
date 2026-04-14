@@ -17,6 +17,49 @@ unsafe extern "C" {
     /// Runs Tidecoin node `CheckTransaction` on a serialized transaction.
     pub fn tidecoin_node_check_transaction(tx_hex: *const c_char) -> c_int;
 
+    /// Runs Tidecoin node scrypt-1024-1-1-256 over a pure 80-byte header.
+    pub fn tidecoin_node_scrypt_pow_hash(
+        header: *const u8,
+        header_len: usize,
+        out: *mut u8,
+        out_len: usize,
+    ) -> c_int;
+
+    /// Runs Tidecoin node yespower over a pure 80-byte header.
+    pub fn tidecoin_node_yespower_pow_hash(
+        header: *const u8,
+        header_len: usize,
+        out: *mut u8,
+        out_len: usize,
+    ) -> c_int;
+
+    /// Runs Tidecoin node-equivalent header PoW validation, including AuxPoW context.
+    pub fn tidecoin_node_has_valid_header_pow(
+        header_hex: *const c_char,
+        network: c_int,
+        has_height: c_int,
+        height: c_int,
+    ) -> c_int;
+
+    /// Runs Tidecoin node-equivalent context-free block sanity validation.
+    pub fn tidecoin_node_check_block(
+        block_hex: *const c_char,
+        network: c_int,
+        check_pow: c_int,
+        check_merkle_root: c_int,
+    ) -> c_int;
+
+    /// Runs Tidecoin node-equivalent permitted difficulty transition checks.
+    pub fn tidecoin_node_permitted_difficulty_transition(
+        network: c_int,
+        height: i64,
+        old_nbits: u32,
+        new_nbits: u32,
+    ) -> c_int;
+
+    /// Returns the Tidecoin node block subsidy for a network and height.
+    pub fn tidecoin_node_block_subsidy(network: c_int, height: c_int) -> i64;
+
     /// Runs Tidecoin node `pq::VSizeP2WPKHInput`.
     pub fn tidecoin_node_pq_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64;
 

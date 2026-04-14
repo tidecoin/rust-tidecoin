@@ -89,10 +89,16 @@ pub struct Params {
     /// The `bip66_height` name is retained to match the Tidecoin node consensus
     /// parameter name.
     pub bip66_height: BlockHeight,
+    /// Block height at which CSV/relative-lock-time validation becomes active.
+    pub csv_height: BlockHeight,
+    /// Block height at which Segwit witness commitment validation becomes active.
+    pub segwit_height: BlockHeight,
     /// Block height at which auxpow activates, if any.
     pub auxpow_start_height: Option<BlockHeight>,
     /// Auxpow chain ID encoded into header version bits.
     pub auxpow_chain_id: u32,
+    /// Whether auxpow chain ID checks are consensus-enforced.
+    pub strict_auxpow_chain_id: bool,
     /// Initial block interval for the Tidecoin doubling-interval subsidy schedule.
     pub subsidy_initial_interval: u32,
     /// Enforce Tidecoin block storm mitigation.
@@ -120,6 +126,14 @@ pub struct Params {
     pub pow_target_timespan: u32,
     /// Determines whether minimal difficulty may be used for blocks or not.
     pub allow_min_difficulty_blocks: bool,
+    /// Height from which the node's post-auxpow min-difficulty exception may be used.
+    pub pow_allow_min_difficulty_blocks_after_height: Option<BlockHeight>,
+    /// Number of previous blocks averaged by the post-auxpow retarget path.
+    pub pow_averaging_window: u32,
+    /// Maximum downward target adjustment percentage in the post-auxpow retarget path.
+    pub pow_max_adjust_down: u32,
+    /// Maximum upward difficulty adjustment percentage in the post-auxpow retarget path.
+    pub pow_max_adjust_up: u32,
     /// Determines whether retargeting is disabled for this network or not.
     pub no_pow_retargeting: bool,
 }
@@ -145,8 +159,11 @@ impl Params {
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
+        csv_height: BlockHeight::from_u32(1),
+        segwit_height: BlockHeight::from_u32(1),
         auxpow_start_height: None,
         auxpow_chain_id: 8,
+        strict_auxpow_chain_id: true,
         subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
@@ -155,6 +172,10 @@ impl Params {
         pow_target_spacing: 60,
         pow_target_timespan: 432_000,
         allow_min_difficulty_blocks: false,
+        pow_allow_min_difficulty_blocks_after_height: None,
+        pow_averaging_window: 17,
+        pow_max_adjust_down: 32,
+        pow_max_adjust_up: 16,
         no_pow_retargeting: false,
     };
 
@@ -165,8 +186,11 @@ impl Params {
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
+        csv_height: BlockHeight::from_u32(1),
+        segwit_height: BlockHeight::from_u32(1),
         auxpow_start_height: Some(BlockHeight::from_u32(1000)),
         auxpow_chain_id: 8,
+        strict_auxpow_chain_id: true,
         subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
         enforce_bip94: false,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
@@ -175,6 +199,10 @@ impl Params {
         pow_target_spacing: 60,
         pow_target_timespan: 432_000,
         allow_min_difficulty_blocks: true,
+        pow_allow_min_difficulty_blocks_after_height: None,
+        pow_averaging_window: 17,
+        pow_max_adjust_down: 32,
+        pow_max_adjust_up: 16,
         no_pow_retargeting: false,
     };
 
@@ -185,8 +213,11 @@ impl Params {
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
+        csv_height: BlockHeight::from_u32(1),
+        segwit_height: BlockHeight::from_u32(0),
         auxpow_start_height: Some(BlockHeight::from_u32(0)),
         auxpow_chain_id: 8,
+        strict_auxpow_chain_id: true,
         subsidy_initial_interval: 20,
         enforce_bip94: true,
         rule_change_activation_threshold: BlockHeightInterval::from_u32(108),
@@ -195,6 +226,10 @@ impl Params {
         pow_target_spacing: 60,
         pow_target_timespan: 14_400,
         allow_min_difficulty_blocks: true,
+        pow_allow_min_difficulty_blocks_after_height: None,
+        pow_averaging_window: 17,
+        pow_max_adjust_down: 0,
+        pow_max_adjust_up: 0,
         no_pow_retargeting: true,
     };
 

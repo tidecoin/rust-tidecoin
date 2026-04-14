@@ -12,6 +12,7 @@ use core::fmt;
 
 use crate::merkle_tree::{TxMerkleNode, WitnessMerkleNode};
 use crate::network::Params;
+use crate::pow::{self, MiningHashError, PowTargetError, PowValidationError};
 use crate::prelude::Vec;
 use crate::script::ScriptIntError;
 use crate::transaction::{Coinbase, Transaction};
@@ -24,12 +25,13 @@ use crate::{prelude::Box, BlockTime};
 pub use primitives::block::{
     AuxPow, Block, BlockDecoder, BlockEncoder, BlockHash, BlockHashDecoder, BlockHashEncoder,
     Checked, Unchecked, Validation, Version, VersionDecoder, VersionEncoder, Header,
-    HeaderDecoder, HeaderEncoder, WitnessCommitment, compute_merkle_root, compute_witness_root,
+    HeaderDecoder, HeaderEncoder, WitnessCommitment, check_block_sanity, compute_merkle_root,
+    compute_witness_root,
 };
 #[doc(no_inline)]
 pub use primitives::block::{
-    BlockDecoderError, BlockHashDecoderError, HeaderDecoderError, InvalidBlockError,
-    ParseBlockError, ParseHeaderError, VersionDecoderError,
+    BlockDecoderError, BlockHashDecoderError, BlockSanityError, HeaderDecoderError,
+    InvalidBlockError, ParseBlockError, ParseHeaderError, VersionDecoderError,
 };
 #[doc(inline)]
 pub use units::block::{
@@ -58,18 +60,15 @@ internal_macros::define_extension_trait! {
             self.target().difficulty_float(params)
         }
 
-        /// Checks that the proof-of-work for the block is valid, returning the block hash.
-        fn validate_pow(&self, required_target: Target) -> Result<BlockHash, ValidationError> {
-            let target = self.target();
-            if target != required_target {
-                return Err(ValidationError::BadTarget);
-            }
-            let block_hash = self.block_hash();
-            if target.is_met_by(block_hash) {
-                Ok(block_hash)
-            } else {
-                Err(ValidationError::BadProofOfWork)
-            }
+        /// Checks that the proof-of-work for the block is valid, returning the mining hash.
+        fn validate_pow(
+            &self,
+            params: impl AsRef<Params>,
+            height: BlockHeight,
+            required_target: Target,
+        ) -> Result<BlockHash, ValidationError> {
+            pow::validate_pow_at_height_against_target(self, params, height, required_target)
+                .map_err(Into::into)
         }
 
         /// Returns the total work of the block.
@@ -264,6 +263,10 @@ pub enum ValidationError {
     BadProofOfWork,
     /// The `target` field of a block header did not match the expected difficulty.
     BadTarget,
+    /// The compact target was invalid under Tidecoin node consensus rules.
+    InvalidTarget(PowTargetError),
+    /// The selected mining hash algorithm is not available locally.
+    MiningHash(MiningHashError),
 }
 
 impl From<Infallible> for ValidationError {
@@ -272,11 +275,24 @@ impl From<Infallible> for ValidationError {
     }
 }
 
+impl From<PowValidationError> for ValidationError {
+    fn from(err: PowValidationError) -> Self {
+        match err {
+            PowValidationError::BadProofOfWork => Self::BadProofOfWork,
+            PowValidationError::BadTarget => Self::BadTarget,
+            PowValidationError::InvalidTarget(err) => Self::InvalidTarget(err),
+            PowValidationError::MiningHash(err) => Self::MiningHash(err),
+        }
+    }
+}
+
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::BadProofOfWork => f.write_str("block target correct but not attained"),
             Self::BadTarget => f.write_str("block target incorrect"),
+            Self::InvalidTarget(err) => write!(f, "invalid compact proof-of-work target: {err}"),
+            Self::MiningHash(err) => write!(f, "failed to compute mining hash: {err}"),
         }
     }
 }
@@ -286,6 +302,8 @@ impl std::error::Error for ValidationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::BadProofOfWork | Self::BadTarget => None,
+            Self::InvalidTarget(err) => Some(err),
+            Self::MiningHash(err) => Some(err),
         }
     }
 }
@@ -345,7 +363,7 @@ mod tests {
             prev_blockhash: BlockHash::from_byte_array([0x11; 32]),
             merkle_root: TxMerkleNode::from_byte_array([0; 32]),
             time: BlockTime::from_u32(1_700_000_000),
-            bits: CompactTarget::from_consensus(0x207f_ffff),
+            bits: Params::REGTEST.max_attainable_target.to_compact_lossy(),
             nonce: 0,
             auxpow: None,
         };
@@ -375,7 +393,10 @@ mod tests {
             ..placeholder_header
         };
 
-        while header.validate_pow(header.target()).is_err() {
+        while header
+            .validate_pow(Params::REGTEST, BlockHeight::from_u32(0), header.target())
+            .is_err()
+        {
             header.nonce += 1;
         }
 
@@ -494,10 +515,7 @@ mod tests {
         assert_eq!(real_decode.header().difficulty(&params), 33_554_688);
         assert_eq!(real_decode.header().difficulty_float(&params), 33_554_688.00390631);
 
-        assert_eq!(
-            real_decode.header().validate_pow(real_decode.header().target()).unwrap(),
-            real_decode.block_hash()
-        );
+        assert_eq!(real_decode.header().block_hash(), real_decode.block_hash());
         assert_eq!(real_decode.total_size(), some_block.len());
         assert_eq!(real_decode.base_size(), some_block.len());
         assert_eq!(real_decode.weight(), Weight::from_vb_unchecked(some_block.len().to_u64()));
@@ -529,12 +547,22 @@ mod tests {
             block::compute_merkle_root(&transactions).unwrap()
         );
         assert_eq!(real_decode.header().time, BlockTime::from_u32(1_700_000_000));
-        assert_eq!(real_decode.header().bits, CompactTarget::from_consensus(0x207f_ffff));
+        assert_eq!(
+            real_decode.header().bits,
+            Params::REGTEST.max_attainable_target.to_compact_lossy()
+        );
         assert_eq!(real_decode.header().work(), real_decode.header().target().to_work());
 
         assert_eq!(
-            real_decode.header().validate_pow(real_decode.header().target()).unwrap(),
-            real_decode.block_hash()
+            real_decode
+                .header()
+                .validate_pow(
+                    Params::REGTEST,
+                    BlockHeight::from_u32(0),
+                    real_decode.header().target()
+                )
+                .unwrap(),
+            pow::scrypt_pow_hash(real_decode.header())
         );
         assert_eq!(real_decode.total_size(), segwit_block.len());
         assert!(real_decode.base_size() < segwit_block.len());
@@ -646,24 +674,34 @@ mod tests {
 
     #[test]
     fn validate_pow() {
-        let some_header = hex!("010000004ddccd549d28f385ab457e98d1b11ce80bfea2c5ab93015ade4973e400000000bf4473e53794beae34e64fccc471dace6ae544180816f89591894e0f417a914cd74d6e49ffff001d323b3a7b");
-        let some_header: Header = encoding::decode_from_slice(&some_header)
-            .expect("can't deserialize correct block header");
+        let mut some_header = Header {
+            version: Version::TWO,
+            prev_blockhash: BlockHash::from_byte_array([0x11; 32]),
+            merkle_root: TxMerkleNode::from_byte_array([0x22; 32]),
+            time: BlockTime::from_u32(1_700_000_000),
+            bits: Params::REGTEST.max_attainable_target.to_compact_lossy(),
+            nonce: 0,
+            auxpow: None,
+        };
+        while !some_header.target().is_met_by(pow::scrypt_pow_hash(&some_header)) {
+            some_header.nonce += 1;
+        }
+        let target = pow::derive_target(some_header.bits, Params::REGTEST).unwrap();
         assert_eq!(
-            some_header.validate_pow(some_header.target()).unwrap(),
-            some_header.block_hash()
+            some_header.validate_pow(Params::REGTEST, BlockHeight::from_u32(0), target).unwrap(),
+            pow::scrypt_pow_hash(&some_header)
         );
 
         // test with zero target
-        match some_header.validate_pow(Target::ZERO) {
+        match some_header.validate_pow(Params::REGTEST, BlockHeight::from_u32(0), Target::ZERO) {
             Err(ValidationError::BadTarget) => (),
             _ => panic!("unexpected result from validate_pow"),
         }
 
-        // test with modified header
         let mut invalid_header: Header = some_header;
-        invalid_header.version = Version::from_consensus(invalid_header.version.to_consensus() + 1);
-        match invalid_header.validate_pow(invalid_header.target()) {
+        invalid_header.bits = CompactTarget::from_consensus(0x0101_0000);
+        let hard_target = pow::derive_target(invalid_header.bits, Params::REGTEST).unwrap();
+        match invalid_header.validate_pow(Params::REGTEST, BlockHeight::from_u32(0), hard_target) {
             Err(ValidationError::BadProofOfWork) => (),
             _ => panic!("unexpected result from validate_pow"),
         }

@@ -16,7 +16,7 @@ use core::mem;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use encoding::{ArrayDecoder, Decoder6, Encodable as _};
+use encoding::{ArrayDecoder, Decoder6, Encodable as _, Encoder as _};
 #[cfg(feature = "alloc")]
 use encoding::{CompactSizeEncoder, Decoder2, Encoder2, SliceEncoder, VecDecoder};
 use hashes::{sha256d, HashEngine as _};
@@ -36,6 +36,8 @@ use crate::prelude::{Box, Vec};
 use crate::script::{ScriptPubKeyBuf, ScriptSigBuf};
 use crate::time::{BlockTimeDecoder, BlockTimeDecoderError};
 #[cfg(feature = "alloc")]
+use crate::transaction::{check_transaction_sanity, TransactionSanityError};
+#[cfg(feature = "alloc")]
 use crate::{Amount, Transaction, TxIn, TxOut, Weight, Wtxid};
 use crate::{BlockTime, CompactTarget};
 
@@ -50,6 +52,10 @@ pub use units::block::{BlockHeightDecoderError, TooBigForRelativeHeightError};
 pub use crate::hash_types::{
     BlockHash, BlockHashDecoder, BlockHashDecoderError, BlockHashEncoder, WitnessCommitment,
 };
+
+/// The maximum allowed legacy signature operation cost in a block.
+#[cfg(feature = "alloc")]
+pub const MAX_BLOCK_SIGOPS_COST: usize = 80_000;
 
 /// Marker for whether or not a block has been validated.
 ///
@@ -130,28 +136,16 @@ impl Block<Unchecked> {
     /// Returns an error if:
     /// * The block has no transactions.
     /// * The first transaction is not a coinbase transaction.
+    /// * A non-first transaction is a coinbase transaction.
+    /// * The block exceeds context-free size limits.
+    /// * Any transaction fails context-free transaction sanity checks.
+    /// * The legacy signature operation cost exceeds the block limit.
     /// * The Merkle root of the header does not match the Merkle root of the transaction list.
     /// * The witness commitment in the coinbase does not match the transaction list.
     pub fn validate(self) -> Result<Block<Checked>, InvalidBlockError> {
-        if self.transactions.is_empty() {
-            return Err(InvalidBlockError::NoTransactions);
-        }
-
-        if !self.transactions[0].is_coinbase() {
-            return Err(InvalidBlockError::InvalidCoinbase);
-        }
-
-        if !self.check_merkle_root() {
-            return Err(InvalidBlockError::InvalidMerkleRoot);
-        }
-
-        match self.check_witness_commitment() {
-            (false, _) => Err(InvalidBlockError::InvalidWitnessCommitment),
-            (true, witness_root) => {
-                let block = Self::new_unchecked(self.header, self.transactions);
-                Ok(block.assume_checked(witness_root))
-            }
-        }
+        let witness_root = check_block_sanity_inner(&self).map_err(InvalidBlockError::from)?;
+        let block = Self::new_unchecked(self.header, self.transactions);
+        Ok(block.assume_checked(witness_root))
     }
 
     /// Checks if Merkle root of header matches Merkle root of the transaction list.
@@ -209,6 +203,93 @@ impl Block<Unchecked> {
 
         (false, None)
     }
+}
+
+/// Checks Tidecoin context-free block sanity rules.
+///
+/// This mirrors the node's `CheckBlock` rules that do not depend on UTXO state,
+/// previous-block context, or script execution. Header PoW/AuxPoW validation is
+/// intentionally separate.
+#[cfg(feature = "alloc")]
+pub fn check_block_sanity(block: &Block<Unchecked>) -> Result<(), BlockSanityError> {
+    check_block_sanity_inner(block).map(|_| ())
+}
+
+#[cfg(feature = "alloc")]
+fn check_block_sanity_inner(
+    block: &Block<Unchecked>,
+) -> Result<Option<WitnessMerkleNode>, BlockSanityError> {
+    if block.transactions.is_empty() {
+        return Err(BlockSanityError::NoTransactions);
+    }
+
+    if block.transactions.len().to_u64().saturating_mul(Weight::WITNESS_SCALE_FACTOR)
+        > Weight::MAX_BLOCK.to_wu()
+    {
+        return Err(BlockSanityError::SizeLimits);
+    }
+
+    if block.base_size().to_u64().saturating_mul(Weight::WITNESS_SCALE_FACTOR)
+        > Weight::MAX_BLOCK.to_wu()
+    {
+        return Err(BlockSanityError::SizeLimits);
+    }
+
+    if !block.transactions[0].is_coinbase() {
+        return Err(BlockSanityError::MissingCoinbase);
+    }
+
+    for (index, tx) in block.transactions.iter().enumerate().skip(1) {
+        if tx.is_coinbase() {
+            return Err(BlockSanityError::MultipleCoinbase { index });
+        }
+    }
+
+    match compute_merkle_root(&block.transactions) {
+        Some(merkle_root) if block.header.merkle_root == merkle_root => {}
+        Some(_) => return Err(BlockSanityError::InvalidMerkleRoot),
+        None => return Err(BlockSanityError::MutatedMerkleRoot),
+    }
+
+    for (index, tx) in block.transactions.iter().enumerate() {
+        check_transaction_sanity(tx)
+            .map_err(|err| BlockSanityError::Transaction { index, source: err })?;
+    }
+
+    let legacy_sigop_cost = block
+        .transactions
+        .iter()
+        .map(transaction_legacy_sigop_count)
+        .sum::<usize>()
+        .saturating_mul(Weight::WITNESS_SCALE_FACTOR as usize);
+    if legacy_sigop_cost > MAX_BLOCK_SIGOPS_COST {
+        return Err(BlockSanityError::TooManyLegacySigops { cost: legacy_sigop_cost });
+    }
+
+    let (witness_valid, witness_root) = block.check_witness_commitment();
+    if !witness_valid {
+        return Err(BlockSanityError::InvalidWitnessCommitment);
+    }
+
+    if block.weight().to_wu() > Weight::MAX_BLOCK.to_wu() {
+        return Err(BlockSanityError::WeightLimit);
+    }
+
+    Ok(witness_root)
+}
+
+#[cfg(feature = "alloc")]
+fn transaction_legacy_sigop_count(tx: &Transaction) -> usize {
+    tx.inputs
+        .iter()
+        .map(|input| input.script_sig.count_sigops_legacy())
+        .sum::<usize>()
+        .saturating_add(
+            tx.outputs
+                .iter()
+                .map(|output| output.script_pubkey.count_sigops_legacy())
+                .sum::<usize>(),
+        )
 }
 
 #[cfg(feature = "alloc")]
@@ -498,6 +579,8 @@ pub enum InvalidBlockError {
     NoTransactions,
     /// The first transaction is not a valid coinbase transaction.
     InvalidCoinbase,
+    /// A context-free block sanity rule failed.
+    Sanity(BlockSanityError),
 }
 
 #[cfg(feature = "alloc")]
@@ -508,22 +591,127 @@ impl From<Infallible> for InvalidBlockError {
 }
 
 #[cfg(feature = "alloc")]
+impl From<BlockSanityError> for InvalidBlockError {
+    fn from(err: BlockSanityError) -> Self {
+        match err {
+            BlockSanityError::InvalidMerkleRoot => Self::InvalidMerkleRoot,
+            BlockSanityError::InvalidWitnessCommitment => Self::InvalidWitnessCommitment,
+            BlockSanityError::NoTransactions => Self::NoTransactions,
+            BlockSanityError::MissingCoinbase => Self::InvalidCoinbase,
+            other => Self::Sanity(other),
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
 impl fmt::Display for InvalidBlockError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::InvalidMerkleRoot =>
-                write!(f, "header Merkle root does not match the calculated Merkle root"),
-            Self::InvalidWitnessCommitment => write!(f, "the witness commitment in coinbase transaction does not match the calculated witness_root"),
+            Self::InvalidMerkleRoot => {
+                write!(f, "header Merkle root does not match the calculated Merkle root")
+            }
+            Self::InvalidWitnessCommitment => write!(
+                f,
+                "the witness commitment in coinbase transaction does not match the calculated witness_root"
+            ),
             Self::NoTransactions => write!(f, "block has no transactions (missing coinbase)"),
-            Self::InvalidCoinbase =>
-                write!(f, "the first transaction is not a valid coinbase transaction"),
+            Self::InvalidCoinbase => {
+                write!(f, "the first transaction is not a valid coinbase transaction")
+            }
+            Self::Sanity(err) => write_err!(f, "block sanity error"; err),
         }
     }
 }
 
 #[cfg(feature = "alloc")]
 #[cfg(feature = "std")]
-impl std::error::Error for InvalidBlockError {}
+impl std::error::Error for InvalidBlockError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Sanity(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+/// Context-free block sanity error.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum BlockSanityError {
+    /// Header Merkle root does not match the calculated Merkle root.
+    InvalidMerkleRoot,
+    /// Transaction merkle tree mutation was detected.
+    MutatedMerkleRoot,
+    /// The witness commitment in coinbase transaction does not match the calculated `witness_root`.
+    InvalidWitnessCommitment,
+    /// Block has no transactions.
+    NoTransactions,
+    /// The first transaction is not a valid coinbase transaction.
+    MissingCoinbase,
+    /// A non-first transaction is a coinbase transaction.
+    MultipleCoinbase {
+        /// Invalid transaction index.
+        index: usize,
+    },
+    /// Block failed context-free transaction sanity.
+    Transaction {
+        /// Invalid transaction index.
+        index: usize,
+        /// Transaction sanity error.
+        source: TransactionSanityError,
+    },
+    /// Block exceeds context-free serialized-size limits.
+    SizeLimits,
+    /// Block exceeds the full weight limit.
+    WeightLimit,
+    /// Block exceeds the legacy sigop cost limit.
+    TooManyLegacySigops {
+        /// Computed sigop cost.
+        cost: usize,
+    },
+}
+
+#[cfg(feature = "alloc")]
+impl fmt::Display for BlockSanityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidMerkleRoot => {
+                write!(f, "header Merkle root does not match the calculated Merkle root")
+            }
+            Self::MutatedMerkleRoot => write!(f, "transaction merkle tree is mutated"),
+            Self::InvalidWitnessCommitment => write!(
+                f,
+                "the witness commitment in coinbase transaction does not match the calculated witness_root"
+            ),
+            Self::NoTransactions => write!(f, "block has no transactions"),
+            Self::MissingCoinbase => {
+                write!(f, "the first transaction is not a valid coinbase transaction")
+            }
+            Self::MultipleCoinbase { index } => {
+                write!(f, "non-first transaction {} is coinbase", index)
+            }
+            Self::Transaction { index, source } => {
+                write_err!(f, "transaction sanity failed at index {}", index; source)
+            }
+            Self::SizeLimits => write!(f, "block context-free size limits failed"),
+            Self::WeightLimit => write!(f, "block weight limit failed"),
+            Self::TooManyLegacySigops { cost } => {
+                write!(f, "block legacy sigop cost {} exceeds {}", cost, MAX_BLOCK_SIGOPS_COST)
+            }
+        }
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "std"))]
+impl std::error::Error for BlockSanityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Transaction { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
 
 /// Computes the Merkle root for a list of transactions.
 ///
@@ -712,6 +900,27 @@ impl Header {
     pub fn block_hash(&self) -> BlockHash {
         let bare_hash = sha256d_hash_encoder(self.pure_encoder());
         BlockHash::from_byte_array(bare_hash.to_byte_array())
+    }
+
+    /// Returns the pure 80-byte header serialization used by mining hashes.
+    ///
+    /// `AuxPoW` payload bytes are intentionally excluded. Tidecoin's block hash,
+    /// yespower mining hash, scrypt mining hash, and `AuxPoW` parent-header hash
+    /// all operate over the pure header fields only.
+    pub fn pure_header_bytes(&self) -> [u8; Self::SIZE] {
+        let mut out = [0u8; Self::SIZE];
+        let mut offset = 0;
+        let mut encoder = self.pure_encoder();
+        loop {
+            let chunk = encoder.current_chunk();
+            out[offset..offset + chunk.len()].copy_from_slice(chunk);
+            offset += chunk.len();
+            if !encoder.advance() {
+                break;
+            }
+        }
+        debug_assert_eq!(offset, Self::SIZE);
+        out
     }
 
     fn pure_encoder(&self) -> PureHeaderEncoder<'_> {
@@ -2113,6 +2322,19 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "alloc")]
+    fn pure_header_bytes_exclude_auxpow_payload() {
+        let mut header = dummy_header();
+        header.version = Version::with_base_version(1, 8).with_auxpow(true);
+
+        let expected = header.pure_header_bytes();
+        header.auxpow = Some(Box::new(AuxPow::minimal_for_header(&header)));
+
+        assert_eq!(header.pure_header_bytes(), expected);
+        assert_eq!(header.pure_header_bytes().len(), Header::SIZE);
+    }
+
+    #[test]
     #[cfg(feature = "hex")]
     #[cfg(feature = "alloc")]
     fn header_display() {
@@ -2490,6 +2712,7 @@ mod tests {
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn block_check_witness_commitment_invalid_witness() {
         let mut txin = crate::TxIn::EMPTY_COINBASE;
+        txin.script_sig = crate::ScriptSigBuf::from_bytes(vec![0u8; 2]);
         let witness_bytes: [u8; 32] = [11u8; 32];
         // First witness item is 32 bytes, but there are two witness elements.
         txin.witness.push(witness_bytes);
@@ -2512,7 +2735,15 @@ mod tests {
         let tx2 = Transaction {
             version: crate::transaction::Version::ONE,
             lock_time: crate::absolute::LockTime::ZERO,
-            inputs: vec![crate::TxIn::EMPTY_COINBASE],
+            inputs: vec![crate::TxIn {
+                previous_output: crate::OutPoint {
+                    txid: crate::Txid::from_byte_array([1; 32]),
+                    vout: 0,
+                },
+                script_sig: crate::ScriptSigBuf::new(),
+                sequence: crate::Sequence::MAX,
+                witness: crate::Witness::default(),
+            }],
             outputs: vec![crate::TxOut {
                 amount: units::Amount::MIN,
                 script_pubkey: crate::script::ScriptBuf::new(),

@@ -71,10 +71,9 @@ pub use crate::hash_types::BlockHashDecoderError;
 /// data.
 ///
 /// There is one major exception to this: to avoid deserialization ambiguity,
-/// if the transaction has no inputs, it is serialized in witness style. Be
-/// aware that this differs from unsigned transaction containers, which do not
-/// include witness serialization. Ordinarily there is no conflict, since unsigned
-/// transactions have empty input witnesses.
+/// if a caller constructs a transaction with no inputs, it is serialized in
+/// witness style. Such a transaction is invalid under Tidecoin consensus sanity
+/// rules and will be rejected by consensus decoding.
 ///
 /// The specific ambiguity is that witness serialization uses the flag bytes `0001` where an old
 /// serializer would read the number of transaction inputs. The old serializer
@@ -83,16 +82,9 @@ pub use crate::hash_types::BlockHashDecoderError;
 /// should *only* be used when some input has a nonempty witness; that is,
 /// witness-less transactions should be encoded in the traditional format.
 ///
-/// However, in protocols where transactions may legitimately have 0 inputs, e.g.
-/// when parties are cooperatively funding a transaction, the "00 means witness"
-/// heuristic does not work. Since witness serialization requires such a transaction to be encoded
-/// in the original transaction format (since it has no inputs and therefore
-/// no input witnesses), a traditionally encoded transaction may have the `0001`
-/// witness flag in it, which confuses most witness parsers including the one in
-/// Tidecoin node behavior.
-///
 /// We therefore always use the Tidecoin witness encoding
-/// for 0-input transactions, which results in unambiguously parseable transactions.
+/// for constructed 0-input transactions, which results in unambiguously parseable
+/// bytes before consensus sanity rejection.
 ///
 /// # A note on ordering
 ///
@@ -268,6 +260,23 @@ impl Transaction {
             self.lock_time.encoder(),
         ))
     }
+}
+
+/// Checks Tidecoin context-free transaction sanity rules.
+///
+/// This mirrors the node's `CheckTransaction` checks that only depend on the
+/// transaction itself. It intentionally does not validate UTXO availability,
+/// input scripts, finality, fees, or other contextual rules.
+#[cfg(feature = "alloc")]
+pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), TransactionSanityError> {
+    validate_transaction_has_inputs(tx)?;
+    validate_transaction_has_outputs(tx)?;
+    validate_transaction_base_size(tx)?;
+    validate_output_value_sum(tx)?;
+    validate_unique_inputs(tx)?;
+    validate_coinbase_script_sig_len(tx)?;
+    validate_non_coinbase_prevouts(tx)?;
+    Ok(())
 }
 
 #[cfg(feature = "alloc")]
@@ -689,85 +698,157 @@ fn next_state_after_witness(
 
 #[cfg(feature = "alloc")]
 fn validate_decoded_transaction(tx: Transaction) -> Result<Transaction, TransactionDecoderError> {
-    validate_transaction_has_outputs(&tx)?;
-    validate_non_coinbase_prevouts(&tx)?;
-    validate_coinbase_script_sig_len(&tx)?;
-    validate_unique_inputs(&tx)?;
-    validate_output_value_sum(&tx)?;
+    check_transaction_sanity(&tx)?;
     Ok(tx)
 }
 
 #[cfg(feature = "alloc")]
-fn validate_transaction_has_outputs(tx: &Transaction) -> Result<(), TransactionDecoderError> {
-    if tx.outputs.is_empty() {
-        return Err(TransactionDecoderError(TransactionDecoderErrorInner::NoOutputs));
+fn validate_transaction_has_inputs(tx: &Transaction) -> Result<(), TransactionSanityError> {
+    if tx.inputs.is_empty() {
+        return Err(TransactionSanityError::NoInputs);
     }
     Ok(())
 }
 
 #[cfg(feature = "alloc")]
-fn validate_non_coinbase_prevouts(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+fn validate_transaction_has_outputs(tx: &Transaction) -> Result<(), TransactionSanityError> {
+    if tx.outputs.is_empty() {
+        return Err(TransactionSanityError::NoOutputs);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "alloc")]
+fn validate_transaction_base_size(tx: &Transaction) -> Result<(), TransactionSanityError> {
+    let stripped_weight = tx.base_size().to_u64().saturating_mul(Weight::WITNESS_SCALE_FACTOR);
+    if stripped_weight > Weight::MAX_BLOCK.to_wu() {
+        return Err(TransactionSanityError::Oversize { stripped_weight });
+    }
+    Ok(())
+}
+
+#[cfg(feature = "alloc")]
+fn validate_non_coinbase_prevouts(tx: &Transaction) -> Result<(), TransactionSanityError> {
     if tx.inputs.len() <= 1 {
         return Ok(());
     }
 
     for (index, input) in tx.inputs.iter().enumerate() {
         if input.previous_output == OutPoint::COINBASE_PREVOUT {
-            return Err(TransactionDecoderError(
-                TransactionDecoderErrorInner::NullPrevoutInNonCoinbase(index),
-            ));
+            return Err(TransactionSanityError::NullPrevoutInNonCoinbase { index });
         }
     }
     Ok(())
 }
 
 #[cfg(feature = "alloc")]
-fn validate_coinbase_script_sig_len(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+fn validate_coinbase_script_sig_len(tx: &Transaction) -> Result<(), TransactionSanityError> {
     if !tx.is_coinbase() {
         return Ok(());
     }
 
     let len = tx.inputs[0].script_sig.len();
     if len < 2 {
-        return Err(TransactionDecoderError(
-            TransactionDecoderErrorInner::CoinbaseScriptSigTooSmall(len),
-        ));
+        return Err(TransactionSanityError::CoinbaseScriptSigTooSmall { len });
     }
-    if len > 100 {
-        return Err(TransactionDecoderError(
-            TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(len),
-        ));
+    if len > 106 {
+        return Err(TransactionSanityError::CoinbaseScriptSigTooLarge { len });
     }
     Ok(())
 }
 
 #[cfg(feature = "alloc")]
-fn validate_unique_inputs(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+fn validate_unique_inputs(tx: &Transaction) -> Result<(), TransactionSanityError> {
     let mut outpoints: Vec<_> = tx.inputs.iter().map(|i| i.previous_output).collect();
     outpoints.sort_unstable();
     for pair in outpoints.windows(2) {
         if pair[0] == pair[1] {
-            return Err(TransactionDecoderError(TransactionDecoderErrorInner::DuplicateInput(
-                pair[0],
-            )));
+            return Err(TransactionSanityError::DuplicateInput(pair[0]));
         }
     }
     Ok(())
 }
 
 #[cfg(feature = "alloc")]
-fn validate_output_value_sum(tx: &Transaction) -> Result<(), TransactionDecoderError> {
+fn validate_output_value_sum(tx: &Transaction) -> Result<(), TransactionSanityError> {
     let mut total_out: u64 = 0;
     for output in &tx.outputs {
         total_out = total_out.saturating_add(output.amount.to_sat());
         if total_out > Amount::MAX_MONEY.to_sat() {
-            return Err(TransactionDecoderError(
-                TransactionDecoderErrorInner::OutputValueSumTooLarge(total_out),
-            ));
+            return Err(TransactionSanityError::OutputValueSumTooLarge(total_out));
         }
     }
     Ok(())
 }
+
+/// Context-free transaction sanity error.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TransactionSanityError {
+    /// Transaction has no inputs.
+    NoInputs,
+    /// Transaction has no outputs.
+    NoOutputs,
+    /// The stripped transaction weight is larger than the consensus block weight limit.
+    Oversize {
+        /// Stripped transaction weight in weight units.
+        stripped_weight: u64,
+    },
+    /// Null prevout in non-coinbase transaction.
+    NullPrevoutInNonCoinbase {
+        /// Invalid input index.
+        index: usize,
+    },
+    /// Coinbase scriptSig too small (must be at least 2 bytes).
+    CoinbaseScriptSigTooSmall {
+        /// Actual scriptSig length.
+        len: usize,
+    },
+    /// Coinbase scriptSig is too large (must be at most 106 bytes).
+    CoinbaseScriptSigTooLarge {
+        /// Actual scriptSig length.
+        len: usize,
+    },
+    /// Transaction has duplicate inputs.
+    DuplicateInput(OutPoint),
+    /// Sum of output values exceeds `MAX_MONEY`.
+    OutputValueSumTooLarge(u64),
+}
+
+#[cfg(feature = "alloc")]
+impl fmt::Display for TransactionSanityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoInputs => write!(f, "transaction has no inputs"),
+            Self::NoOutputs => write!(f, "transaction has no outputs"),
+            Self::Oversize { stripped_weight } => write!(
+                f,
+                "transaction stripped weight {} exceeds max block weight {}",
+                stripped_weight,
+                Weight::MAX_BLOCK.to_wu()
+            ),
+            Self::NullPrevoutInNonCoinbase { index } => {
+                write!(f, "null prevout in non-coinbase transaction at input {}", index)
+            }
+            Self::CoinbaseScriptSigTooSmall { len } => {
+                write!(f, "coinbase scriptSig too small: {} bytes (min 2)", len)
+            }
+            Self::CoinbaseScriptSigTooLarge { len } => {
+                write!(f, "coinbase scriptSig too large: {} bytes (max 106)", len)
+            }
+            Self::DuplicateInput(outpoint) => {
+                write!(f, "duplicate input: {:?}:{}", outpoint.txid, outpoint.vout)
+            }
+            Self::OutputValueSumTooLarge(val) => {
+                write!(f, "sum of output values {} satoshis exceeds MAX_MONEY", val)
+            }
+        }
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "std"))]
+impl std::error::Error for TransactionSanityError {}
 
 #[cfg(feature = "alloc")]
 impl encoding::Decodable for Transaction {
@@ -844,6 +925,8 @@ enum TransactionDecoderErrorInner {
     Witness(WitnessDecoderError),
     /// Non-empty Segwit transaction with no witnesses.
     NoWitnesses,
+    /// Transaction stripped weight exceeds the consensus block weight limit.
+    Oversize { stripped_weight: u64 },
     /// Error while decoding the `lock_time`.
     LockTime(LockTimeDecoderError),
     /// Attempt to call `end()` before the transaction was complete. Holds
@@ -853,12 +936,14 @@ enum TransactionDecoderErrorInner {
     NullPrevoutInNonCoinbase(usize),
     /// Coinbase scriptSig too small (must be at least 2 bytes).
     CoinbaseScriptSigTooSmall(usize),
-    /// Coinbase scriptSig is too large (must be at most 100 bytes).
+    /// Coinbase scriptSig is too large (must be at most 106 bytes).
     CoinbaseScriptSigTooLarge(usize),
     /// Transaction has duplicate inputs (this check prevents CVE-2018-17144 ).
     DuplicateInput(OutPoint),
     /// Sum of output values exceeds `MAX_MONEY`
     OutputValueSumTooLarge(u64),
+    /// Transaction has no inputs.
+    NoInputs,
     /// Transaction has no outputs.
     NoOutputs,
 }
@@ -867,6 +952,35 @@ enum TransactionDecoderErrorInner {
 impl From<Infallible> for TransactionDecoderError {
     fn from(never: Infallible) -> Self {
         match never {}
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl From<TransactionSanityError> for TransactionDecoderError {
+    fn from(err: TransactionSanityError) -> Self {
+        use TransactionSanityError as E;
+
+        let inner = match err {
+            E::NoInputs => TransactionDecoderErrorInner::NoInputs,
+            E::NoOutputs => TransactionDecoderErrorInner::NoOutputs,
+            E::Oversize { stripped_weight } => {
+                TransactionDecoderErrorInner::Oversize { stripped_weight }
+            }
+            E::NullPrevoutInNonCoinbase { index } => {
+                TransactionDecoderErrorInner::NullPrevoutInNonCoinbase(index)
+            }
+            E::CoinbaseScriptSigTooSmall { len } => {
+                TransactionDecoderErrorInner::CoinbaseScriptSigTooSmall(len)
+            }
+            E::CoinbaseScriptSigTooLarge { len } => {
+                TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(len)
+            }
+            E::DuplicateInput(outpoint) => TransactionDecoderErrorInner::DuplicateInput(outpoint),
+            E::OutputValueSumTooLarge(total) => {
+                TransactionDecoderErrorInner::OutputValueSumTooLarge(total)
+            }
+        };
+        Self(inner)
     }
 }
 
@@ -884,6 +998,12 @@ impl fmt::Display for TransactionDecoderError {
             E::Outputs(ref e) => write_err!(f, "transaction decoder error"; e),
             E::Witness(ref e) => write_err!(f, "transaction decoder error"; e),
             E::NoWitnesses => write!(f, "non-empty Segwit transaction with no witnesses"),
+            E::Oversize { stripped_weight } => write!(
+                f,
+                "transaction stripped weight {} exceeds max block weight {}",
+                stripped_weight,
+                Weight::MAX_BLOCK.to_wu()
+            ),
             E::LockTime(ref e) => write_err!(f, "transaction decoder error"; e),
             E::EarlyEnd(s) => write!(f, "early end of transaction (still decoding {})", s),
             E::NullPrevoutInNonCoinbase(index) => {
@@ -893,7 +1013,7 @@ impl fmt::Display for TransactionDecoderError {
                 write!(f, "coinbase scriptSig too small: {} bytes (min 2)", len)
             }
             E::CoinbaseScriptSigTooLarge(len) => {
-                write!(f, "coinbase scriptSig too large: {} bytes (max 100)", len)
+                write!(f, "coinbase scriptSig too large: {} bytes (max 106)", len)
             }
             E::DuplicateInput(ref outpoint) => {
                 write!(f, "duplicate input: {:?}:{}", outpoint.txid, outpoint.vout)
@@ -901,6 +1021,7 @@ impl fmt::Display for TransactionDecoderError {
             E::OutputValueSumTooLarge(val) => {
                 write!(f, "sum of output values {} satoshis exceeds MAX_MONEY", val)
             }
+            E::NoInputs => write!(f, "transaction has no inputs"),
             E::NoOutputs => write!(f, "transaction has no outputs"),
         }
     }
@@ -919,6 +1040,7 @@ impl std::error::Error for TransactionDecoderError {
             E::Outputs(ref e) => Some(e),
             E::Witness(ref e) => Some(e),
             E::NoWitnesses => None,
+            E::Oversize { .. } => None,
             E::LockTime(ref e) => Some(e),
             E::EarlyEnd(_) => None,
             E::NullPrevoutInNonCoinbase(_) => None,
@@ -926,6 +1048,7 @@ impl std::error::Error for TransactionDecoderError {
             E::CoinbaseScriptSigTooLarge(_) => None,
             E::DuplicateInput(_) => None,
             E::OutputValueSumTooLarge(_) => None,
+            E::NoInputs => None,
             E::NoOutputs => None,
         }
     }
@@ -963,7 +1086,7 @@ impl TxIn {
     /// An empty transaction input with the previous output as for a coinbase transaction.
     ///
     /// This has a 0-byte scriptSig which is **invalid** per consensus rules
-    /// (coinbase scriptSig must be 2-100 bytes). It is a construction template for
+    /// (coinbase scriptSig must be 2-106 bytes). It is a construction template for
     /// code that fills the coinbase scriptSig before encoding or validation.
     pub const EMPTY_COINBASE: Self = Self {
         previous_output: OutPoint::COINBASE_PREVOUT,
@@ -2523,7 +2646,7 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn decode_zero_inputs() {
-        // Test transaction with no inputs (but with one output to satisfy validation).
+        // Test transaction with no inputs (but with one output to isolate input sanity).
         let block: u32 = 741_521;
         let original_tx = Transaction {
             version: Version::ONE,
@@ -2533,9 +2656,12 @@ mod tests {
         };
 
         let encoded = encoding::encode_to_vec(&original_tx);
-        let decoded_tx = encoding::decode_from_slice(&encoded).unwrap();
+        let mut decoder = Transaction::decoder();
+        let mut slice = encoded.as_slice();
+        decoder.push_bytes(&mut slice).unwrap();
+        let err = decoder.end().expect_err("zero-input transaction should be rejected");
 
-        assert_eq!(original_tx, decoded_tx);
+        assert_eq!(err.0, TransactionDecoderErrorInner::NoInputs);
     }
 
     #[test]
@@ -2576,20 +2702,16 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
-    fn reject_coinbase_scriptsig_too_large() {
-        // Invalid transaction fixture.
-        // "Coinbase of size 101"
+    fn accept_coinbase_scriptsig_101_valid() {
+        // Tidecoin allows 101 bytes; this proves we are not carrying the old 100-byte limit.
         let tx_bytes = hex!("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff655151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151ffffffff010000000000000000015100000000");
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
         decoder.push_bytes(&mut slice).unwrap();
-        let err = decoder.end().expect_err("coinbase with 101-byte scriptSig should be rejected");
+        let tx = decoder.end().expect("coinbase with 101-byte scriptSig should be accepted");
 
-        assert_eq!(
-            err,
-            TransactionDecoderError(TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(101))
-        );
+        assert_eq!(tx.inputs[0].script_sig.len(), 101);
     }
 
     #[test]
@@ -2609,15 +2731,53 @@ mod tests {
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
     fn accept_coinbase_scriptsig_max_valid() {
-        // boundary test: 100 bytes is the maximum valid length
-        let tx_bytes = hex!("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff6451515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151ffffffff010000000000000000015100000000");
+        // boundary test: 106 bytes is the maximum valid length.
+        let tx = Transaction {
+            version: Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint::COINBASE_PREVOUT,
+                script_sig: ScriptSigBuf::from_bytes(vec![0x51; 106]),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            outputs: vec![synthetic_output(Amount::ONE_SAT)],
+        };
+        let tx_bytes = encoding::encode_to_vec(&tx);
 
         let mut decoder = Transaction::decoder();
         let mut slice = tx_bytes.as_slice();
         decoder.push_bytes(&mut slice).unwrap();
-        let tx = decoder.end().expect("coinbase with 100-byte scriptSig should be accepted");
+        let tx = decoder.end().expect("coinbase with 106-byte scriptSig should be accepted");
 
-        assert_eq!(tx.inputs[0].script_sig.len(), 100);
+        assert_eq!(tx.inputs[0].script_sig.len(), 106);
+    }
+
+    #[test]
+    #[cfg(all(feature = "alloc", feature = "hex"))]
+    fn reject_coinbase_scriptsig_too_large() {
+        let tx = Transaction {
+            version: Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint::COINBASE_PREVOUT,
+                script_sig: ScriptSigBuf::from_bytes(vec![0x51; 107]),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            outputs: vec![synthetic_output(Amount::ONE_SAT)],
+        };
+        let tx_bytes = encoding::encode_to_vec(&tx);
+
+        let mut decoder = Transaction::decoder();
+        let mut slice = tx_bytes.as_slice();
+        decoder.push_bytes(&mut slice).unwrap();
+        let err = decoder.end().expect_err("coinbase with 107-byte scriptSig should be rejected");
+
+        assert_eq!(
+            err,
+            TransactionDecoderError(TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(107))
+        );
     }
 
     #[test]
@@ -2702,6 +2862,19 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "alloc", feature = "hex"))]
+    fn check_transaction_sanity_rejects_oversize_stripped_transaction() {
+        let oversized_script_len = (Weight::MAX_BLOCK.to_wu() / Weight::WITNESS_SCALE_FACTOR + 1)
+            .try_into()
+            .expect("max block size fits usize");
+        let mut tx = synthetic_non_coinbase_tx(vec![synthetic_output(Amount::ONE_SAT)]);
+        tx.inputs[0].script_sig = ScriptSigBuf::from_bytes(vec![0x51; oversized_script_len]);
+
+        let err = check_transaction_sanity(&tx).expect_err("oversize transaction should reject");
+        assert!(matches!(err, TransactionSanityError::Oversize { .. }));
+    }
+
+    #[test]
+    #[cfg(all(feature = "alloc", feature = "hex"))]
     fn reject_transaction_with_no_outputs() {
         let tx_bytes = encoding::encode_to_vec(&synthetic_non_coinbase_tx(vec![]));
 
@@ -2779,7 +2952,12 @@ mod tests {
         let mut decoder = TransactionDecoder {
             state: S::LockTime(
                 Version::ONE,
-                vec![],
+                vec![TxIn {
+                    previous_output: OutPoint { txid: Txid::from_byte_array([1u8; 32]), vout: 0 },
+                    script_sig: ScriptSigBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::default(),
+                }],
                 vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
                 LockTimeDecoder::new(),
             ),
@@ -2791,7 +2969,7 @@ mod tests {
 
         let tx = decoder.end().unwrap();
         assert_eq!(tx.lock_time, absolute::LockTime::ZERO);
-        assert!(tx.inputs.is_empty());
+        assert_eq!(tx.inputs.len(), 1);
         assert_eq!(tx.outputs.len(), 1);
     }
 
@@ -3534,7 +3712,7 @@ mod tests {
     fn transaction_decoder_coinbase_script_sig_too_large_error() {
         let input_0 = TxIn {
             previous_output: OutPoint::COINBASE_PREVOUT,
-            script_sig: ScriptSigBuf::from_bytes(vec![0x51; 101]),
+            script_sig: ScriptSigBuf::from_bytes(vec![0x51; 107]),
             sequence: Sequence::MAX,
             witness: Witness::default(),
         };
@@ -3546,7 +3724,7 @@ mod tests {
         };
 
         let err = decode_error_from_tx(&tx);
-        assert!(matches!(err.0, TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(101)));
+        assert!(matches!(err.0, TransactionDecoderErrorInner::CoinbaseScriptSigTooLarge(107)));
 
         assert!(!err.to_string().is_empty());
         #[cfg(feature = "std")]
@@ -3629,6 +3807,24 @@ mod tests {
 
         let err = decode_error_from_tx(&tx);
         assert!(matches!(err.0, TransactionDecoderErrorInner::NoOutputs));
+
+        assert!(!err.to_string().is_empty());
+        #[cfg(feature = "std")]
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn transaction_decoder_no_inputs_error() {
+        let tx = Transaction {
+            version: Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![],
+            outputs: vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
+        };
+
+        let err = decode_error_from_tx(&tx);
+        assert!(matches!(err.0, TransactionDecoderErrorInner::NoInputs));
 
         assert!(!err.to_string().is_empty());
         #[cfg(feature = "std")]

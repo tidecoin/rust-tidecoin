@@ -36,7 +36,7 @@ internal_macros::define_extension_trait! {
         ///
         /// Witness-v1 outputs are not part of Tidecoin's recognized script types.
         /// This function does not count `OP_CHECKSIGADD`.
-        fn count_sigops(&self) -> usize { self.count_sigops_internal(true) }
+        fn count_sigops(&self) -> usize { primitives::script::Script::count_sigops(self) }
 
         /// Counts the sigops for this Script using legacy counting.
         ///
@@ -49,7 +49,9 @@ internal_macros::define_extension_trait! {
         ///
         /// Witness-v1 outputs are not part of Tidecoin's recognized script types.
         /// This function does not count `OP_CHECKSIGADD`.
-        fn count_sigops_legacy(&self) -> usize { self.count_sigops_internal(false) }
+        fn count_sigops_legacy(&self) -> usize {
+            primitives::script::Script::count_sigops_legacy(self)
+        }
 
         /// Checks whether a script is push only.
         ///
@@ -358,52 +360,6 @@ internal_macros::define_extension_trait! {
 mod sealed {
     pub trait Sealed {}
     impl<T> Sealed for super::Script<T> {}
-}
-
-internal_macros::define_extension_trait! {
-    pub(crate) trait ScriptExtPriv<T> impl<T> for Script<T> {
-        fn count_sigops_internal(&self, accurate: bool) -> usize {
-            let mut n = 0;
-            let mut pushnum_cache = None;
-            for inst in self.instructions() {
-                match inst {
-                    Ok(Instruction::Op(opcode)) => {
-                        match opcode.to_u8() {
-                            // p2pk, p2pkh
-                            x if x == OP_CHECKSIG.to_u8() || x == OP_CHECKSIGVERIFY.to_u8() => {
-                                n += 1;
-                            }
-                            x if x == OP_CHECKMULTISIG.to_u8()
-                                || x == OP_CHECKMULTISIGVERIFY.to_u8() =>
-                            {
-                                match (accurate, pushnum_cache) {
-                                    (true, Some(pushnum)) => {
-                                        // Add the number of pubkeys in the multisig as sigop count
-                                        n += usize::from(pushnum);
-                                    }
-                                    _ => {
-                                        // MAX_PUBKEYS_PER_MULTISIG from the reference node.
-                                        n += 20;
-                                    }
-                                }
-                            }
-                            _ => {
-                                pushnum_cache = opcode.decode_pushnum();
-                            }
-                        }
-                    }
-                    Ok(Instruction::PushBytes(_)) => {
-                        pushnum_cache = None;
-                    }
-                    // In the reference node it does `if (!GetOp(pc, opcode)) break;`
-                    Err(_) => break,
-                }
-            }
-
-            n
-        }
-
-    }
 }
 
 internal_macros::define_extension_trait! {

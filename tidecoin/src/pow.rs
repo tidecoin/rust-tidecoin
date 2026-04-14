@@ -8,10 +8,11 @@
 use core::ops::{Add, Div, Mul, Not, Rem, Shl, Shr, Sub};
 use core::{cmp, fmt};
 
+use hashes::{sha256d, HashEngine as _};
 use internals::{impl_to_hex_from_lower_hex, write_err};
 use units::parse_int::{self, ParseIntError, PrefixedHexError, UnprefixedHexError};
 
-use crate::block::{BlockHash, BlockHeight, BlockHeightInterval, Header};
+use crate::block::{AuxPow, BlockHash, BlockHeight, BlockHeightInterval, BlockMtp, Header};
 use crate::internal_macros;
 use crate::network::Params;
 
@@ -20,6 +21,519 @@ use crate::network::Params;
 pub use primitives::CompactTarget;
 #[doc(inline)]
 pub use units::pow::error;
+
+/// Mining hash algorithm selected by Tidecoin consensus for a pure block header.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum MiningHashAlgorithm {
+    /// Tidecoin yespower over the pure 80-byte header.
+    Yespower,
+    /// Scrypt-1024-1-1-256 over the pure 80-byte header.
+    Scrypt,
+}
+
+/// Returns the node-selected mining hash algorithm for `height`.
+///
+/// The Tidecoin node uses yespower before AuxPoW activation and scrypt at and
+/// after AuxPoW activation. Networks with AuxPoW disabled always use yespower.
+pub fn pow_hash_algorithm_at_height(
+    params: impl AsRef<Params>,
+    height: BlockHeight,
+) -> MiningHashAlgorithm {
+    if uses_post_auxpow_pow_rules(params.as_ref(), height) {
+        MiningHashAlgorithm::Scrypt
+    } else {
+        MiningHashAlgorithm::Yespower
+    }
+}
+
+/// Computes Tidecoin's scrypt mining hash for the pure 80-byte block header.
+///
+/// This mirrors the node's `CPureBlockHeader::GetScryptPoWHash()`, which runs
+/// scrypt-1024-1-1-256 with the pure header bytes as both password and salt.
+pub fn scrypt_pow_hash(header: &Header) -> BlockHash {
+    let header_bytes = header.pure_header_bytes();
+    let mut out = [0u8; 32];
+    let params = scrypt::Params::new(10, 1, 1, 32).expect("scrypt-1024-1-1-256 params are valid");
+    scrypt::scrypt(&header_bytes, &header_bytes, &params, &mut out)
+        .expect("32-byte scrypt output length is valid");
+    BlockHash::from_byte_array(out)
+}
+
+/// Computes Tidecoin's yespower mining hash for the pure 80-byte block header.
+///
+/// This mirrors the node's `CPureBlockHeader::GetPoWHash()`, which runs
+/// yespower 1.0 with `N = 2048`, `r = 8`, and no personalization.
+pub fn yespower_pow_hash(header: &Header) -> Result<BlockHash, MiningHashError> {
+    rust_yespower::tidecoin_hash(&header.pure_header_bytes())
+        .map(BlockHash::from_byte_array)
+        .map_err(|_| MiningHashError::Yespower)
+}
+
+/// Computes the Tidecoin mining hash selected by consensus for `height`.
+pub fn mining_hash_for_height(
+    header: &Header,
+    params: impl AsRef<Params>,
+    height: BlockHeight,
+) -> Result<BlockHash, MiningHashError> {
+    match pow_hash_algorithm_at_height(params, height) {
+        MiningHashAlgorithm::Scrypt => Ok(scrypt_pow_hash(header)),
+        MiningHashAlgorithm::Yespower => yespower_pow_hash(header),
+    }
+}
+
+/// Validates the Tidecoin proof-of-work for `header` at `height`.
+///
+/// This mirrors the node's height-aware proof check for pure headers: it applies
+/// Tidecoin node target rejection semantics, selects the height-dependent mining
+/// hash algorithm, and verifies that the selected hash meets the header target.
+pub fn validate_pow_at_height(
+    header: &Header,
+    params: impl AsRef<Params>,
+    height: BlockHeight,
+) -> Result<BlockHash, PowValidationError> {
+    let params = params.as_ref();
+    let target = derive_target(header.bits, params).map_err(PowValidationError::InvalidTarget)?;
+    validate_pow_hash_at_height(header, params, height, target)
+}
+
+/// Validates proof-of-work and verifies that `header` has `required_target`.
+///
+/// Use this when the caller has already computed the contextual
+/// difficulty-schedule target for the header.
+pub fn validate_pow_at_height_against_target(
+    header: &Header,
+    params: impl AsRef<Params>,
+    height: BlockHeight,
+    required_target: Target,
+) -> Result<BlockHash, PowValidationError> {
+    let params = params.as_ref();
+    let target = derive_target(header.bits, params).map_err(PowValidationError::InvalidTarget)?;
+    if target != required_target {
+        return Err(PowValidationError::BadTarget);
+    }
+    validate_pow_hash_at_height(header, params, height, target)
+}
+
+/// Validates proof-of-work without height context by accepting either Tidecoin mining hash class.
+///
+/// This mirrors the node's `CheckProofOfWorkAny(...)` path used when header height is not known:
+/// the claimed compact target is still validated under Tidecoin target rules, but either yespower
+/// or scrypt may satisfy the target.
+pub fn validate_pow_any(
+    header: &Header,
+    params: impl AsRef<Params>,
+) -> Result<BlockHash, PowValidationError> {
+    let target = derive_target(header.bits, params).map_err(PowValidationError::InvalidTarget)?;
+
+    let yespower_hash = yespower_pow_hash(header).map_err(PowValidationError::MiningHash)?;
+    if target.is_met_by(yespower_hash) {
+        return Ok(yespower_hash);
+    }
+
+    let scrypt_hash = scrypt_pow_hash(header);
+    if target.is_met_by(scrypt_hash) {
+        Ok(scrypt_hash)
+    } else {
+        Err(PowValidationError::BadProofOfWork)
+    }
+}
+
+fn validate_pow_hash_at_height(
+    header: &Header,
+    params: &Params,
+    height: BlockHeight,
+    target: Target,
+) -> Result<BlockHash, PowValidationError> {
+    let mining_hash =
+        mining_hash_for_height(header, params, height).map_err(PowValidationError::MiningHash)?;
+    if target.is_met_by(mining_hash) {
+        Ok(mining_hash)
+    } else {
+        Err(PowValidationError::BadProofOfWork)
+    }
+}
+
+/// Validates the node AuxPoW context for `header` at an optional chain height.
+///
+/// This mirrors the node's `CheckAuxPowContext(...)` split: it validates
+/// AuxPoW flag/payload consistency, activation, strict chain ID rules, the
+/// merge-mining commitment, and the parent scrypt proof against the child
+/// header's `nBits`. It intentionally does not validate the child header's
+/// own pure-header PoW when AuxPoW is absent; call [`validate_pow_at_height`]
+/// for that path.
+pub fn validate_auxpow_context(
+    header: &Header,
+    params: impl AsRef<Params>,
+    height: Option<BlockHeight>,
+) -> Result<(), AuxPowValidationError> {
+    let params = params.as_ref();
+    let auxpow_flag = header.version.is_auxpow();
+    let auxpow = header.auxpow.as_deref();
+
+    if auxpow_flag && auxpow.is_none() {
+        return Err(AuxPowValidationError::MissingAuxPow);
+    }
+    if !auxpow_flag && auxpow.is_some() {
+        return Err(AuxPowValidationError::UnexpectedAuxPow);
+    }
+
+    if let Some(height) = height {
+        if !uses_post_auxpow_pow_rules(params, height) && (auxpow_flag || auxpow.is_some()) {
+            return Err(AuxPowValidationError::PreActivation);
+        }
+    }
+
+    if params.strict_auxpow_chain_id && header.version.to_consensus() != 1 {
+        if auxpow_flag {
+            if header.version.chain_id() != params.auxpow_chain_id as i32 {
+                return Err(AuxPowValidationError::ChainIdMismatch);
+            }
+        } else if (header.version.to_consensus()
+            & crate::block::Version::MASK_AUXPOW_CHAINID_SHIFTED)
+            != 0
+        {
+            return Err(AuxPowValidationError::ChainIdWithoutAuxPowFlag);
+        }
+    }
+
+    if let Some(auxpow) = auxpow {
+        validate_auxpow_commitment(header, auxpow, params)?;
+        let parent_hash = scrypt_pow_hash(&auxpow.parent_block);
+        let target =
+            derive_target(header.bits, params).map_err(AuxPowValidationError::ParentTarget)?;
+        if !target.is_met_by(parent_hash) {
+            return Err(AuxPowValidationError::ParentProofOfWork);
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_auxpow_commitment(
+    header: &Header,
+    auxpow: &AuxPow,
+    params: &Params,
+) -> Result<(), AuxPowValidationError> {
+    let parent_chain_id = auxpow.parent_block.version.chain_id();
+    if params.strict_auxpow_chain_id
+        && parent_chain_id > 0
+        && parent_chain_id == params.auxpow_chain_id as i32
+    {
+        return Err(AuxPowValidationError::ParentHasOwnChainId);
+    }
+
+    if auxpow.chain_merkle_branch.len() > 30 {
+        return Err(AuxPowValidationError::ChainMerkleBranchTooLong);
+    }
+
+    let chain_root = check_auxpow_merkle_branch(
+        header.block_hash(),
+        &auxpow.chain_merkle_branch,
+        auxpow.chain_index,
+    );
+    let mut root_in_coinbase = chain_root.to_byte_array();
+    root_in_coinbase.reverse();
+
+    let coinbase_root = check_auxpow_merkle_branch(
+        BlockHash::from_byte_array(auxpow.coinbase_tx.compute_txid().to_byte_array()),
+        &auxpow.merkle_branch,
+        0,
+    );
+    if coinbase_root.to_byte_array() != auxpow.parent_block.merkle_root.to_byte_array() {
+        return Err(AuxPowValidationError::CoinbaseMerkleRoot);
+    }
+
+    let Some(input) = auxpow.coinbase_tx.inputs.first() else {
+        return Err(AuxPowValidationError::CoinbaseNoInputs);
+    };
+    let script = input.script_sig.as_bytes();
+    let Some(root_pos) = find_subslice(script, &root_in_coinbase) else {
+        return Err(AuxPowValidationError::MissingChainMerkleRoot);
+    };
+
+    const MERGED_MINING_HEADER: &[u8; 4] = b"\xfa\xbe\x6d\x6d";
+    let header_pos = find_subslice(script, MERGED_MINING_HEADER);
+    if let Some(header_pos) = header_pos {
+        if find_subslice(&script[header_pos + 1..], MERGED_MINING_HEADER).is_some() {
+            return Err(AuxPowValidationError::MultipleMergedMiningHeaders);
+        }
+        if header_pos + MERGED_MINING_HEADER.len() != root_pos {
+            return Err(AuxPowValidationError::MergedMiningHeaderNotBeforeRoot);
+        }
+    } else {
+        return Err(AuxPowValidationError::MissingMergedMiningHeader);
+    }
+
+    let metadata_pos = root_pos + root_in_coinbase.len();
+    if script.len().saturating_sub(metadata_pos) < 8 {
+        return Err(AuxPowValidationError::MissingChainMerkleSizeAndNonce);
+    }
+
+    let size = u32::from_le_bytes(script[metadata_pos..metadata_pos + 4].try_into().unwrap());
+    let merkle_height = auxpow.chain_merkle_branch.len();
+    if size != (1u32 << merkle_height) {
+        return Err(AuxPowValidationError::MerkleBranchSizeMismatch);
+    }
+
+    let nonce = u32::from_le_bytes(script[metadata_pos + 4..metadata_pos + 8].try_into().unwrap());
+    if auxpow.chain_index
+        != expected_auxpow_chain_index(nonce, header.version.chain_id(), merkle_height)
+    {
+        return Err(AuxPowValidationError::WrongChainIndex);
+    }
+
+    Ok(())
+}
+
+fn check_auxpow_merkle_branch(
+    mut hash: BlockHash,
+    merkle_branch: &[BlockHash],
+    mut index: i32,
+) -> BlockHash {
+    if index == -1 {
+        return BlockHash::from_byte_array([0; 32]);
+    }
+
+    for sibling in merkle_branch {
+        hash = if index & 1 != 0 {
+            combine_auxpow_merkle_hashes(*sibling, hash)
+        } else {
+            combine_auxpow_merkle_hashes(hash, *sibling)
+        };
+        index >>= 1;
+    }
+
+    hash
+}
+
+fn combine_auxpow_merkle_hashes(left: BlockHash, right: BlockHash) -> BlockHash {
+    let mut engine = sha256d::Hash::engine();
+    engine.input(left.as_byte_array());
+    engine.input(right.as_byte_array());
+    BlockHash::from_byte_array(sha256d::Hash::from_engine(engine).to_byte_array())
+}
+
+fn expected_auxpow_chain_index(nonce: u32, chain_id: i32, height: usize) -> i32 {
+    let modulus = 1u64 << height;
+    let mut rand = u64::from(nonce);
+    rand = rand.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+    rand %= modulus;
+    rand = rand.wrapping_add(chain_id as u64);
+    rand = rand.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+    (rand % modulus) as i32
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+/// Error computing the Tidecoin mining hash selected by consensus.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum MiningHashError {
+    /// The yespower backend failed.
+    Yespower,
+}
+
+impl fmt::Display for MiningHashError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Yespower => f.write_str("yespower mining hash failed"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for MiningHashError {}
+
+/// Error validating Tidecoin proof-of-work for a block header.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum PowValidationError {
+    /// The selected mining hash is not below the target.
+    BadProofOfWork,
+    /// The header target did not match the expected difficulty.
+    BadTarget,
+    /// The compact target was invalid under Tidecoin node consensus rules.
+    InvalidTarget(PowTargetError),
+    /// The selected mining hash algorithm failed locally.
+    MiningHash(MiningHashError),
+}
+
+impl fmt::Display for PowValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::BadProofOfWork => f.write_str("block target correct but not attained"),
+            Self::BadTarget => f.write_str("block target incorrect"),
+            Self::InvalidTarget(err) => write!(f, "invalid compact proof-of-work target: {err}"),
+            Self::MiningHash(err) => write!(f, "failed to compute mining hash: {err}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for PowValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::BadProofOfWork | Self::BadTarget => None,
+            Self::InvalidTarget(err) => Some(err),
+            Self::MiningHash(err) => Some(err),
+        }
+    }
+}
+
+/// Error validating Tidecoin AuxPoW context.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum AuxPowValidationError {
+    /// AuxPoW version flag is set but the AuxPoW payload is absent.
+    MissingAuxPow,
+    /// AuxPoW payload is present without the AuxPoW version flag.
+    UnexpectedAuxPow,
+    /// AuxPoW is present before the configured activation height.
+    PreActivation,
+    /// Header AuxPoW chain ID does not match network consensus params.
+    ChainIdMismatch,
+    /// Chain ID bits are set without the AuxPoW version flag.
+    ChainIdWithoutAuxPowFlag,
+    /// Parent header carries this chain's AuxPoW chain ID under strict-chain-id rules.
+    ParentHasOwnChainId,
+    /// Chain merkle branch exceeds the node's maximum depth.
+    ChainMerkleBranchTooLong,
+    /// Coinbase transaction merkle branch does not match the parent header root.
+    CoinbaseMerkleRoot,
+    /// AuxPoW coinbase transaction has no inputs.
+    CoinbaseNoInputs,
+    /// Coinbase scriptSig does not contain the chain merkle root.
+    MissingChainMerkleRoot,
+    /// Coinbase scriptSig contains multiple merged-mining headers.
+    MultipleMergedMiningHeaders,
+    /// Merged-mining header is not immediately before the chain merkle root.
+    MergedMiningHeaderNotBeforeRoot,
+    /// Coinbase scriptSig is missing the merged-mining header.
+    MissingMergedMiningHeader,
+    /// Coinbase scriptSig is missing chain merkle size or nonce metadata.
+    MissingChainMerkleSizeAndNonce,
+    /// Coinbase chain merkle size metadata does not match the branch height.
+    MerkleBranchSizeMismatch,
+    /// Chain merkle index does not match the deterministic chain-id/nonce slot.
+    WrongChainIndex,
+    /// Parent proof target was invalid under Tidecoin node consensus rules.
+    ParentTarget(PowTargetError),
+    /// Parent scrypt proof does not meet the child header target.
+    ParentProofOfWork,
+}
+
+impl fmt::Display for AuxPowValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MissingAuxPow => f.write_str("auxpow flag set but auxpow payload missing"),
+            Self::UnexpectedAuxPow => f.write_str("auxpow payload present without auxpow flag"),
+            Self::PreActivation => f.write_str("auxpow not allowed before activation"),
+            Self::ChainIdMismatch => f.write_str("auxpow chain id mismatch"),
+            Self::ChainIdWithoutAuxPowFlag => f.write_str("chain id set without auxpow flag"),
+            Self::ParentHasOwnChainId => f.write_str("auxpow parent has this chain id"),
+            Self::ChainMerkleBranchTooLong => f.write_str("auxpow chain merkle branch too long"),
+            Self::CoinbaseMerkleRoot => f.write_str("auxpow coinbase merkle root incorrect"),
+            Self::CoinbaseNoInputs => f.write_str("auxpow coinbase has no inputs"),
+            Self::MissingChainMerkleRoot => {
+                f.write_str("auxpow chain merkle root missing from parent coinbase")
+            }
+            Self::MultipleMergedMiningHeaders => {
+                f.write_str("multiple merged mining headers in auxpow coinbase")
+            }
+            Self::MergedMiningHeaderNotBeforeRoot => {
+                f.write_str("merged mining header is not immediately before auxpow root")
+            }
+            Self::MissingMergedMiningHeader => f.write_str("missing merged mining header"),
+            Self::MissingChainMerkleSizeAndNonce => {
+                f.write_str("auxpow coinbase missing chain merkle size or nonce")
+            }
+            Self::MerkleBranchSizeMismatch => {
+                f.write_str("auxpow chain merkle branch size metadata mismatch")
+            }
+            Self::WrongChainIndex => f.write_str("auxpow wrong chain merkle index"),
+            Self::ParentTarget(err) => {
+                write!(f, "invalid auxpow parent proof target: {err}")
+            }
+            Self::ParentProofOfWork => f.write_str("auxpow parent proof of work failed"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for AuxPowValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ParentTarget(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+/// Derives a target from compact `nBits` using Tidecoin node rejection semantics.
+///
+/// This mirrors the node's `DeriveTarget(...)`: negative, zero, overflow, and
+/// above-`powLimit` targets are consensus-invalid.
+pub fn derive_target(
+    bits: CompactTarget,
+    params: impl AsRef<Params>,
+) -> Result<Target, PowTargetError> {
+    let bits = bits.to_consensus();
+    let exponent = bits >> 24;
+    let mantissa = bits & 0x007f_ffff;
+
+    if mantissa != 0 && (bits & 0x0080_0000) != 0 {
+        return Err(PowTargetError::Negative);
+    }
+
+    if mantissa != 0
+        && (exponent > 34
+            || (mantissa > 0xff && exponent > 33)
+            || (mantissa > 0xffff && exponent > 32))
+    {
+        return Err(PowTargetError::Overflow);
+    }
+
+    let target = if exponent <= 3 {
+        Target(U256::from(mantissa >> (8 * (3 - exponent))))
+    } else {
+        Target(U256::from(mantissa) << (8 * (exponent - 3)))
+    };
+
+    if target.0.is_zero() {
+        return Err(PowTargetError::Zero);
+    }
+    if target > params.as_ref().max_attainable_target {
+        return Err(PowTargetError::AboveLimit);
+    }
+
+    Ok(target)
+}
+
+/// Error deriving a consensus proof-of-work target from compact `nBits`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum PowTargetError {
+    /// Compact target encoded a negative target.
+    Negative,
+    /// Compact target encoded zero.
+    Zero,
+    /// Compact target overflowed the 256-bit target range.
+    Overflow,
+    /// Target exceeds the network proof-of-work limit.
+    AboveLimit,
+}
+
+impl fmt::Display for PowTargetError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Negative => f.write_str("compact target is negative"),
+            Self::Zero => f.write_str("compact target is zero"),
+            Self::Overflow => f.write_str("compact target overflows 256-bit target range"),
+            Self::AboveLimit => f.write_str("compact target exceeds network proof-of-work limit"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for PowTargetError {}
 
 /// Implement traits and methods shared by `Target` and `Work`.
 macro_rules! do_impl {
@@ -426,6 +940,164 @@ pub fn next_target_after<F, E>(
 where
     F: FnMut(BlockHeight) -> Result<Header, E>,
 {
+    if uses_post_auxpow_pow_rules(params, current_height.saturating_add(1.into())) {
+        return next_target_after_post_auxpow(
+            current_header,
+            current_height,
+            params,
+            new_block_timestamp,
+            &mut get_block_header_by_height,
+        );
+    }
+
+    next_target_after_legacy(
+        current_header,
+        current_height,
+        params,
+        new_block_timestamp,
+        &mut get_block_header_by_height,
+    )
+}
+
+pub(crate) fn uses_post_auxpow_pow_rules(params: &Params, candidate_height: BlockHeight) -> bool {
+    match params.auxpow_start_height {
+        Some(start_height) => candidate_height >= start_height,
+        None => false,
+    }
+}
+
+/// Returns whether a difficulty transition is within the Tidecoin node's permitted bounds.
+///
+/// This mirrors the node's `PermittedDifficultyTransition(...)`. It does not calculate the exact
+/// required next target; it only verifies that the observed `new_bits` value is within the
+/// consensus-permitted transition envelope from `old_bits` at `height`.
+pub fn permitted_difficulty_transition(
+    params: impl AsRef<Params>,
+    height: BlockHeight,
+    old_bits: CompactTarget,
+    new_bits: CompactTarget,
+) -> bool {
+    let params = params.as_ref();
+
+    // The Tidecoin node permits every transition on networks with min-difficulty blocks.
+    if params.allow_min_difficulty_blocks {
+        return true;
+    }
+
+    if !uses_post_auxpow_pow_rules(params, height) {
+        return permitted_legacy_difficulty_transition(params, height, old_bits, new_bits);
+    }
+
+    permitted_post_auxpow_difficulty_transition(params, old_bits, new_bits)
+}
+
+fn permitted_legacy_difficulty_transition(
+    params: &Params,
+    height: BlockHeight,
+    old_bits: CompactTarget,
+    new_bits: CompactTarget,
+) -> bool {
+    if !is_retarget_height(height, params.difficulty_adjustment_interval()) {
+        return old_bits == new_bits;
+    }
+
+    let observed_new_target = Target::from_compact(new_bits);
+    let pow_limit = params.max_attainable_target;
+    let old_target = Target::from_compact(old_bits);
+
+    let largest_difficulty_target = cmp::min(
+        scale_target_legacy_overflow(
+            old_target,
+            i64::from(params.pow_target_timespan) * 4,
+            params.pow_target_timespan,
+            pow_limit,
+        ),
+        pow_limit,
+    );
+    let maximum_new_target = Target::from_compact(largest_difficulty_target.to_compact_lossy());
+    if maximum_new_target < observed_new_target {
+        return false;
+    }
+
+    let smallest_difficulty_target = cmp::min(
+        scale_target_legacy_overflow(
+            old_target,
+            i64::from(params.pow_target_timespan) / 4,
+            params.pow_target_timespan,
+            pow_limit,
+        ),
+        pow_limit,
+    );
+    let minimum_new_target = Target::from_compact(smallest_difficulty_target.to_compact_lossy());
+    minimum_new_target <= observed_new_target
+}
+
+fn permitted_post_auxpow_difficulty_transition(
+    params: &Params,
+    old_bits: CompactTarget,
+    new_bits: CompactTarget,
+) -> bool {
+    let pow_limit = params.max_attainable_target;
+    let old_target = Target::from_compact(old_bits);
+    let observed_new_target = Target::from_compact(new_bits);
+
+    let up_num = 100i64 - i64::from(params.pow_max_adjust_up);
+    let down_num = 100i64 + i64::from(params.pow_max_adjust_down);
+    let up_num_sq = (up_num * up_num) as u64;
+    let down_num_sq = (down_num * down_num) as u64;
+
+    let mut largest_difficulty_target = old_target.0.mul_u64(down_num_sq).0;
+    largest_difficulty_target = largest_difficulty_target / U256::from(10_000u64);
+    largest_difficulty_target = cmp::min(largest_difficulty_target, pow_limit.0);
+
+    let mut smallest_difficulty_target = old_target.0.mul_u64(up_num_sq).0;
+    smallest_difficulty_target = smallest_difficulty_target / U256::from(10_000u64);
+
+    let mut maximum_new_target =
+        Target::from_compact(Target(largest_difficulty_target).to_compact_lossy()).0;
+    maximum_new_target = maximum_new_target + U256::from(2u32);
+
+    let mut minimum_new_target =
+        Target::from_compact(Target(smallest_difficulty_target).to_compact_lossy()).0;
+    if minimum_new_target > U256::ONE {
+        minimum_new_target = minimum_new_target - U256::from(2u32);
+    } else if minimum_new_target > U256::ZERO {
+        minimum_new_target = minimum_new_target - U256::ONE;
+    }
+
+    observed_new_target.0 >= minimum_new_target && observed_new_target.0 <= maximum_new_target
+}
+
+fn scale_target_legacy_overflow(
+    target: Target,
+    actual_timespan: i64,
+    target_timespan: u32,
+    pow_limit: Target,
+) -> Target {
+    debug_assert!(actual_timespan >= 0);
+    let shift = target.0.bits() > pow_limit.0.bits() - 1;
+    let mut target = target.0;
+    if shift {
+        target = target >> 1;
+    }
+    target = target.mul_u64(actual_timespan as u64).0;
+    target = target / U256::from(target_timespan);
+    if shift {
+        target = target << 1;
+    }
+    Target(target)
+}
+
+fn next_target_after_legacy<F, E>(
+    current_header: Header,
+    current_height: BlockHeight,
+    params: &Params,
+    new_block_timestamp: Option<u32>,
+    get_block_header_by_height: &mut F,
+) -> Result<CompactTarget, E>
+where
+    F: FnMut(BlockHeight) -> Result<Header, E>,
+{
     let adjustment_interval = params.difficulty_adjustment_interval();
 
     // if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
@@ -460,13 +1132,124 @@ where
             Ok(current_header.bits)
         }
     } else {
-        // Go back by what we want to be 14 days worth of blocks
-        let back_step = BlockHeightInterval::from_u32(adjustment_interval - 1);
+        // Tidecoin keeps the inherited first-retarget off-by-one, but later
+        // legacy retargets go back a full interval, matching the node.
+        let back_step = if current_height.saturating_add(1.into()).to_u32() == adjustment_interval {
+            adjustment_interval - 1
+        } else {
+            adjustment_interval
+        };
+        let back_step = BlockHeightInterval::from_u32(back_step);
         let height_first = current_height.saturating_sub(back_step);
         let block_first = get_block_header_by_height(height_first)?;
 
         Ok(CompactTarget::from_header_difficulty_adjustment(block_first, current_header, params))
     }
+}
+
+fn next_target_after_post_auxpow<F, E>(
+    current_header: Header,
+    current_height: BlockHeight,
+    params: &Params,
+    new_block_timestamp: Option<u32>,
+    get_block_header_by_height: &mut F,
+) -> Result<CompactTarget, E>
+where
+    F: FnMut(BlockHeight) -> Result<Header, E>,
+{
+    let pow_limit = params.max_attainable_target.to_compact_lossy();
+
+    if params.no_pow_retargeting {
+        return Ok(current_header.bits);
+    }
+
+    if let Some(min_difficulty_height) = params.pow_allow_min_difficulty_blocks_after_height {
+        if current_height >= min_difficulty_height {
+            if let Some(new_block_timestamp) = new_block_timestamp {
+                if new_block_timestamp
+                    > current_header.time.to_u32() + params.pow_target_spacing * 6
+                {
+                    return Ok(pow_limit);
+                }
+            }
+        }
+    }
+
+    let window = params.pow_averaging_window;
+    if window == 0 || current_height.to_u32() < window {
+        return Ok(pow_limit);
+    }
+
+    let mut total = U256::ZERO;
+    for offset in 0..window {
+        let height = BlockHeight::from_u32(current_height.to_u32() - offset);
+        let header =
+            header_at(current_header.clone(), current_height, height, get_block_header_by_height)?;
+        total = total + Target::from_compact(header.bits).0;
+    }
+
+    let avg = Target(total / U256::from(window));
+    let first_height = BlockHeight::from_u32(current_height.to_u32() - window);
+    let last_mtp = median_time_past_at(
+        current_header.clone(),
+        current_height,
+        current_height,
+        get_block_header_by_height,
+    )?;
+    let first_mtp = median_time_past_at(
+        current_header,
+        current_height,
+        first_height,
+        get_block_header_by_height,
+    )?;
+
+    Ok(CompactTarget::from_post_auxpow_next_work_required(avg, last_mtp, first_mtp, params))
+}
+
+fn header_at<F, E>(
+    current_header: Header,
+    current_height: BlockHeight,
+    height: BlockHeight,
+    get_block_header_by_height: &mut F,
+) -> Result<Header, E>
+where
+    F: FnMut(BlockHeight) -> Result<Header, E>,
+{
+    if height == current_height {
+        Ok(current_header)
+    } else {
+        get_block_header_by_height(height)
+    }
+}
+
+fn median_time_past_at<F, E>(
+    current_header: Header,
+    current_height: BlockHeight,
+    height: BlockHeight,
+    get_block_header_by_height: &mut F,
+) -> Result<BlockMtp, E>
+where
+    F: FnMut(BlockHeight) -> Result<Header, E>,
+{
+    let mut times = [0_u32; 11];
+    let mut count = 0;
+    let height = height.to_u32();
+    for offset in 0..11 {
+        if offset > height {
+            break;
+        }
+        let header = header_at(
+            current_header.clone(),
+            current_height,
+            BlockHeight::from_u32(height - offset),
+            get_block_header_by_height,
+        )?;
+        times[count] = header.time.to_u32();
+        count += 1;
+    }
+    let times = &mut times[..count];
+    times.sort_unstable();
+    Ok(BlockMtp::from_u32(times[count / 2]))
 }
 
 /// Returns true if `height` ends the difficulty period.
@@ -512,13 +1295,14 @@ internal_macros::define_extension_trait! {
             let max_timespan = params.pow_target_timespan << 2; // Lines 58/59
             let actual_timespan = timespan.clamp(min_timespan.into(), max_timespan.into());
             let prev_target: Target = last.into();
-            let maximum_retarget = prev_target.max_transition_threshold(params); // bnPowLimit
-            let retarget = prev_target.0; // bnNew
-            let (retarget, _) = retarget.mul_u64(u64::try_from(actual_timespan).expect("clamped value won't be negative"));
-            let retarget = retarget.div(params.pow_target_timespan.into());
-            let retarget = Target(retarget);
-            if retarget.ge(&maximum_retarget) {
-                return maximum_retarget.to_compact_lossy();
+            let retarget = scale_target_legacy_overflow(
+                prev_target,
+                actual_timespan,
+                params.pow_target_timespan,
+                params.max_attainable_target,
+            );
+            if retarget.ge(&params.max_attainable_target) {
+                return params.max_attainable_target.to_compact_lossy();
             }
             retarget.to_compact_lossy()
         }
@@ -557,6 +1341,42 @@ internal_macros::define_extension_trait! {
             };
 
             CompactTarget::from_next_work_required(bits, timespan, params)
+        }
+
+        /// Computes the Tidecoin post-auxpow per-block retarget value.
+        ///
+        /// This mirrors the node's `CalculateNextWorkRequiredNew`: it averages the previous
+        /// target window, uses median-time-past endpoints, damps the observed timespan by 4,
+        /// clamps by `pow_max_adjust_up/down`, and rounds through compact target encoding.
+        fn from_post_auxpow_next_work_required(
+            average_target: Target,
+            last_mtp: BlockMtp,
+            first_mtp: BlockMtp,
+            params: impl AsRef<Params>,
+        ) -> Self {
+            let params = params.as_ref();
+            if params.no_pow_retargeting || params.pow_averaging_window == 0 {
+                return average_target.to_compact_lossy();
+            }
+
+            let averaging_window_timespan =
+                i64::from(params.pow_averaging_window) * i64::from(params.pow_target_spacing);
+            let min_actual_timespan =
+                (averaging_window_timespan * (100 - i64::from(params.pow_max_adjust_up))) / 100;
+            let max_actual_timespan =
+                (averaging_window_timespan * (100 + i64::from(params.pow_max_adjust_down))) / 100;
+
+            let mut actual_timespan =
+                i64::from(last_mtp.to_u32()) - i64::from(first_mtp.to_u32());
+            actual_timespan =
+                averaging_window_timespan + (actual_timespan - averaging_window_timespan) / 4;
+            actual_timespan = actual_timespan.clamp(min_actual_timespan, max_actual_timespan);
+
+            let mut retarget = average_target.0 / U256::from(averaging_window_timespan as u64);
+            retarget = retarget * U256::from(actual_timespan as u64);
+
+            let retarget = Target(cmp::min(retarget, params.max_attainable_target.0));
+            retarget.to_compact_lossy()
         }
     }
 }
@@ -1313,7 +2133,10 @@ mod tests {
     #[cfg(feature = "std")]
     use crate::pow::test_utils::u128_to_work;
     use crate::pow::test_utils::{u32_to_target, u64_to_target};
-    use crate::BlockTime;
+    use crate::prelude::{Box, ToString, Vec};
+    use crate::{absolute, BlockTime};
+    #[cfg(feature = "tidecoin-node-validation")]
+    use internals::hex::DisplayHex as _;
 
     impl U256 {
         fn bit_at(&self, index: usize) -> bool {
@@ -2009,7 +2832,8 @@ mod tests {
         let starting_bits = params.max_attainable_target.to_compact_lossy();
         let timespan = 5 * params.pow_target_timespan;
         let got = CompactTarget::from_next_work_required(starting_bits, timespan.into(), &params);
-        let want = CompactTarget::from_consensus(0x1e22_d60d);
+        // This follows the node's legacy overflow-guarded scaling path.
+        let want = CompactTarget::from_consensus(0x1e49_ac1b);
         assert_eq!(got, want);
     }
 
@@ -2067,6 +2891,36 @@ mod tests {
             let got = Target::from_compact(CompactTarget::from_consensus(n_bits));
             assert_eq!(got, want);
         }
+    }
+
+    #[test]
+    fn derive_target_rejects_node_invalid_compact_targets() {
+        let params = Params::MAINNET;
+
+        assert_eq!(
+            derive_target(CompactTarget::from_consensus(0x0000_0000), &params),
+            Err(PowTargetError::Zero)
+        );
+        assert_eq!(
+            derive_target(CompactTarget::from_consensus(0x0180_0001), &params),
+            Err(PowTargetError::Negative)
+        );
+        assert_eq!(
+            derive_target(CompactTarget::from_consensus(0x2301_0000), &params),
+            Err(PowTargetError::Overflow)
+        );
+        assert_eq!(
+            derive_target(CompactTarget::from_consensus(0x2002_ffff), &params),
+            Err(PowTargetError::AboveLimit)
+        );
+    }
+
+    #[test]
+    fn derive_target_accepts_node_valid_compact_target() {
+        let params = Params::MAINNET;
+        let bits = CompactTarget::from_consensus(0x2001_ffff);
+
+        assert_eq!(derive_target(bits, &params), Ok(params.max_attainable_target));
     }
 
     macro_rules! check_from_str {
@@ -2360,6 +3214,499 @@ mod tests {
         }
     }
 
+    fn test_header(time: u32, bits: CompactTarget) -> Header {
+        Header {
+            version: crate::block::Version::TWO,
+            prev_blockhash: BlockHash::from_byte_array([0; 32]),
+            merkle_root: crate::TxMerkleNode::from_byte_array([0; 32]),
+            time: BlockTime::from_u32(time),
+            bits,
+            nonce: 0,
+            auxpow: None,
+        }
+    }
+
+    fn pow_vector_header() -> Header {
+        Header::from_str(
+            "0000002009f42768de3cfb4e58fc56368c1477f87f60e248d7130df3fb8acd7f\
+             6208b83a72f90dd3ad8fe06c7f70d73f256f1e07185dcc217a58b9517c699226\
+             ac0297d2ad60ba61b62a021d9b7700f0",
+        )
+        .expect("valid pure header hex")
+    }
+
+    fn script_push(data: &[u8]) -> Vec<u8> {
+        assert!(data.len() <= 75);
+        let mut script = Vec::with_capacity(data.len() + 1);
+        script.push(data.len() as u8);
+        script.extend_from_slice(data);
+        script
+    }
+
+    fn auxpow_coinbase_script(
+        include_header: bool,
+        root: [u8; 32],
+        merkle_height: usize,
+        nonce: u32,
+    ) -> Vec<u8> {
+        let mut data = Vec::new();
+        if include_header {
+            data.extend_from_slice(b"\xfa\xbe\x6d\x6d");
+        }
+        data.extend_from_slice(&root);
+        data.extend_from_slice(&(1u32 << merkle_height).to_le_bytes());
+        data.extend_from_slice(&nonce.to_le_bytes());
+
+        let mut script = Vec::with_capacity(data.len() + 2);
+        script.push(0x52); // OP_2, matching the node AuxPoW unit-test fixture shape.
+        script.extend_from_slice(&script_push(&data));
+        script
+    }
+
+    fn auxpow_coinbase_tx(script_sig: Vec<u8>) -> crate::transaction::Transaction {
+        crate::transaction::Transaction {
+            version: crate::transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: Vec::from([crate::transaction::TxIn {
+                script_sig: crate::script::ScriptSigBuf::from_bytes(script_sig),
+                ..crate::transaction::TxIn::EMPTY_COINBASE
+            }]),
+            outputs: Vec::new(),
+        }
+    }
+
+    fn valid_auxpow_header() -> Header {
+        let mut header =
+            test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
+        header.version = crate::block::Version::with_base_version(2, 8).with_auxpow(true);
+
+        let merkle_height = 1;
+        let nonce = 7;
+        let chain_index =
+            expected_auxpow_chain_index(nonce, header.version.chain_id(), merkle_height);
+        let chain_merkle_branch = Vec::from([BlockHash::from_byte_array([1; 32])]);
+        let mut chain_root =
+            check_auxpow_merkle_branch(header.block_hash(), &chain_merkle_branch, chain_index)
+                .to_byte_array();
+        chain_root.reverse();
+        let coinbase_tx =
+            auxpow_coinbase_tx(auxpow_coinbase_script(true, chain_root, merkle_height, nonce));
+
+        let mut parent_block = Header {
+            version: crate::block::Version::TWO,
+            prev_blockhash: BlockHash::from_byte_array([0; 32]),
+            merkle_root: crate::block::compute_merkle_root(core::slice::from_ref(&coinbase_tx))
+                .expect("single coinbase transaction has a merkle root"),
+            time: BlockTime::from_u32(1_700_000_060),
+            bits: header.bits,
+            nonce: 0,
+            auxpow: None,
+        };
+        let target = derive_target(header.bits, Params::REGTEST).expect("valid target");
+        while !target.is_met_by(scrypt_pow_hash(&parent_block)) {
+            parent_block.nonce += 1;
+        }
+
+        header.auxpow = Some(Box::new(AuxPow {
+            coinbase_tx,
+            merkle_branch: Vec::new(),
+            chain_merkle_branch,
+            chain_index,
+            parent_block,
+        }));
+        header
+    }
+
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn header_consensus_hex(header: &Header) -> crate::prelude::String {
+        encoding::encode_to_vec(header).to_lower_hex_string()
+    }
+
+    #[cfg(feature = "std")]
+    fn auxpow_fixture_cases() -> Vec<serde_json::Value> {
+        let data = include_str!("../tests/data/auxpow_headers.json");
+        let value: serde_json::Value =
+            serde_json::from_str(data).expect("auxpow fixture json must parse");
+        value["cases"].as_array().expect("auxpow fixture cases").clone()
+    }
+
+    #[cfg(feature = "std")]
+    fn real_testnet_header_cases() -> Vec<serde_json::Value> {
+        let data = include_str!("../tests/data/testnet_real_headers.json");
+        let value: serde_json::Value =
+            serde_json::from_str(data).expect("real testnet header fixture json must parse");
+        value["cases"].as_array().expect("real testnet header fixture cases").clone()
+    }
+
+    #[cfg(feature = "std")]
+    fn real_testnet_retarget_window_cases() -> Vec<serde_json::Value> {
+        let data = include_str!("../tests/data/testnet_retarget_windows.json");
+        let value: serde_json::Value =
+            serde_json::from_str(data).expect("real testnet retarget fixture json must parse");
+        value["retarget_windows"].as_array().expect("real testnet retarget windows").clone()
+    }
+
+    #[cfg(feature = "std")]
+    fn header_from_fixture_case(case: &serde_json::Value) -> Header {
+        let name = case["name"].as_str().expect("fixture name");
+        let header_hex = case["header_hex"].as_str().expect("fixture header hex");
+        let header_bytes = crate::hex::decode_to_vec(header_hex).expect("header hex");
+        encoding::decode_from_slice(&header_bytes)
+            .unwrap_or_else(|err| panic!("{name} fixture header decodes: {err}"))
+    }
+
+    #[cfg(feature = "std")]
+    fn header_from_window(headers: &[(u32, Header)], height: BlockHeight) -> Header {
+        let height = height.to_u32();
+        headers
+            .iter()
+            .find_map(|(candidate, header)| (*candidate == height).then(|| header.clone()))
+            .unwrap_or_else(|| panic!("missing real testnet header fixture at height {height}"))
+    }
+
+    #[cfg(feature = "std")]
+    fn fixture_params(network: i64) -> Params {
+        match network {
+            1 => Params::TESTNET,
+            2 => Params::REGTEST,
+            _ => panic!("unsupported fixture network id {network}"),
+        }
+    }
+
+    #[cfg(feature = "std")]
+    fn expected_auxpow_error(expected: &str) -> Option<AuxPowValidationError> {
+        match expected {
+            "valid" => None,
+            "chain_id_mismatch" => Some(AuxPowValidationError::ChainIdMismatch),
+            "parent_has_own_chain_id" => Some(AuxPowValidationError::ParentHasOwnChainId),
+            "wrong_chain_index" => Some(AuxPowValidationError::WrongChainIndex),
+            "missing_merged_mining_header" => {
+                Some(AuxPowValidationError::MissingMergedMiningHeader)
+            }
+            "coinbase_merkle_root" => Some(AuxPowValidationError::CoinbaseMerkleRoot),
+            "missing_chain_merkle_root" => Some(AuxPowValidationError::MissingChainMerkleRoot),
+            "multiple_merged_mining_headers" => {
+                Some(AuxPowValidationError::MultipleMergedMiningHeaders)
+            }
+            "merged_mining_header_not_before_root" => {
+                Some(AuxPowValidationError::MergedMiningHeaderNotBeforeRoot)
+            }
+            "merkle_branch_size_mismatch" => Some(AuxPowValidationError::MerkleBranchSizeMismatch),
+            "missing_chain_merkle_size_and_nonce" => {
+                Some(AuxPowValidationError::MissingChainMerkleSizeAndNonce)
+            }
+            "parent_pow_failure" => Some(AuxPowValidationError::ParentProofOfWork),
+            "pre_activation" => Some(AuxPowValidationError::PreActivation),
+            other => panic!("unsupported auxpow fixture expectation {other}"),
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn node_generated_auxpow_fixtures_match_rust_validator() {
+        for case in auxpow_fixture_cases() {
+            let name = case["name"].as_str().expect("fixture name");
+            let expected = case["expected"].as_str().expect("fixture expected");
+            let header_hex = case["header_hex"].as_str().expect("fixture header hex");
+            let header_bytes = crate::hex::decode_to_vec(header_hex).expect("header hex");
+
+            if expected == "decode_error" {
+                assert!(
+                    encoding::decode_from_slice::<Header>(&header_bytes).is_err(),
+                    "{name} should fail header decoding"
+                );
+                continue;
+            }
+
+            let header: Header = encoding::decode_from_slice(&header_bytes)
+                .unwrap_or_else(|err| panic!("{name} fixture header decodes: {err}"));
+            let params = fixture_params(case["network"].as_i64().expect("fixture network"));
+            let height =
+                BlockHeight::from_u32(case["height"].as_u64().expect("fixture height") as u32);
+
+            assert_eq!(
+                validate_auxpow_context(&header, params, Some(height)),
+                expected_auxpow_error(expected).map_or(Ok(()), Err),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn node_generated_auxpow_fixtures_match_tidecoin_node_bridge() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed AuxPoW fixture test: {err}");
+                return;
+            }
+        };
+
+        for case in auxpow_fixture_cases() {
+            let name = case["name"].as_str().expect("fixture name");
+            let expected = case["expected"].as_str().expect("fixture expected");
+            let header_hex = case["header_hex"].as_str().expect("fixture header hex");
+            let network = case["network"].as_i64().expect("fixture network") as i32;
+            let height = case["height"].as_i64().expect("fixture height") as i32;
+            let got = harness.has_valid_header_pow_hex(header_hex, network, Some(height));
+
+            if expected == "valid" {
+                got.unwrap_or_else(|err| panic!("{name} should be node-valid: {err}"));
+            } else {
+                assert!(got.is_err(), "{name} should be node-invalid");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn real_testnet_headers_match_rust_pow_validator() {
+        for case in real_testnet_header_cases() {
+            let name = case["name"].as_str().expect("fixture name");
+            let expected = case["expected"].as_str().expect("fixture expected");
+            let header = header_from_fixture_case(&case);
+            let params = fixture_params(case["network"].as_i64().expect("fixture network"));
+            let height =
+                BlockHeight::from_u32(case["height"].as_u64().expect("fixture height") as u32);
+
+            assert_eq!(
+                header.block_hash().to_string(),
+                case["block_hash"].as_str().expect("fixture block hash"),
+                "{name} block hash"
+            );
+            assert_eq!(
+                header.bits.to_consensus(),
+                u32::from_str_radix(
+                    case["n_bits"].as_str().expect("fixture bits").trim_start_matches("0x"),
+                    16,
+                )
+                .expect("fixture bits"),
+                "{name} bits"
+            );
+
+            match expected {
+                "valid_pure_pow" => {
+                    assert!(header.auxpow.is_none(), "{name} should be pure PoW");
+                    validate_pow_at_height(&header, &params, height)
+                        .unwrap_or_else(|err| panic!("{name} PoW validation: {err}"));
+                }
+                "valid_auxpow" => assert!(header.auxpow.is_some(), "{name} should carry AuxPoW"),
+                other => panic!("unsupported real testnet fixture expectation {other}"),
+            }
+
+            validate_auxpow_context(&header, &params, Some(height))
+                .unwrap_or_else(|err| panic!("{name} auxpow context: {err}"));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn real_testnet_retarget_windows_predict_observed_next_bits() {
+        let params = Params::TESTNET;
+
+        for window in real_testnet_retarget_window_cases() {
+            let name = window["name"].as_str().expect("retarget window name");
+            let start = window["start_height"].as_u64().expect("retarget window start") as u32;
+            let end = window["end_height"].as_u64().expect("retarget window end") as u32;
+            let headers = window["headers"]
+                .as_array()
+                .expect("retarget window headers")
+                .iter()
+                .map(|case| {
+                    let height = case["height"].as_u64().expect("fixture height") as u32;
+                    (height, header_from_fixture_case(case))
+                })
+                .collect::<Vec<_>>();
+
+            for candidate_height in (start + 1)..=end {
+                let current_height = candidate_height - 1;
+                let first_target_height =
+                    current_height.saturating_sub(params.pow_averaging_window);
+                if first_target_height.saturating_sub(10) < start {
+                    continue;
+                }
+
+                let current = header_from_window(&headers, BlockHeight::from_u32(current_height));
+                let observed =
+                    header_from_window(&headers, BlockHeight::from_u32(candidate_height));
+                let got = next_target_after(
+                    current,
+                    BlockHeight::from_u32(current_height),
+                    &params,
+                    Some(observed.time.to_u32()),
+                    |height| -> Result<Header, core::convert::Infallible> {
+                        Ok(header_from_window(&headers, height))
+                    },
+                )
+                .expect("real testnet retarget window should have required history");
+
+                assert_eq!(got, observed.bits, "{name} candidate_height={candidate_height}");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn real_testnet_headers_match_tidecoin_node_bridge() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed real testnet header test: {err}");
+                return;
+            }
+        };
+
+        for case in real_testnet_header_cases() {
+            let name = case["name"].as_str().expect("fixture name");
+            let header_hex = case["header_hex"].as_str().expect("fixture header hex");
+            let network = case["network"].as_i64().expect("fixture network") as i32;
+            let height = case["height"].as_i64().expect("fixture height") as i32;
+
+            harness
+                .has_valid_header_pow_hex(header_hex, network, Some(height))
+                .unwrap_or_else(|err| panic!("{name} should be node-valid: {err}"));
+        }
+    }
+
+    #[test]
+    fn validate_auxpow_context_accepts_valid_post_activation_header() {
+        let header = valid_auxpow_header();
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_missing_payload() {
+        let mut header = valid_auxpow_header();
+        header.auxpow = None;
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::MissingAuxPow)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_unexpected_payload() {
+        let mut header = valid_auxpow_header();
+        header.version = header.version.with_auxpow(false);
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::UnexpectedAuxPow)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_pre_activation_auxpow() {
+        let header = valid_auxpow_header();
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::TESTNET, Some(BlockHeight::from_u32(999))),
+            Err(AuxPowValidationError::PreActivation)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_strict_chain_id_mismatch() {
+        let mut header = valid_auxpow_header();
+        header.version = crate::block::Version::with_base_version(2, 7).with_auxpow(true);
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::ChainIdMismatch)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_chain_id_without_auxpow_flag() {
+        let mut header =
+            test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
+        header.version = crate::block::Version::with_base_version(2, 8);
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::ChainIdWithoutAuxPowFlag)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_parent_with_own_chain_id() {
+        let mut header = valid_auxpow_header();
+        let auxpow = header.auxpow.as_mut().expect("auxpow");
+        auxpow.parent_block.version =
+            crate::block::Version::with_base_version(2, 8).with_auxpow(true);
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::ParentHasOwnChainId)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_missing_merged_mining_header() {
+        let mut header = valid_auxpow_header();
+        let child_hash = header.block_hash();
+        let auxpow = header.auxpow.as_mut().expect("auxpow");
+        let mut chain_root =
+            check_auxpow_merkle_branch(child_hash, &auxpow.chain_merkle_branch, auxpow.chain_index)
+                .to_byte_array();
+        chain_root.reverse();
+        auxpow.coinbase_tx.inputs[0].script_sig = crate::script::ScriptSigBuf::from_bytes(
+            auxpow_coinbase_script(false, chain_root, auxpow.chain_merkle_branch.len(), 7),
+        );
+        auxpow.parent_block.merkle_root =
+            crate::block::compute_merkle_root(core::slice::from_ref(&auxpow.coinbase_tx))
+                .expect("single coinbase transaction has a merkle root");
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::MissingMergedMiningHeader)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_wrong_chain_index() {
+        let mut header = valid_auxpow_header();
+        let child_hash = header.block_hash();
+        let auxpow = header.auxpow.as_mut().expect("auxpow");
+        auxpow.chain_index ^= 1;
+        let mut chain_root =
+            check_auxpow_merkle_branch(child_hash, &auxpow.chain_merkle_branch, auxpow.chain_index)
+                .to_byte_array();
+        chain_root.reverse();
+        auxpow.coinbase_tx.inputs[0].script_sig = crate::script::ScriptSigBuf::from_bytes(
+            auxpow_coinbase_script(true, chain_root, auxpow.chain_merkle_branch.len(), 7),
+        );
+        auxpow.parent_block.merkle_root =
+            crate::block::compute_merkle_root(core::slice::from_ref(&auxpow.coinbase_tx))
+                .expect("single coinbase transaction has a merkle root");
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::WrongChainIndex)
+        );
+    }
+
+    #[test]
+    fn validate_auxpow_context_rejects_parent_pow_failure() {
+        let mut header = valid_auxpow_header();
+        let target = derive_target(header.bits, Params::REGTEST).expect("valid target");
+        let auxpow = header.auxpow.as_mut().expect("auxpow");
+        while target.is_met_by(scrypt_pow_hash(&auxpow.parent_block)) {
+            auxpow.parent_block.nonce += 1;
+        }
+
+        assert_eq!(
+            validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::ParentProofOfWork)
+        );
+    }
+
     #[test]
     fn next_target_mainnet() {
         let params = Params::new(crate::Network::Tidecoin);
@@ -2408,6 +3755,59 @@ mod tests {
         assert_eq!(got, want);
     }
 
+    #[test]
+    fn next_target_mainnet_historical_first_retarget_matches_node() {
+        let params = Params::MAINNET;
+        let current_height = BlockHeight::from_u32(params.difficulty_adjustment_interval() - 1);
+        let current = test_header(1_609_162_893, CompactTarget::from_consensus(0x2001ffff));
+
+        let fetch_header = |height: BlockHeight| -> Result<Header, core::convert::Infallible> {
+            assert_eq!(height, BlockHeight::from_u32(0));
+            Ok(test_header(1_609_074_580, CompactTarget::from_consensus(0x2001ffff)))
+        };
+
+        let got = next_target_after(current, current_height, &params, None, fetch_header)
+            .expect("failed to calculate first mainnet retarget");
+
+        assert_eq!(got, CompactTarget::from_consensus(0x1e43b698));
+        assert!(permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(params.difficulty_adjustment_interval()),
+            CompactTarget::from_consensus(0x2001ffff),
+            got
+        ));
+    }
+
+    #[test]
+    fn next_target_mainnet_later_legacy_retarget_uses_full_interval_lookback() {
+        let params = Params::MAINNET;
+        let interval = params.difficulty_adjustment_interval();
+        let current_height = BlockHeight::from_u32(interval * 2 - 1);
+        let expected_first_height = BlockHeight::from_u32(interval - 1);
+        let current = test_header(1_610_000_000, CompactTarget::from_consensus(0x2001ffff));
+        let epoch_start = test_header(1_609_500_000, CompactTarget::from_consensus(0x2001ffff));
+        let mut fetched_height = None;
+
+        let got = next_target_after(
+            current.clone(),
+            current_height,
+            &params,
+            None,
+            |height| -> Result<Header, core::convert::Infallible> {
+                fetched_height = Some(height);
+                assert_eq!(height, expected_first_height);
+                Ok(epoch_start.clone())
+            },
+        )
+        .expect("failed to calculate later mainnet retarget");
+
+        assert_eq!(fetched_height, Some(expected_first_height));
+        assert_eq!(
+            got,
+            CompactTarget::from_header_difficulty_adjustment(epoch_start, current, &params)
+        );
+    }
+
     // Test that on testnet, if the new block's timestamp is more than 2 * pow_target_spacing after
     // the current header's time, we return the pow_limit (minimum difficulty).
     #[test]
@@ -2437,10 +3837,9 @@ mod tests {
 
         let params = Params::TESTNET;
         let pow_limit = params.max_attainable_target.to_compact_lossy();
-        let want = pow_limit;
+        let want = CompactTarget::from_consensus(0x1f01ffff);
 
-        let adjustment_interval = params.difficulty_adjustment_interval(); // 7200
-        let current_height = BlockHeight::from_u32(adjustment_interval * 5); // 36000
+        let current_height = BlockHeight::from_u32(500);
 
         let current_header = Header {
             version: crate::block::Version::from_consensus(0x2000_0000),
@@ -2458,7 +3857,7 @@ mod tests {
         // Tidecoin testnet inherits the min-difficulty walk-back structure, but with a much larger
         // attainable target the previous real target in this setup is still the pow limit.
         let fetch_header = move |height: BlockHeight| -> Result<Header, core::convert::Infallible> {
-            assert_eq!(height.to_u32(), adjustment_interval * 5 - 1);
+            assert_eq!(height.to_u32(), current_height.to_u32() - 1);
 
             Ok(Header {
                 version: crate::block::Version::from_consensus(0x2000_0000),
@@ -2481,6 +3880,504 @@ mod tests {
         .expect("failed to calculate next target");
 
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn next_target_testnet_post_auxpow_keeps_exact_spacing_target() {
+        let params = Params::TESTNET;
+        let bits = CompactTarget::from_consensus(0x1f01ffff);
+        let current_height = BlockHeight::from_u32(1000);
+        let base_time = 1_700_000_000;
+        let current = test_header(base_time + current_height.to_u32() * 60, bits);
+
+        let fetch_header = |height: BlockHeight| -> Result<Header, core::convert::Infallible> {
+            Ok(test_header(base_time + height.to_u32() * 60, bits))
+        };
+
+        let got = next_target_after(current, current_height, &params, None, fetch_header)
+            .expect("failed to calculate post-auxpow target");
+
+        // The node divides before multiplying in CalculateNextWorkRequiredNew, so compact target
+        // rounding can move by one even at exact target spacing.
+        assert_eq!(got, CompactTarget::from_consensus(0x1f01fffe));
+    }
+
+    #[test]
+    fn next_target_post_auxpow_insufficient_window_returns_pow_limit() {
+        let mut params = Params::MAINNET;
+        params.auxpow_start_height = Some(BlockHeight::from_u32(0));
+        params.pow_averaging_window = 17;
+        params.pow_max_adjust_down = 32;
+        params.pow_max_adjust_up = 16;
+        params.pow_allow_min_difficulty_blocks_after_height = None;
+        params.allow_min_difficulty_blocks = false;
+        params.no_pow_retargeting = false;
+
+        let pow_limit = params.max_attainable_target.to_compact_lossy();
+        let current = test_header(1_060, pow_limit);
+
+        let fetch_header = |height: BlockHeight| -> Result<Header, core::convert::Infallible> {
+            assert_eq!(height, BlockHeight::from_u32(0));
+            Ok(test_header(1_000, pow_limit))
+        };
+
+        let got = next_target_after(
+            current,
+            BlockHeight::from_u32(1),
+            &params,
+            Some(1_120),
+            fetch_header,
+        )
+        .expect("failed to calculate insufficient-window target");
+
+        assert_eq!(got, pow_limit);
+    }
+
+    #[test]
+    fn permitted_difficulty_transition_matches_legacy_bounds() {
+        let params = Params::MAINNET;
+        let interval = params.difficulty_adjustment_interval();
+        let old_bits = CompactTarget::from_consensus(0x1d01ffff);
+        let old_target = Target::from_compact(old_bits);
+        let minimum = old_target.min_transition_threshold().to_compact_lossy();
+        let maximum = old_target.max_transition_threshold(&params).to_compact_lossy();
+
+        assert!(permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(100),
+            old_bits,
+            old_bits
+        ));
+        assert!(!permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(100),
+            old_bits,
+            maximum
+        ));
+        assert!(permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(interval),
+            old_bits,
+            minimum
+        ));
+        assert!(permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(interval),
+            old_bits,
+            maximum
+        ));
+        assert!(!permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(interval),
+            old_bits,
+            CompactTarget::from_consensus(0x1f01ffff)
+        ));
+    }
+
+    #[test]
+    fn permitted_difficulty_transition_matches_post_auxpow_bounds() {
+        let mut params = Params::MAINNET;
+        params.auxpow_start_height = Some(BlockHeight::from_u32(0));
+        params.pow_max_adjust_up = 16;
+        params.pow_max_adjust_down = 32;
+
+        let height = BlockHeight::from_u32(42);
+        let old_bits = CompactTarget::from_consensus(0x1d01ffff);
+
+        assert!(permitted_difficulty_transition(&params, height, old_bits, old_bits));
+        assert!(!permitted_difficulty_transition(
+            &params,
+            height,
+            old_bits,
+            CompactTarget::from_consensus(0x1f01ffff)
+        ));
+        assert!(!permitted_difficulty_transition(
+            &params,
+            height,
+            old_bits,
+            CompactTarget::from_consensus(0x01010000)
+        ));
+    }
+
+    #[test]
+    fn permitted_difficulty_transition_switches_at_activation_height() {
+        let mut params = Params::MAINNET;
+        params.auxpow_start_height = Some(BlockHeight::from_u32(100));
+        params.allow_min_difficulty_blocks = false;
+        params.no_pow_retargeting = false;
+
+        let old_target = Target(params.max_attainable_target.0 >> 12);
+        let old_bits = old_target.to_compact_lossy();
+        let mut allowed_new_target = Target::from_compact(old_bits).0
+            * U256::from(u64::from((100 + params.pow_max_adjust_down).pow(2)));
+        allowed_new_target = allowed_new_target / U256::from(10_000u64);
+        allowed_new_target = core::cmp::min(allowed_new_target, params.max_attainable_target.0);
+        let allowed_new_bits = Target(allowed_new_target).to_compact_lossy();
+
+        assert_ne!(old_bits, allowed_new_bits);
+        assert!(!permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(99),
+            old_bits,
+            allowed_new_bits
+        ));
+        assert!(permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(100),
+            old_bits,
+            allowed_new_bits
+        ));
+    }
+
+    #[test]
+    fn permitted_difficulty_transition_allows_test_chain_min_difficulty_networks() {
+        assert!(permitted_difficulty_transition(
+            Params::TESTNET,
+            BlockHeight::from_u32(1),
+            CompactTarget::from_consensus(0x01010000),
+            CompactTarget::from_consensus(0x1f01ffff)
+        ));
+        assert!(permitted_difficulty_transition(
+            Params::REGTEST,
+            BlockHeight::from_u32(1),
+            CompactTarget::from_consensus(0x01010000),
+            CompactTarget::from_consensus(0x200f0f0f)
+        ));
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn permitted_difficulty_transition_matches_tidecoin_node_bridge() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed difficulty-transition test: {err}");
+                return;
+            }
+        };
+        let params = Params::MAINNET;
+        let interval = params.difficulty_adjustment_interval();
+        let old_bits = CompactTarget::from_consensus(0x1d01ffff);
+        let old_target = Target::from_compact(old_bits);
+        let cases = [
+            (100, old_bits, old_bits),
+            (100, old_bits, old_target.max_transition_threshold(&params).to_compact_lossy()),
+            (interval, old_bits, old_target.min_transition_threshold().to_compact_lossy()),
+            (interval, old_bits, old_target.max_transition_threshold(&params).to_compact_lossy()),
+            (interval, old_bits, CompactTarget::from_consensus(0x1f01ffff)),
+        ];
+
+        for (height, old_bits, new_bits) in cases {
+            let rust = permitted_difficulty_transition(
+                &params,
+                BlockHeight::from_u32(height),
+                old_bits,
+                new_bits,
+            );
+            let node = harness
+                .permitted_difficulty_transition(
+                    0,
+                    i64::from(height),
+                    old_bits.to_consensus(),
+                    new_bits.to_consensus(),
+                )
+                .expect("node permitted difficulty transition bridge");
+
+            assert_eq!(rust, node, "height={height} old={old_bits:?} new={new_bits:?}");
+        }
+    }
+
+    #[test]
+    fn pow_hash_algorithm_switches_at_auxpow_activation() {
+        assert_eq!(
+            pow_hash_algorithm_at_height(Params::MAINNET, BlockHeight::from_u32(1_000_000)),
+            MiningHashAlgorithm::Yespower
+        );
+        assert_eq!(
+            pow_hash_algorithm_at_height(Params::TESTNET, BlockHeight::from_u32(999)),
+            MiningHashAlgorithm::Yespower
+        );
+        assert_eq!(
+            pow_hash_algorithm_at_height(Params::TESTNET, BlockHeight::from_u32(1000)),
+            MiningHashAlgorithm::Scrypt
+        );
+        assert_eq!(
+            pow_hash_algorithm_at_height(Params::REGTEST, BlockHeight::from_u32(0)),
+            MiningHashAlgorithm::Scrypt
+        );
+    }
+
+    #[test]
+    fn scrypt_pow_hash_matches_scrypt_1024_1_1_256_vector() {
+        let header = pow_vector_header();
+        let expected = crate::hex::decode_to_array::<32>(
+            "0f2e2c6e819551415180bef46d2c2d3af07f7ed5b777a37a4d4482b7bf8353fa",
+        )
+        .expect("valid scrypt hash hex");
+
+        assert_eq!(scrypt_pow_hash(&header), BlockHash::from_byte_array(expected));
+    }
+
+    #[test]
+    fn yespower_pow_hash_matches_tidecoin_vector() {
+        let header = pow_vector_header();
+        let expected = crate::hex::decode_to_array::<32>(
+            "9d90c21b5a0bb9566d2999c5d703d7327ee3ac97c020d387aa2dfd0700000000",
+        )
+        .expect("valid yespower hash hex");
+
+        assert_eq!(yespower_pow_hash(&header), Ok(BlockHash::from_byte_array(expected)));
+        assert_eq!(
+            mining_hash_for_height(&header, Params::MAINNET, BlockHeight::from_u32(1)),
+            Ok(BlockHash::from_byte_array(expected))
+        );
+    }
+
+    #[test]
+    fn validate_pow_at_height_uses_yespower_before_auxpow_activation() {
+        let header = pow_vector_header();
+        let expected = yespower_pow_hash(&header).expect("yespower hash");
+
+        assert_eq!(
+            validate_pow_at_height(&header, Params::MAINNET, BlockHeight::from_u32(1)),
+            Ok(expected)
+        );
+        assert_eq!(validate_pow_any(&header, Params::MAINNET), Ok(expected));
+    }
+
+    #[test]
+    fn validate_pow_at_height_uses_scrypt_after_auxpow_activation() {
+        let mut header =
+            test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
+        let target = derive_target(header.bits, Params::REGTEST).expect("valid target");
+        while !target.is_met_by(scrypt_pow_hash(&header)) {
+            header.nonce += 1;
+        }
+        let expected = scrypt_pow_hash(&header);
+
+        assert_ne!(yespower_pow_hash(&header), Ok(expected));
+        assert_eq!(
+            validate_pow_at_height(&header, Params::REGTEST, BlockHeight::from_u32(0)),
+            Ok(expected)
+        );
+        assert_eq!(validate_pow_any(&header, Params::REGTEST), Ok(expected));
+    }
+
+    #[test]
+    fn validate_pow_at_height_against_target_rejects_bad_target() {
+        let header = pow_vector_header();
+
+        assert_eq!(
+            validate_pow_at_height_against_target(
+                &header,
+                Params::MAINNET,
+                BlockHeight::from_u32(1),
+                Target::ZERO
+            ),
+            Err(PowValidationError::BadTarget)
+        );
+    }
+
+    #[test]
+    fn validate_pow_at_height_rejects_invalid_compact_target() {
+        let mut header = pow_vector_header();
+        header.bits = CompactTarget::from_consensus(0);
+
+        assert_eq!(
+            validate_pow_at_height(&header, Params::MAINNET, BlockHeight::from_u32(1)),
+            Err(PowValidationError::InvalidTarget(PowTargetError::Zero))
+        );
+        assert_eq!(
+            validate_pow_any(&header, Params::MAINNET),
+            Err(PowValidationError::InvalidTarget(PowTargetError::Zero))
+        );
+    }
+
+    #[test]
+    fn validate_pow_at_height_rejects_insufficient_work() {
+        let mut header = pow_vector_header();
+        header.bits = CompactTarget::from_consensus(0x0101_0000);
+        let target = derive_target(header.bits, Params::MAINNET).expect("valid target");
+
+        assert_eq!(
+            validate_pow_at_height(&header, Params::MAINNET, BlockHeight::from_u32(1)),
+            Err(PowValidationError::BadProofOfWork)
+        );
+        assert_eq!(
+            validate_pow_at_height_against_target(
+                &header,
+                Params::MAINNET,
+                BlockHeight::from_u32(1),
+                target
+            ),
+            Err(PowValidationError::BadProofOfWork)
+        );
+        assert_eq!(
+            validate_pow_any(&header, Params::MAINNET),
+            Err(PowValidationError::BadProofOfWork)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn scrypt_pow_hash_matches_tidecoin_node_bridge() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed scrypt PoW test: {err}");
+                return;
+            }
+        };
+        let mut header =
+            test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
+        let target = derive_target(header.bits, Params::REGTEST).expect("valid target");
+        while !target.is_met_by(scrypt_pow_hash(&header)) {
+            header.nonce += 1;
+        }
+
+        let node_hash = harness.scrypt_pow_hash(&header.pure_header_bytes()).unwrap();
+
+        assert_eq!(scrypt_pow_hash(&header), BlockHash::from_byte_array(node_hash));
+        assert_eq!(
+            validate_pow_at_height(&header, Params::REGTEST, BlockHeight::from_u32(0)),
+            Ok(BlockHash::from_byte_array(node_hash))
+        );
+        assert_eq!(
+            validate_pow_at_height_against_target(
+                &header,
+                Params::REGTEST,
+                BlockHeight::from_u32(0),
+                target
+            ),
+            Ok(BlockHash::from_byte_array(node_hash))
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn header_pow_validation_matches_tidecoin_node_bridge() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed header PoW test: {err}");
+                return;
+            }
+        };
+
+        let yespower_header = pow_vector_header();
+        harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&yespower_header), 0, None)
+            .expect("node accepts yespower header without height");
+        validate_pow_any(&yespower_header, Params::MAINNET).expect("Rust accepts yespower header");
+
+        let auxpow_header = valid_auxpow_header();
+        harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&auxpow_header), 2, Some(0))
+            .expect("node accepts regtest auxpow header at activation");
+        validate_auxpow_context(&auxpow_header, Params::REGTEST, Some(BlockHeight::from_u32(0)))
+            .expect("Rust accepts regtest auxpow header at activation");
+
+        let mut bad_auxpow = auxpow_header;
+        let target = derive_target(bad_auxpow.bits, Params::REGTEST).expect("valid target");
+        let bad_parent = &mut bad_auxpow.auxpow.as_mut().expect("auxpow").parent_block;
+        while target.is_met_by(scrypt_pow_hash(bad_parent)) {
+            bad_parent.nonce += 1;
+        }
+        assert!(harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&bad_auxpow), 2, Some(0))
+            .is_err());
+        assert_eq!(
+            validate_auxpow_context(&bad_auxpow, Params::REGTEST, Some(BlockHeight::from_u32(0))),
+            Err(AuxPowValidationError::ParentProofOfWork)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn yespower_pow_hash_matches_tidecoin_node_bridge_vector() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed yespower PoW test: {err}");
+                return;
+            }
+        };
+        let header = pow_vector_header();
+        let expected = crate::hex::decode_to_array::<32>(
+            "9d90c21b5a0bb9566d2999c5d703d7327ee3ac97c020d387aa2dfd0700000000",
+        )
+        .expect("valid yespower hash hex");
+
+        assert_eq!(yespower_pow_hash(&header), Ok(BlockHash::from_byte_array(expected)));
+        assert_eq!(harness.yespower_pow_hash(&header.pure_header_bytes()).unwrap(), expected);
+        assert_eq!(
+            validate_pow_at_height(&header, Params::MAINNET, BlockHeight::from_u32(1),),
+            Ok(BlockHash::from_byte_array(expected))
+        );
+    }
+
+    #[test]
+    fn next_target_activation_boundary_uses_node_post_auxpow_window() {
+        let mut params = Params::TESTNET;
+        params.auxpow_start_height = Some(BlockHeight::from_u32(5));
+        params.pow_target_spacing = 1;
+        params.pow_target_timespan = 4;
+        params.allow_min_difficulty_blocks = false;
+        params.no_pow_retargeting = false;
+        params.pow_averaging_window = 2;
+        params.pow_max_adjust_up = 16;
+        params.pow_max_adjust_down = 32;
+
+        let mut legacy_params = params.clone();
+        legacy_params.auxpow_start_height = None;
+
+        let genesis_time = 1_700_000_000;
+        let genesis_bits = Params::TESTNET.max_attainable_target.to_compact_lossy();
+        let mut headers: [Header; 5] =
+            core::array::from_fn(|_| test_header(genesis_time, genesis_bits));
+        for height in 1..=4 {
+            let current = headers[height - 1].clone();
+            let fetch = |h: BlockHeight| -> Result<Header, core::convert::Infallible> {
+                Ok(headers[h.to_u32() as usize].clone())
+            };
+            let next_bits = next_target_after(
+                current,
+                BlockHeight::from_u32(height as u32 - 1),
+                &params,
+                Some(genesis_time + height as u32),
+                fetch,
+            )
+            .expect("failed to calculate setup target");
+            headers[height] = test_header(genesis_time + height as u32, next_bits);
+        }
+
+        let current = headers[4].clone();
+        let fetch = |h: BlockHeight| -> Result<Header, core::convert::Infallible> {
+            Ok(headers[h.to_u32() as usize].clone())
+        };
+        let post_auxpow_bits = next_target_after(
+            current.clone(),
+            BlockHeight::from_u32(4),
+            &params,
+            Some(genesis_time + 5),
+            fetch,
+        )
+        .expect("failed to calculate post-auxpow activation target");
+
+        let fetch = |h: BlockHeight| -> Result<Header, core::convert::Infallible> {
+            Ok(headers[h.to_u32() as usize].clone())
+        };
+        let legacy_bits = next_target_after(
+            current,
+            BlockHeight::from_u32(4),
+            &legacy_params,
+            Some(genesis_time + 5),
+            fetch,
+        )
+        .expect("failed to calculate legacy activation target");
+
+        assert_ne!(post_auxpow_bits, legacy_bits);
+        assert_ne!(post_auxpow_bits, headers[4].bits);
     }
 }
 

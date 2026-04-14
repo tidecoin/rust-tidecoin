@@ -38,14 +38,15 @@ use crate::{internal_macros, Amount, FeeRate, Sequence, SignedAmount};
 #[doc(no_inline)]
 pub use primitives::transaction::{
     BlockHashDecoderError, OutPointDecoderError, ParseTransactionError, ParseOutPointError,
-    TransactionDecoderError, TxInDecoderError, TxOutDecoderError,
+    TransactionDecoderError, TransactionSanityError, TxInDecoderError, TxOutDecoderError,
     VersionDecoderError,
 };
 #[doc(inline)]
 pub use primitives::transaction::{
-    BlockHashDecoder, Ntxid, OutPoint, OutPointDecoder, OutPointEncoder, Transaction,
-    TransactionDecoder, TransactionEncoder, TxIn, TxInDecoder, TxInEncoder, TxOut, TxOutDecoder,
-    TxOutEncoder, Txid, Version, VersionDecoder, VersionEncoder, WitnessesEncoder, Wtxid,
+    check_transaction_sanity, BlockHashDecoder, Ntxid, OutPoint, OutPointDecoder, OutPointEncoder,
+    Transaction, TransactionDecoder, TransactionEncoder, TxIn, TxInDecoder, TxInEncoder, TxOut,
+    TxOutDecoder, TxOutEncoder, Txid, Version, VersionDecoder, VersionEncoder, WitnessesEncoder,
+    Wtxid,
 };
 
 /// Returns the input base weight.

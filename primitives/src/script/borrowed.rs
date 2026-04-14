@@ -12,6 +12,9 @@ use arbitrary::{Arbitrary, Unstructured};
 use encoding::{BytesEncoder, CompactSizeEncoder, Encodable, Encoder2};
 
 use super::{InstructionIndices, Instructions, ScriptBuf};
+use crate::opcodes::all::{
+    OP_CHECKMULTISIG, OP_CHECKMULTISIGVERIFY, OP_CHECKSIG, OP_CHECKSIGVERIFY,
+};
 use crate::prelude::{Box, ToOwned, Vec};
 
 internals::transparent_newtype! {
@@ -182,6 +185,51 @@ impl<T> Script<T> {
     #[inline]
     pub fn instructions_minimal(&self) -> Instructions<'_> {
         Instructions::new(self, true)
+    }
+
+    /// Counts signature-check operations using accurate multisig counting.
+    ///
+    /// This is the counting mode used by the node for redeem scripts and
+    /// witness scripts. `OP_CHECKSIGADD` is not counted by Tidecoin consensus.
+    pub fn count_sigops(&self) -> usize {
+        self.count_sigops_internal(true)
+    }
+
+    /// Counts signature-check operations using legacy multisig counting.
+    ///
+    /// This is the counting mode used by the node for scriptSigs and
+    /// scriptPubKeys in context-free block sanity checks.
+    pub fn count_sigops_legacy(&self) -> usize {
+        self.count_sigops_internal(false)
+    }
+
+    fn count_sigops_internal(&self, accurate: bool) -> usize {
+        let mut count = 0;
+        let mut pushnum_cache = None;
+        for inst in self.instructions() {
+            match inst {
+                Ok(super::Instruction::Op(opcode)) => match opcode.to_u8() {
+                    x if x == OP_CHECKSIG.to_u8() || x == OP_CHECKSIGVERIFY.to_u8() => {
+                        count += 1;
+                    }
+                    x if x == OP_CHECKMULTISIG.to_u8() || x == OP_CHECKMULTISIGVERIFY.to_u8() => {
+                        if accurate {
+                            count += pushnum_cache.map(usize::from).unwrap_or(20);
+                        } else {
+                            count += 20;
+                        }
+                    }
+                    _ => {
+                        pushnum_cache = opcode.decode_pushnum();
+                    }
+                },
+                Ok(super::Instruction::PushBytes(_)) => {
+                    pushnum_cache = None;
+                }
+                Err(_) => break,
+            }
+        }
+        count
     }
 
     /// Iterates over decoded instructions together with their byte indices.

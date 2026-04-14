@@ -70,4 +70,40 @@ mod tests {
         assert_eq!(subsidy_sat(139, Network::Regtest), 250_000_000);
         assert_eq!(subsidy_sat(140, Network::Regtest), 62_500_000);
     }
+
+    #[test]
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn subsidy_schedule_matches_tidecoin_node_bridge() {
+        let harness = match node_parity::TidecoinNodeHarness::from_env() {
+            Ok(harness) => harness,
+            Err(err) => {
+                std::eprintln!("skipping Tidecoin node-backed subsidy test: {err}");
+                return;
+            }
+        };
+
+        let cases = [
+            (Network::Tidecoin, 0, 0),
+            (Network::Tidecoin, 0, 262_799),
+            (Network::Tidecoin, 0, 262_800),
+            (Network::Tidecoin, 0, 788_399),
+            (Network::Tidecoin, 0, 788_400),
+            (Network::Testnet, 1, 262_800),
+            (Network::Regtest, 2, 19),
+            (Network::Regtest, 2, 20),
+            (Network::Regtest, 2, 59),
+            (Network::Regtest, 2, 60),
+            (Network::Regtest, 2, 139),
+            (Network::Regtest, 2, 140),
+        ];
+
+        for (network, network_id, height) in cases {
+            let rust = subsidy_sat(height, network);
+            let node = harness
+                .block_subsidy(network_id, height as i32)
+                .expect("node block subsidy bridge");
+
+            assert_eq!(rust, node, "network={network:?} height={height}");
+        }
+    }
 }

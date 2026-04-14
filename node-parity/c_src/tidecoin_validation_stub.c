@@ -7,6 +7,78 @@ int tidecoin_node_check_transaction(const char* tx_hex)
     return -1;
 }
 
+int tidecoin_node_scrypt_pow_hash(
+    const uint8_t* header,
+    size_t header_len,
+    uint8_t* out,
+    size_t out_len)
+{
+    (void)header;
+    (void)header_len;
+    (void)out;
+    (void)out_len;
+    return -1;
+}
+
+int tidecoin_node_yespower_pow_hash(
+    const uint8_t* header,
+    size_t header_len,
+    uint8_t* out,
+    size_t out_len)
+{
+    (void)header;
+    (void)header_len;
+    (void)out;
+    (void)out_len;
+    return -1;
+}
+
+int tidecoin_node_has_valid_header_pow(
+    const char* header_hex,
+    int network,
+    int has_height,
+    int height)
+{
+    (void)header_hex;
+    (void)network;
+    (void)has_height;
+    (void)height;
+    return -1;
+}
+
+int tidecoin_node_check_block(
+    const char* block_hex,
+    int network,
+    int check_pow,
+    int check_merkle_root)
+{
+    (void)block_hex;
+    (void)network;
+    (void)check_pow;
+    (void)check_merkle_root;
+    return -1;
+}
+
+int tidecoin_node_permitted_difficulty_transition(
+    int network,
+    int64_t height,
+    uint32_t old_nbits,
+    uint32_t new_nbits)
+{
+    (void)network;
+    (void)height;
+    (void)old_nbits;
+    (void)new_nbits;
+    return -1;
+}
+
+int64_t tidecoin_node_block_subsidy(int network, int height)
+{
+    (void)network;
+    (void)height;
+    return -1;
+}
+
 int64_t tidecoin_node_pq_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
 {
     (void)sig_len;

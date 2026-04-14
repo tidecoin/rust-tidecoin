@@ -51,5 +51,5 @@ check! {
 
     weight_min, Weight, Weight::MIN, "0";
     weight_max, Weight, Weight::MAX, "18446744073709551615";
-    weight_max_block, Weight, Weight::MAX_BLOCK, "4000000";
+    weight_max_block, Weight, Weight::MAX_BLOCK, "6000000";
 }

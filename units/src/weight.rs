@@ -59,7 +59,7 @@ impl Weight {
     pub const WITNESS_SCALE_FACTOR: u64 = WITNESS_SCALE_FACTOR as u64; // this value is 4
 
     /// The maximum allowed weight for a block under Tidecoin consensus rules.
-    pub const MAX_BLOCK: Self = Self::from_wu(4_000_000);
+    pub const MAX_BLOCK: Self = Self::from_wu(6_000_000);
 
     /// The minimum transaction weight for a valid serialized transaction.
     pub const MIN_TRANSACTION: Self = Self::from_wu(Self::WITNESS_SCALE_FACTOR * 60);

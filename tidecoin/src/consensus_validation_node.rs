@@ -236,6 +236,7 @@ mod tests {
 
     use super::*;
     use crate::absolute;
+    use crate::block::Header;
     use crate::crypto::pq::{
         PqPublicKey, PqScheme, PqSchemeCryptoExt as _, PqSecretKey, PqSignature,
     };
@@ -250,6 +251,7 @@ mod tests {
     use crate::script::{ScriptBufExt as _, ScriptPubKeyBuf, ScriptSigBuf, WitnessScriptBuf};
     use crate::transaction::{self, OutPoint, Transaction, TxIn};
     use crate::{Address, Amount, Network, PqWifKey, Sequence, TxOut, TxSighashType, Txid};
+    use crate::{Block, BlockTime, CompactTarget, TxMerkleNode};
     use consensus_core::SighashCache;
 
     fn node_harness_available() -> bool {
@@ -849,6 +851,169 @@ mod tests {
                 }
             }
             assert!(any_failed, "tx_invalid_pq[{}] unexpectedly passed", idx);
+        }
+    }
+
+    fn coinbase_sanity_tx(script_sig_len: usize) -> Transaction {
+        Transaction {
+            version: transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint::COINBASE_PREVOUT,
+                script_sig: ScriptSigBuf::from_bytes(vec![0x51; script_sig_len]),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            outputs: vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
+        }
+    }
+
+    fn zero_input_sanity_tx() -> Transaction {
+        Transaction {
+            version: transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![],
+            outputs: vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
+        }
+    }
+
+    #[test]
+    fn check_transaction_sanity_edges_match_node() {
+        require_node_harness!();
+
+        let harness = node_harness();
+        let cases = [
+            ("zero_inputs", zero_input_sanity_tx(), false),
+            ("coinbase_scriptsig_1", coinbase_sanity_tx(1), false),
+            ("coinbase_scriptsig_2", coinbase_sanity_tx(2), true),
+            ("coinbase_scriptsig_100", coinbase_sanity_tx(100), true),
+            ("coinbase_scriptsig_101", coinbase_sanity_tx(101), true),
+            ("coinbase_scriptsig_106", coinbase_sanity_tx(106), true),
+            ("coinbase_scriptsig_107", coinbase_sanity_tx(107), false),
+        ];
+
+        for (name, tx, expected_valid) in cases {
+            let tx_hex = encode_consensus_hex(&tx);
+            let node_valid = harness.check_transaction_hex(&tx_hex).is_ok();
+            let rust_decode = decode_consensus_hex::<Transaction>(&tx_hex);
+
+            assert_eq!(node_valid, expected_valid, "{name} node sanity");
+            assert_eq!(rust_decode.is_ok(), expected_valid, "{name} Rust decode sanity");
+            if let Ok(tx) = rust_decode {
+                transaction::check_transaction_sanity(&tx)
+                    .unwrap_or_else(|err| panic!("{name} primitive sanity: {err}"));
+                assert!(
+                    check_transaction_sanity(&tx).is_ok(),
+                    "{name} decoded Rust transaction should pass node sanity"
+                );
+            }
+        }
+    }
+
+    fn block_coinbase(script_sig_len: usize, output_tag: u8) -> Transaction {
+        Transaction {
+            version: transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint::COINBASE_PREVOUT,
+                script_sig: ScriptSigBuf::from_bytes(vec![0x51; script_sig_len]),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            outputs: vec![TxOut {
+                amount: Amount::ONE_SAT,
+                script_pubkey: ScriptPubKeyBuf::from_bytes(vec![output_tag]),
+            }],
+        }
+    }
+
+    fn block_spend(tag: u8) -> Transaction {
+        Transaction {
+            version: transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: OutPoint {
+                    txid: Txid::from_byte_array([tag; 32]),
+                    vout: tag.into(),
+                },
+                script_sig: ScriptSigBuf::new(),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            outputs: vec![TxOut {
+                amount: Amount::ONE_SAT,
+                script_pubkey: ScriptPubKeyBuf::from_bytes(vec![tag]),
+            }],
+        }
+    }
+
+    fn block_from_transactions(transactions: Vec<Transaction>) -> Block {
+        let merkle_root = crate::block::compute_merkle_root(&transactions)
+            .unwrap_or_else(|| TxMerkleNode::from_byte_array([0; 32]));
+        Block::new_unchecked(
+            Header {
+                version: crate::block::Version::ONE,
+                prev_blockhash: crate::BlockHash::from_byte_array([0x11; 32]),
+                merkle_root,
+                time: BlockTime::from_u32(1_700_000_000),
+                bits: CompactTarget::from_consensus(0x200f_0f0f),
+                nonce: 0,
+                auxpow: None,
+            },
+            transactions,
+        )
+    }
+
+    fn block_with_merkle(transactions: Vec<Transaction>, merkle_root: TxMerkleNode) -> Block {
+        Block::new_unchecked(
+            Header {
+                version: crate::block::Version::ONE,
+                prev_blockhash: crate::BlockHash::from_byte_array([0x11; 32]),
+                merkle_root,
+                time: BlockTime::from_u32(1_700_000_000),
+                bits: CompactTarget::from_consensus(0x200f_0f0f),
+                nonce: 0,
+                auxpow: None,
+            },
+            transactions,
+        )
+    }
+
+    #[test]
+    fn check_block_sanity_edges_match_node() {
+        require_node_harness!();
+
+        let mut too_many_sigops = block_coinbase(2, 0x51);
+        too_many_sigops.outputs[0].script_pubkey =
+            ScriptPubKeyBuf::from_bytes(vec![OP_CHECKSIG.to_u8(); 20_001]);
+
+        let bad_merkle = block_with_merkle(
+            vec![block_coinbase(2, 0x51)],
+            TxMerkleNode::from_byte_array([0xff; 32]),
+        );
+
+        let cases = [
+            ("valid", block_from_transactions(vec![block_coinbase(2, 0x51)]), true),
+            ("no_transactions", block_from_transactions(vec![]), false),
+            ("missing_coinbase", block_from_transactions(vec![block_spend(0x22)]), false),
+            (
+                "multiple_coinbase",
+                block_from_transactions(vec![block_coinbase(2, 0x51), block_coinbase(3, 0x52)]),
+                false,
+            ),
+            ("bad_merkle", bad_merkle, false),
+            ("bad_transaction", block_from_transactions(vec![block_coinbase(1, 0x51)]), false),
+            ("too_many_legacy_sigops", block_from_transactions(vec![too_many_sigops]), false),
+        ];
+
+        let harness = node_harness();
+        for (name, block, expected_valid) in cases {
+            let block_hex = encode_consensus_hex(&block);
+            let node_valid = harness.check_block_hex(&block_hex, 2, false, true).is_ok();
+            let rust_valid = crate::block::check_block_sanity(&block).is_ok();
+
+            assert_eq!(node_valid, expected_valid, "{name} node block sanity");
+            assert_eq!(rust_valid, expected_valid, "{name} Rust block sanity");
         }
     }
 

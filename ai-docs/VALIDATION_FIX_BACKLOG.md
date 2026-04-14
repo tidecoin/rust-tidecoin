@@ -159,33 +159,51 @@ Below the architecture work, a few protocol checks still deserve explicit covera
 
 #### AuxPoW validation vectors
 
-No tests currently exercise AuxPoW chain-ID validation, merge-mining branch verification, or coinbase commitment checking. The struct and serialization layer is solid but the consensus-rule enforcement is untested.
+Rust now has `tidecoin::pow::validate_auxpow_context(...)` for the node-shaped
+pure-header AuxPoW context path. It checks AuxPoW flag/payload consistency,
+pre-activation rejection, strict chain ID enforcement, chain ID bits without the
+AuxPoW flag, merge-mining header/root placement, coinbase-to-parent merkle
+branch validation, deterministic chain index, and parent scrypt PoW against the
+child header `nBits`.
 
 Implementation direction:
 - keep `primitives` as the owner of AuxPoW/header wire structures and codecs
-- implement consensus-context checks in `tidecoin::pow`, not in the codec layer:
-  auxpow flag/payload consistency, pre-activation rejection, strict chain ID
-  enforcement, chain ID without AuxPoW flag rejection, merge-mining merkle and
-  coinbase commitment checks, and parent scrypt PoW verification
+- keep consensus-context checks in `tidecoin::pow`, not in the codec layer
 - match the Tidecoin node's `CheckAuxPowContext(...)` path in
   `/home/yaroslav/dev/tidecoin/tidecoin/src/validation.cpp`
 - do not route AuxPoW parent validation through `HeaderExt::validate_pow(...)`;
   the parent proof is checked with the parent header's scrypt PoW hash against
   the child block's `nBits`, matching `CAuxPow::getParentBlockHash()`
+- use the focused node-parity header PoW bridge for
+  `HasValidProofOfWork`-style checks without pulling full `validation.cpp` into
+  the test harness
+
+Current fixture coverage:
+- The current fixture file
+  `tidecoin/tests/data/auxpow_headers.json` covers valid regtest AuxPoW,
+  parent PoW failure, wrong chain ID, parent chain ID collision, wrong chain
+  index, invalid transaction merkle branch, invalid chain merkle branch,
+  missing chain merkle root, missing and duplicated merged-mining headers,
+  misplaced merged-mining header, merkle-size mismatch, missing size/nonce
+  metadata, testnet activation acceptance, pre-activation rejection, and missing
+  payload decode rejection.
+- `tidecoin/tests/data/testnet_retarget_windows.json` now contains real
+  testnet headers around activation and the first local AuxPoW payload. Mainnet
+  AuxPoW vectors are not applicable while mainnet `auxpow_start_height` is
+  disabled in Tidecoin chain params.
 
 Needed:
-- Known mainnet AuxPoW block headers with verified chain_id = 8
-- Invalid AuxPoW blocks: wrong chain ID, invalid merkle branch, missing coinbase commitment
-- Boundary: blocks at auxpow_start_height transition
-- Parent block header validation (pure 80-byte, no nested AuxPoW)
-- Parent PoW validation using the Tidecoin node's AuxPoW rule: parent headers
-  are checked with scrypt PoW, not with the child header's yespower-era hash
+- Invalid AuxPoW blocks beyond the current fixture file: remaining historical
+  edge cases observed from node data, especially any real-chain malformed
+  commitment cases not covered by the synthetic node-functional fixture matrix.
+- More parent block header validation vectors (pure 80-byte, no nested AuxPoW)
 
 #### PoW hash algorithm selection
 
-Rust currently has target arithmetic and `nBits` checks around the block header
-hash, but it does not yet implement the Tidecoin node's height-gated PoW hash
-selection. The node uses yespower 1.0 (`N = 2048`, `r = 8`) for
+Rust currently has target arithmetic, exact node-style compact target
+derivation, an explicit height-gated `pow_hash_algorithm_at_height(...)`
+selector, yespower and scrypt pure-header mining hashes, and node-bridge oracles
+for both hash classes. The node uses yespower 1.0 (`N = 2048`, `r = 8`) for
 `GetPoWHash()` before auxpow activation and scrypt-1024-1-1-256 for
 `GetScryptPoWHash()` after auxpow activation. `CheckProofOfWork(block, params,
 height)` selects between those two through `UsePostAuxpowPowRules(...)`.
@@ -199,15 +217,24 @@ hash. Tidecoin must keep the same target comparison primitive, but feed it the
 selected Tidecoin mining hash instead of `header.block_hash()`.
 
 Implementation direction:
-- remove or narrow `HeaderExt::validate_pow(required_target)` because that API
-  lacks the height, chain params, and AuxPoW payload context required for
-  Tidecoin consensus
-- add a Tidecoin-native API shaped around node consensus context, for example
-  `validate_pow_at_height(header, params, height)` for pure-header checks and a
-  block/header context API that can inspect AuxPoW payloads
+- `HeaderExt::validate_pow(params, height, required_target)` is now narrowed to
+  a pure-header helper: it takes height and chain params, derives target
+  validity from `nBits`, and no longer uses `header.block_hash()` for mining
+  proof checks
+- `validate_pow_at_height(header, params, height)` is now the node-shaped
+  pure-header `CheckProofOfWork(block, params, height)` equivalent; it derives
+  the target from header `nBits`, selects the height-dependent mining hash, and
+  checks that hash against the header target
+- `validate_pow_any(header, params)` is now the node-shaped heightless
+  `CheckProofOfWorkAny(block, params)` equivalent for header-sync/anti-DoS
+  contexts where height is not known
+- `validate_pow_at_height_against_target(...)` and
+  `HeaderExt::validate_pow(...)` add the separate caller-supplied expected
+  target check for contextual difficulty validation; keep a separate
+  block/header context API for AuxPoW payload checks
 - derive target validity from `nBits` and the active network pow limit, matching
-  node `DeriveTarget(...)`; do not accept a caller-supplied target as the
-  consensus source of truth
+  node `DeriveTarget(...)`; only compare against caller-supplied expected target
+  after the header's own `nBits` has passed node-style target decoding
 - select the mining hash with the same rule as the node:
   `UsePostAuxpowPowRules(params, height)` selects scrypt at and after
   AuxPoW activation, otherwise yespower
@@ -215,15 +242,30 @@ Implementation direction:
   `CPureBlockHeader::GetPoWHash()` and `CPureBlockHeader::GetScryptPoWHash()`
   from `/home/yaroslav/dev/tidecoin/tidecoin/src/primitives/pureheader.cpp`
 
+Current state:
+- Tidecoin-native pure-header PoW hash APIs exist:
+  `yespower_pow_hash`, `scrypt_pow_hash`, and height-gated selection.
+- `validate_pow_at_height(...)` validates the selected hash against `nBits`,
+  not the header identity hash.
+- `tidecoin::block_validation::contextual_check_block_header(...)` now uses
+  `next_target_after(...)` to check exact contextual `nBits`, MTP, BIP94
+  timewarp, version gates, and selected PoW/AuxPoW proof.
+- `tidecoin::block_validation::contextual_check_block(...)` now adds the
+  node-shaped non-UTXO block context layer: context-free block sanity,
+  contextual header checks, transaction finality using the CSV-height cutoff
+  rule, BIP34 coinbase height, and pre-activation witness rejection.
+- Real testnet fixture windows cover the activation boundary and first local
+  AuxPoW payload.
+
 Needed:
-- expose a Tidecoin-native PoW hash API for pure 80-byte headers:
-  `yespower_pow_hash`, `scrypt_pow_hash`, and height-gated selection
-- validate the hash against `nBits` using the selected algorithm, not the header
-  identity hash
-- add node-parity vectors at pre-activation, activation height, and
-  post-activation heights
-- add `CheckProofOfWorkAny`-style coverage if the library needs to mirror the
-  node's anti-DoS/header-sync path
+- expand `CheckProofOfWorkAny` coverage beyond the first focused bridge-backed
+  header validation cases
+- add broader long-range contextual header walks beyond the current real
+  testnet activation/first-AuxPoW windows
+- defer UTXO/chain-connect ownership to a future separate crate if Rust is meant
+  to validate full node block connection: BIP30, sequence locks, spend
+  availability, fees, and value-in/value-out checks require a chainstate/UTXO
+  database and do not belong in this protocol-library crate
 
 #### Subsidy/reward schedule
 
@@ -238,23 +280,33 @@ regtest boundary cases. The public interval constant is
 
 #### Difficulty retargeting edge cases
 
-Basic retargeting tests exist (4 cases in pow.rs), but the following are missing:
-- Add missing node parameter fields to `tidecoin::network::Params` before
-  porting the algorithm: strict AuxPoW chain ID, post-AuxPoW averaging window,
-  max adjust up/down, and any post-AuxPoW min-difficulty activation height used
-  by the node.
-- Port the Tidecoin node's switch in `GetNextWorkRequired(...)`: legacy
-  interval-based retargeting before AuxPoW activation and post-AuxPoW per-block
-  averaging-window retargeting after activation.
-- Port `CalculateNextWorkRequiredNew(...)`, including median-time-past inputs,
-  `AveragingWindowTimespan`, `MinActualTimespan`, and `MaxActualTimespan`.
-- Port `PermittedDifficultyTransition(...)` so header-window validation can
-  check both pre-activation legacy bounds and post-activation max-adjust bounds.
-- Exact `GetNextWorkRequired` switch at `auxpow_start_height`: legacy
-  interval-based retargeting before activation and per-block averaging-window
-  retargeting after activation
-- AuxPoW-era difficulty adjustment
-- Historical chain difficulty walk with known block headers
+Focused retargeting tests now exist in `tidecoin/src/pow.rs`, including the
+node legacy overflow-guarded scaling path, first mainnet historical retarget,
+activation-boundary behavior, insufficient post-AuxPoW window behavior,
+real testnet activation/first-AuxPoW windows, and transition-envelope checks.
+Current state:
+- The missing node parameter fields are now represented in
+  `tidecoin::network::Params`: strict AuxPoW chain ID, post-AuxPoW averaging
+  window, max adjust up/down, and the optional post-AuxPoW min-difficulty
+  activation height.
+- `tidecoin::pow::next_target_after(...)` now ports the Tidecoin node's
+  `GetNextWorkRequired(...)` switch: legacy interval retargeting before AuxPoW
+  activation and post-AuxPoW per-block averaging-window retargeting after
+  activation. The legacy path now uses the node's overflow-guarded scaling
+  behavior.
+- `CalculateNextWorkRequiredNew(...)` behavior is now mirrored for the Rust
+  retarget path, including median-time-past inputs, `AveragingWindowTimespan`,
+  `MinActualTimespan`, `MaxActualTimespan`, and node-style divide-before-multiply
+  rounding.
+- `permitted_difficulty_transition(...)` now ports
+  `PermittedDifficultyTransition(...)` so header-window validation can check
+  both pre-activation legacy bounds and post-activation max-adjust bounds.
+- `tidecoin/tests/data/testnet_retarget_windows.json` provides real
+  node-extracted windows for `auxpow_start_height` and the first local AuxPoW
+  payload; Rust verifies observed `nBits` through `next_target_after(...)`.
+
+Still missing:
+- Historical long-range chain difficulty walk with known block headers
 - Overflow and minimum-difficulty boundary cases
 - Testnet min-difficulty rule activation and walk-back behavior with more than one historical block
 

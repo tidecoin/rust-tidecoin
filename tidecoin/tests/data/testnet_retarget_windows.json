@@ -1,0 +1,742 @@
+{
+  "provenance": {
+    "source": "local Tidecoin testnet blk*.dat decoded with blocks/xor.dat",
+    "datadir": "/home/yaroslav/.tidecoin/testnet",
+    "note": "Height 1000 activates post-AuxPoW rules; a local chain may still contain pure PoW headers after that because AuxPoW is permitted, not mandatory."
+  },
+  "cases": [
+    {
+      "name": "testnet_height_999_pure",
+      "network": 1,
+      "height": 999,
+      "expected": "valid_pure_pow",
+      "block_hash": "03f272dbb5173d5355515eaf2bc198721df9739692957366c4584554c220b8b3",
+      "n_bits": "0x2001ffff",
+      "header_hex": "0000002060587d3f8f7522210d1515e54ad9ba2c75c596b7341ea025c92d2b68ddd89c649bc82fe669d0fd9e11ca8a5485da9863406e326130b2c9b2728114911e7b80d6382fd169ffff012005010000",
+      "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+      "block_file_offset": 261494
+    },
+    {
+      "name": "testnet_height_1000_pure",
+      "network": 1,
+      "height": 1000,
+      "expected": "valid_pure_pow",
+      "block_hash": "c64ae773704a15051ea41a47191fc1c3cc9b19e3674fdc4122a98bda069579f9",
+      "n_bits": "0x2001adac",
+      "header_hex": "00000020b3b820c2544558c4667395929673f91d7298c12baf5e5155533d17b5db72f203aa64c9e674d1df39dcb0a68fc3d6ba64fc2865385c66b5b580bdd9ae0b573347382fd169acad0120ea000000",
+      "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+      "block_file_offset": 261755
+    },
+    {
+      "name": "testnet_height_1100_pure",
+      "network": 1,
+      "height": 1100,
+      "expected": "valid_pure_pow",
+      "block_hash": "f315145280a5a65503f2f46aa4313984a466b636a201c763afa081a33a4d4c1e",
+      "n_bits": "0x1f43ee03",
+      "header_hex": "0000002076d003a65d7d1b8494be042608caf28cb8e385156bf42e339cdc0e83c5607803c4950307a63f1e5221573fd9fbcbf3526f4101d3298f2da958427c797c6ede4e482fd16903ee431f21010000",
+      "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+      "block_file_offset": 287855
+    },
+    {
+      "name": "testnet_height_1101_auxpow",
+      "network": 1,
+      "height": 1101,
+      "expected": "valid_auxpow",
+      "block_hash": "71bc0d3280901694a76f86468fd3ecd2ae85c92d63e698d53f1c5f3eb7fb558b",
+      "n_bits": "0x1f42a6cb",
+      "header_hex": "000108201e4c4d3aa381a0af63c701a236b666a4843931a46af4f20355a6a580521415f35a14585e6981e339be8d6902ba13306f4d6832e6dd5085c5446b17c0d9bb8945492fd169cba6421f0000000001000000010000000000000000000000000000000000000000000000000000000000000000ffffffff400313ba0900041f2fd1690895409530090000002cfabe6d6d71bc0d3280901694a76f86468fd3ecd2ae85c92d63e698d53f1c5f3eb7fb558b010000000000000000000000020000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf900c2eb0b000000001600149594b113003fc808f4cdddab6d1ffc546200f95d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010207a42b016bbbcfb54e9eff762d528644d1b5c4b37c41cf72e7ae38f9d9bd4f92bbd6c7b1c056ea9c8402b20c86ee75ab8f908785d9e0c6263e205a9cfd5c35d1e1f2fd1696728151c09250bf1",
+      "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+      "block_file_offset": 288116
+    },
+    {
+      "name": "testnet_height_1102_auxpow",
+      "network": 1,
+      "height": 1102,
+      "expected": "valid_auxpow",
+      "block_hash": "5993b92f69ba4771a9948d20af5b3d815b152df1ec9b471e9db588c744a3675b",
+      "n_bits": "0x1f4165ba",
+      "header_hex": "000108208b55fbb73e5f1c3fd598e6632dc985aed2ecd38f46866fa794169080320dbc710c881106928d0f9fb44609581fd2dc476d46507326ea45e99a3d59692be07762492fd169ba65411f0000000001000000010000000000000000000000000000000000000000000000000000000000000000ffffffff400313ba0900041f2fd16908954095302f0100002cfabe6d6d5993b92f69ba4771a9948d20af5b3d815b152df1ec9b471e9db588c744a3675b010000000000000000000000020000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf900c2eb0b000000001600149594b113003fc808f4cdddab6d1ffc546200f95d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010207a42b016bbbcfb54e9eff762d528644d1b5c4b37c41cf72e7ae38f9d9bd4f92b13fa321a15f77ec58e630a87a8a364e7f649fb07fd571010b47ebc119d1e2c0b1f2fd1696728151c380cff26",
+      "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+      "block_file_offset": 288689
+    },
+    {
+      "name": "testnet_height_11567_auxpow",
+      "network": 1,
+      "height": 11567,
+      "expected": "valid_auxpow",
+      "block_hash": "050069c85ba18b195ef6b4fb94322ce99ea8fd6df562c04bf28d2b913e442fef",
+      "n_bits": "0x1c153c8b",
+      "header_hex": "00010820e6fc70565e38355e843574e65b5696171dc25dd3f46e42c538af215ef7ff7ddd9ed48909132a3c1e66a7a1aa4e2c95fa954a19ec5adc4f8a1dbad8853c540c1b502ada698b3c151c0000000001000000010000000000000000000000000000000000000000000000000000000000000000ffffffff400379de090004502ada690868c440311e0100002cfabe6d6d050069c85ba18b195ef6b4fb94322ce99ea8fd6df562c04bf28d2b913e442fef010000000000000000000000020000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf900c2eb0b000000001600149594b113003fc808f4cdddab6d1ffc546200f95d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000102035a96116ab7271d4f6800854562ec24197364bd7dceb9b79dd716079550a56ebcabd4d0a7451234fa338b5d91df5ff7c8c5dbd23e66931400ddb9bb4105a9bb1502ada69fa74151c73165b65",
+      "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+      "block_file_offset": 24779336
+    }
+  ],
+  "retarget_windows": [
+    {
+      "name": "activation",
+      "start_height": 972,
+      "end_height": 1000,
+      "network": 1,
+      "headers": [
+        {
+          "name": "testnet_height_972_pure",
+          "network": 1,
+          "height": 972,
+          "expected": "valid_pure_pow",
+          "block_hash": "b4e006516da0b05923f64b3980956d6f775601addaf4a85893563dc8b9e851df",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000208a680ecd991bbec67ca383bb77372bacb7b4f01efa2114b6c3f4b780edb3ce36e25108180316bdbb648b7b9f528eb911cdc52cf97f9692197b3b4e371188721b332fd169ffff01206d000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 254447
+        },
+        {
+          "name": "testnet_height_973_pure",
+          "network": 1,
+          "height": 973,
+          "expected": "valid_pure_pow",
+          "block_hash": "ea9c8d60917f3cce74e8cd976675a91aff43435ad81f88164b5151e63e92e7c1",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020df51e8b9c83d569358a8f4daad0156776f6d9580394bf62359b0a06d5106e0b40b56dabc8b061e1a7ce74949a558350850d63281d864689f395d47672c3c609a332fd169ffff0120a6000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 254708
+        },
+        {
+          "name": "testnet_height_974_pure",
+          "network": 1,
+          "height": 974,
+          "expected": "valid_pure_pow",
+          "block_hash": "8b6235b562f49727ce1893682c572750600ec2ad09255a0d1f43473fabb92885",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020c1e7923ee651514b16881fd85a4343ff1aa9756697cde874ce3c7f91608d9cea044482051e94aac064cff5f04e54e707dd6f9ae564d2918f23cbf49f53c55287332fd169ffff012057010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 254969
+        },
+        {
+          "name": "testnet_height_975_pure",
+          "network": 1,
+          "height": 975,
+          "expected": "valid_pure_pow",
+          "block_hash": "c2d2b474fdf1763e3d3cdae3b29ba1f050869652aa5bc7b32bb9ea1b17f76326",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000208528b9ab3f47431f0d5a2509adc20e605027572c689318ce2797f462b535628b28399f4c81d0aefe23696c437de5e153d85d007536c26b67cfc7f9bcc7002afe342fd169ffff012070000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 255230
+        },
+        {
+          "name": "testnet_height_976_pure",
+          "network": 1,
+          "height": 976,
+          "expected": "valid_pure_pow",
+          "block_hash": "604838a7252d8516c85bb32e10849ef8694141cc6f9efbb22db3fc6fc98247b4",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000202663f7171beab92bb3c75baa52968650f0a19bb2e3da3c3d3e76f1fd74b4d2c2430145f61f2f3d310c69a862fc8817bf6c2e048427f0a068d677d7030ebef85d342fd169ffff01206f010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 255491
+        },
+        {
+          "name": "testnet_height_977_pure",
+          "network": 1,
+          "height": 977,
+          "expected": "valid_pure_pow",
+          "block_hash": "61b0300d663d389724c544b8d062fa7f2caa76c1c52c3a8fb5af1d065c50e7ae",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020b44782c96ffcb32db2fb9e6fcc414169f89e84102eb35bc816852d25a7384860d6d5ceaa5e7c71877c277e837ab686219540ec5a0daa88d95972305d0db07439342fd169ffff012026000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 255752
+        },
+        {
+          "name": "testnet_height_978_pure",
+          "network": 1,
+          "height": 978,
+          "expected": "valid_pure_pow",
+          "block_hash": "edfbbfd8587426bdd96705dedf30a724a1bef7ba80831a29928f2c287f0d890c",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020aee7505c061dafb58f3a2cc5c176aa2c7ffa62d0b844c52497383d660d30b0611afc0cdc183e9b1d233d9f3545b33574e9bd4c679eb38d14f908eab43bb0075e342fd169ffff012010000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 256013
+        },
+        {
+          "name": "testnet_height_979_pure",
+          "network": 1,
+          "height": 979,
+          "expected": "valid_pure_pow",
+          "block_hash": "06db463b041b8295be16855240bd26d8ce2ca8e1d1184aa453951d1f52306ef8",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000200c890d7f282c8f92291a8380baf7bea124a730dfde0567d9bd267458d8bffbed624e21c93b4c9e97fc22ce49dfab2f0a1e202fb6f095b4d1554b6c9698eb2ec0342fd169ffff012030000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 256274
+        },
+        {
+          "name": "testnet_height_980_pure",
+          "network": 1,
+          "height": 980,
+          "expected": "valid_pure_pow",
+          "block_hash": "ed0cec061808a8c7b523b2915001e622b5a3f7674ccee52014ac9d24b4eaf253",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020f86e30521f1d9553a44a18d1e1a82cced826bd40528516be95821b043b46db061a84b3ee3f63a3df8aeddf0b0e39dc0a3c94872e5a2ba7e903f2b6627b94d3a0342fd169ffff012008000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 256535
+        },
+        {
+          "name": "testnet_height_981_pure",
+          "network": 1,
+          "height": 981,
+          "expected": "valid_pure_pow",
+          "block_hash": "9df4a6358562132568d28de8b9c28e5c9b693e7ad97908fc5fc97f35ffb35582",
+          "n_bits": "0x2001ffff",
+          "header_hex": "0000002053f2eab4249dac1420e5ce4c67f7a3b522e6015091b223b5c7a8081806ec0ced548c127080bf58982b61abdb991235afcd46578d68d81609a1de5e1458a3a9d1352fd169ffff012039000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 256796
+        },
+        {
+          "name": "testnet_height_982_pure",
+          "network": 1,
+          "height": 982,
+          "expected": "valid_pure_pow",
+          "block_hash": "25b3b9dfc3987c42b173b83025a89b7afb299fff041ac92d6b83c5692731e038",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000208255b3ff357fc95ffc0879d97a3e699b5c8ec2b9e88dd2682513628535a6f49d4486f47adc4992cae2f4153f5f50d70baef868657df4c2f89b9a3f634e35d054352fd169ffff0120f2000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 257057
+        },
+        {
+          "name": "testnet_height_983_pure",
+          "network": 1,
+          "height": 983,
+          "expected": "valid_pure_pow",
+          "block_hash": "1efca5037f472b27f882369ed70199b6a39915e441794e8b91f904f138531ce0",
+          "n_bits": "0x2001ffff",
+          "header_hex": "0000002038e0312769c5836b2dc91a04ff9f29fb7a9ba82530b873b1427c98c3dfb9b3252470474ebadf091b1a66dd4b01d2127bafcbb244a551cbb15c66797dd626f4a1352fd169ffff012039000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 257318
+        },
+        {
+          "name": "testnet_height_984_pure",
+          "network": 1,
+          "height": 984,
+          "expected": "valid_pure_pow",
+          "block_hash": "00f5b90c518f166f4468b0580a386dbf0f4f58cf6ce276236affc3dd99497197",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020e01c5338f104f9918b4e7941e41599a3b69901d79e3682f8272b477f03a5fc1e8bcf5fca7626fcca92f4bee8f6f11d5a85b1e532c8d0eedac38867277a34b5dd352fd169ffff01209b000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 257579
+        },
+        {
+          "name": "testnet_height_985_pure",
+          "network": 1,
+          "height": 985,
+          "expected": "valid_pure_pow",
+          "block_hash": "01d3c1c57ba177ee82225eafc1fa93ae718b4439fd50f57a5e7e802749e379da",
+          "n_bits": "0x2001ffff",
+          "header_hex": "0000002097714999ddc3ff6a2376e26ccf584f0fbf6d380a58b068446f168f510cb9f500a98bebc2d469bdc38bf7f3e8e499318f17e11410d47406eb553e3f2f3655986c352fd169ffff012062010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 257840
+        },
+        {
+          "name": "testnet_height_986_pure",
+          "network": 1,
+          "height": 986,
+          "expected": "valid_pure_pow",
+          "block_hash": "749d18c344a7151bbc372781ef6590b5ca491e3fb934999783537f84efe41634",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020da79e34927807e5e7af550fd39448b71ae93fac1af5e2282ee77a17bc5c1d3016f9d19bbdabdb8032be6f86003dd85f6e066a89e4a769b62c4b4dd6162ab2a6f352fd169ffff012069000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 258101
+        },
+        {
+          "name": "testnet_height_987_pure",
+          "network": 1,
+          "height": 987,
+          "expected": "valid_pure_pow",
+          "block_hash": "3f818474e87350b5c92f5ea8a8663a24cd4c9986a2b24142e1f0034cd430f87a",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000203416e4ef847f5383979934b93f1e49cab59065ef812737bc1b15a744c3189d749e2712a064fbe8dd389c875b2346fe3623df692ff62a26492dc1aeae72bb76df362fd169ffff01203c000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 258362
+        },
+        {
+          "name": "testnet_height_988_pure",
+          "network": 1,
+          "height": 988,
+          "expected": "valid_pure_pow",
+          "block_hash": "c23ccdf6c4b131c8f21da8fcf152de0cfa7951e07451b2ed32e3a00dfe5a431e",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000207af830d44c03f0e14241b2a286994ccd243a66a8a85e2fc9b55073e87484813fc34573099923c99141d419eaff29e91880913cf089ea22e51eaaccaab5ac0124362fd169ffff0120c2000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 258623
+        },
+        {
+          "name": "testnet_height_989_pure",
+          "network": 1,
+          "height": 989,
+          "expected": "valid_pure_pow",
+          "block_hash": "4638d6081a0210bcb2eb922fc1a9b9008bc86a3fc82224283955ee4e06ffd5b6",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000201e435afe0da0e332edb25174e05179fa0cde52f1fca81df2c831b1c4f6cd3cc2d7834d0f59137607a7977b176918ffcb601b4252816fc5f2a75392ce05ae7a4d362fd169ffff0120b5000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 258884
+        },
+        {
+          "name": "testnet_height_990_pure",
+          "network": 1,
+          "height": 990,
+          "expected": "valid_pure_pow",
+          "block_hash": "bcacba1affd31bea9425a429c3dcc7749e663aeaebc0e1bf4d7563a32cbd86f8",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020b6d5ff064eee5539282422c83f6ac88b00b9a9c12f92ebb2bc10021a08d63846f3b2c0f28338aef246a98b3858142e63d2868fa8e62cd2b6ad666ab8fffe3fdc362fd169ffff012083000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 259145
+        },
+        {
+          "name": "testnet_height_991_pure",
+          "network": 1,
+          "height": 991,
+          "expected": "valid_pure_pow",
+          "block_hash": "c683c9cc2a3f6676c7c1677c751d9107693a4bd0e73613dd672ab669b656ae74",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020f886bd2ca363754dbfe1c0ebea3a669e74c7dcc329a42594ea1bd3ff1abaacbcb283d82632614f9c6b66f18f404e7398832918e8bb4e9ee49034264dfba5d063362fd169ffff01200d000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 259406
+        },
+        {
+          "name": "testnet_height_992_pure",
+          "network": 1,
+          "height": 992,
+          "expected": "valid_pure_pow",
+          "block_hash": "db6668f111f52e3fc3cb5d1ce5497af26c2a7f12bd349237717fc7de23ddb6c5",
+          "n_bits": "0x2001ffff",
+          "header_hex": "0000002074ae56b669b62a67dd1336e7d04b3a6907911d757c67c1c776663f2accc983c634d1d01278ecfcad05882a580c75c89e4921539544c8b49b0556ca62f622f766362fd169ffff012041010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 259667
+        },
+        {
+          "name": "testnet_height_993_pure",
+          "network": 1,
+          "height": 993,
+          "expected": "valid_pure_pow",
+          "block_hash": "0a8aca4363674766f21826abe438c967b750a15b2c5427b914a9ee6b80f66877",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020c5b6dd23dec77f71379234bd127f2a6cf27a49e51c5dcbc33f2ef511f16866db71545433e71124e275e3f4b4d4be6b084cf8f4d7455a3866f4147db4ea21bf78372fd169ffff012032000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 259928
+        },
+        {
+          "name": "testnet_height_994_pure",
+          "network": 1,
+          "height": 994,
+          "expected": "valid_pure_pow",
+          "block_hash": "3c57966083b89e1730d7d02c62cc02e5f9f737b78d22dcd845b71f9551aa9477",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000207768f6806beea914b927542c5ba150b767c938e4ab2618f26647676343ca8a0afb732e9c6406ed36c4f22422ee20a40caa7f3f0c8007fc2f39b198cded638a66372fd169ffff012005000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 260189
+        },
+        {
+          "name": "testnet_height_995_pure",
+          "network": 1,
+          "height": 995,
+          "expected": "valid_pure_pow",
+          "block_hash": "725c3d017c7ab2c09676a252e448b632d1925a1a2c96db50e83a23af96db7390",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000207794aa51951fb745d8dc228db737f7f9e502cc622cd0d730179eb8836096573c52fc123b9fb89c7609da2c1da9953e933a271063abefa72fd816aaace991e1a2372fd169ffff012014000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 260450
+        },
+        {
+          "name": "testnet_height_996_pure",
+          "network": 1,
+          "height": 996,
+          "expected": "valid_pure_pow",
+          "block_hash": "971648473b5242cc05dfcfff67088eaa35293288377a236d6de168fc2aaa6dfa",
+          "n_bits": "0x2001ffff",
+          "header_hex": "000000209073db96af233ae850db962c1a5a92d132b648e452a27696c0b27a7c013d5c72ecb77d7c9d16b69259df934d8c24acda9078d7c904c00f47a985be1d0f9669a5372fd169ffff01209e000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 260711
+        },
+        {
+          "name": "testnet_height_997_pure",
+          "network": 1,
+          "height": 997,
+          "expected": "valid_pure_pow",
+          "block_hash": "40d72c679d3888bb194851f9853391eb94ea687c4efab99185772ae23d2eae31",
+          "n_bits": "0x2001ffff",
+          "header_hex": "00000020fa6daa2afc68e16d6d237a3788322935aa8e0867ffcfdf05cc42523b47481697398c1e01c9ef2a3cb7b49d17e571722f89267bd11af0d5d909b400309a524b5e372fd169ffff012093000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 260972
+        },
+        {
+          "name": "testnet_height_998_pure",
+          "network": 1,
+          "height": 998,
+          "expected": "valid_pure_pow",
+          "block_hash": "649cd8dd682b2dc925a01e34b796c5752cbad94ae515150d2122758f3f7d5860",
+          "n_bits": "0x2001ffff",
+          "header_hex": "0000002031ae2e3de22a778591b9fa4e7c68ea94eb913385f9514819bb88389d672cd740b3644f1ba16eaba08009d3dfbc50e185c6589986ede88a02236b50b1d9e023a3372fd169ffff0120d2020000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 261233
+        },
+        {
+          "name": "testnet_height_999_pure",
+          "network": 1,
+          "height": 999,
+          "expected": "valid_pure_pow",
+          "block_hash": "03f272dbb5173d5355515eaf2bc198721df9739692957366c4584554c220b8b3",
+          "n_bits": "0x2001ffff",
+          "header_hex": "0000002060587d3f8f7522210d1515e54ad9ba2c75c596b7341ea025c92d2b68ddd89c649bc82fe669d0fd9e11ca8a5485da9863406e326130b2c9b2728114911e7b80d6382fd169ffff012005010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 261494
+        },
+        {
+          "name": "testnet_height_1000_pure",
+          "network": 1,
+          "height": 1000,
+          "expected": "valid_pure_pow",
+          "block_hash": "c64ae773704a15051ea41a47191fc1c3cc9b19e3674fdc4122a98bda069579f9",
+          "n_bits": "0x2001adac",
+          "header_hex": "00000020b3b820c2544558c4667395929673f91d7298c12baf5e5155533d17b5db72f203aa64c9e674d1df39dcb0a68fc3d6ba64fc2865385c66b5b580bdd9ae0b573347382fd169acad0120ea000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 261755
+        }
+      ]
+    },
+    {
+      "name": "first_auxpow",
+      "start_height": 1073,
+      "end_height": 1102,
+      "network": 1,
+      "headers": [
+        {
+          "name": "testnet_height_1073_pure",
+          "network": 1,
+          "height": 1073,
+          "expected": "valid_pure_pow",
+          "block_hash": "8a94981f03110dbc5c4b22bd3ca644190e90d4970850b20e3b307be7ae50dc62",
+          "n_bits": "0x1f71732c",
+          "header_hex": "00000020eee6080eb2b317b34ec60ff3285eb330884e2d1044838655ff4de4d6aa2224e606449d4dcfb0d8fc960ec77fc0b672ec7ce10b8bbe2f0aeb9b9c1125ba5bca7a442fd1692c73711f2b030000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 280808
+        },
+        {
+          "name": "testnet_height_1074_pure",
+          "network": 1,
+          "height": 1074,
+          "expected": "valid_pure_pow",
+          "block_hash": "449cd3f4d64185fa8f70167ce5521dc5f16f8737474c5e5ef78e08f70ddac59b",
+          "n_bits": "0x1f6f5081",
+          "header_hex": "0000002062dc50aee77b303b0eb2500897d4900e1944a63cbd224b5cbc0d11031f98948a2dd9b99068ccb17f11a539cf7f67f47ea75a9ef1aa722a7220a725a9711de145442fd16981506f1fc3020000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 281069
+        },
+        {
+          "name": "testnet_height_1075_pure",
+          "network": 1,
+          "height": 1075,
+          "expected": "valid_pure_pow",
+          "block_hash": "59b90653a05b32e038163cfee6520cccf280c9f69ef36a5544ca9a84524f980f",
+          "n_bits": "0x1f6d382c",
+          "header_hex": "000000209bc5da0df7088ef75e5e4c4737876ff1c51d52e57c16708ffa8541d6f4d39c44da792b4ff6edd5d1597c7ec731447bfd8089552230c7589e692c3a4f12313127442fd1692c386d1f74000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 281330
+        },
+        {
+          "name": "testnet_height_1076_pure",
+          "network": 1,
+          "height": 1076,
+          "expected": "valid_pure_pow",
+          "block_hash": "3708632b0cc071fcf1f607a4341879d53af2b95b1a3b85a9f6493a57ab66eb82",
+          "n_bits": "0x1f6b29fe",
+          "header_hex": "000000200f984f52849aca44556af39ef6c980f2cc0c52e6fe3c1638e0325ba05306b95941a6c0f07cf510a37493551bb43d261adaa612cb7a156857a610f0d3e7d62b73442fd169fe296b1fae000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 281591
+        },
+        {
+          "name": "testnet_height_1077_pure",
+          "network": 1,
+          "height": 1077,
+          "expected": "valid_pure_pow",
+          "block_hash": "c1b24383f3535d484277f324767b57a9eab6d3cd0321655fa767fa369b25e5ee",
+          "n_bits": "0x1f6925c7",
+          "header_hex": "0000002082eb66ab573a49f6a9853b1a5bb9f23ad5791834a407f6f1fc71c00c2b630837eb399dc8efd03a9d1c3d5969cc0d281a0e5656cdfc6533c780fa74709777d940452fd169c725691f57080000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 281852
+        },
+        {
+          "name": "testnet_height_1078_pure",
+          "network": 1,
+          "height": 1078,
+          "expected": "valid_pure_pow",
+          "block_hash": "152b6e9a45411580925613790e7615491d54e18fe6522005aa5f95c5bd94b98e",
+          "n_bits": "0x1f672b53",
+          "header_hex": "00000020eee5259b36fa67a75f652103cdd3b6eaa9577b7624f37742485d53f38343b2c1e1c5bca352566d1c4dc1b5419292ea100918465223668c57926cdfde23c0e1e2452fd169532b671fdb010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 282113
+        },
+        {
+          "name": "testnet_height_1079_pure",
+          "network": 1,
+          "height": 1079,
+          "expected": "valid_pure_pow",
+          "block_hash": "1ab8c5b443c5ded08d1d0658c9078d6be320776a902585a3d3ccb58def22e7bf",
+          "n_bits": "0x1f653a6d",
+          "header_hex": "000000208eb994bdc5955faa052052e68fe1541d4915760e79135692801541459a6e2b1561f1128f952ca826ca29150e5847ea4540d0272bcbd89e6a878ac39b6e48bd4d452fd1696d3a651fc0020000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 282374
+        },
+        {
+          "name": "testnet_height_1080_pure",
+          "network": 1,
+          "height": 1080,
+          "expected": "valid_pure_pow",
+          "block_hash": "ef77398d36e165e5d1e803cf2f3dea6f7f48be9e8ca70e6f5d62f066aa54c185",
+          "n_bits": "0x1f6352dc",
+          "header_hex": "00000020bfe722ef8db5ccd3a38525906a7720e36b8d07c958061d8dd0dec543b4c5b81aa80f650479ae54ce58c4b000b0f415d4e250e5dd46b01883ddc79b361e90327d452fd169dc52631fda000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 282635
+        },
+        {
+          "name": "testnet_height_1081_pure",
+          "network": 1,
+          "height": 1081,
+          "expected": "valid_pure_pow",
+          "block_hash": "1e5ec91182ea840703ea44711773aca754da44d132ac5e272931d190483b2391",
+          "n_bits": "0x1f617480",
+          "header_hex": "0000002085c154aa66f0625d6f0ea78c9ebe487f6fea3d2fcf03e8d1e565e1368d3977ef73ac8a17cea03b97ce5c12f9b8fd67ebd1f50713d10931de98df31d48b6d3c2e452fd1698074611fb9000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 282896
+        },
+        {
+          "name": "testnet_height_1082_pure",
+          "network": 1,
+          "height": 1082,
+          "expected": "valid_pure_pow",
+          "block_hash": "1f9a364c5cb316cf7cbdafcbf4eff8be07db10088ac807ed00c84d6834f0218e",
+          "n_bits": "0x1f5f9f1c",
+          "header_hex": "0000002091233b4890d13129275eac32d144da54a7ac73177144ea030784ea8211c95e1e092efa0f6836f63b7e47c0447e4c91ee013caf953b6f5791fa5e066230b9740a452fd1691c9f5f1f18070000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 283157
+        },
+        {
+          "name": "testnet_height_1083_pure",
+          "network": 1,
+          "height": 1083,
+          "expected": "valid_pure_pow",
+          "block_hash": "91eab680c14adef97c8a7643872b70cf0472f690aa34dc932f05a8454d03c66d",
+          "n_bits": "0x1f5dd288",
+          "header_hex": "000000208e21f034684dc800ed07c88a0810db07bef8eff4cbafbd7ccf16b35c4c369a1f55f927714fb30516fd65d6e685310e522436c4c7c37eb7af45f64f490a5cf420462fd16988d25d1f57000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 283418
+        },
+        {
+          "name": "testnet_height_1084_pure",
+          "network": 1,
+          "height": 1084,
+          "expected": "valid_pure_pow",
+          "block_hash": "c5538c3e4f14d54f782c4101ef4904d1b0051270d063bb5b1c29370c0c290f5e",
+          "n_bits": "0x1f5c0e9e",
+          "header_hex": "000000206dc6034d45a8052f93dc34aa90f67204cf702b8743768a7cf9de4ac180b6ea9121f5539ef8a3386416cdb29a627c906f7f1cea7bdaf8ec901f4fb60a58c3bc41462fd1699e0e5c1f11000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 283679
+        },
+        {
+          "name": "testnet_height_1085_pure",
+          "network": 1,
+          "height": 1085,
+          "expected": "valid_pure_pow",
+          "block_hash": "f0a3e94622354b1945ef5532ae7a02e5c217c4db7f0dbbdfc29a535ad4e18555",
+          "n_bits": "0x1f5a532b",
+          "header_hex": "000000205e0f290c0c37291c5bbb63d0701205b0d10449ef01412c784fd5144f3e8c53c5bfb7e0c614dd6f588c5e404706d7335e2cbf9c869bff80236ec5ef2f374ff037462fd1692b535a1f50030000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 283940
+        },
+        {
+          "name": "testnet_height_1086_pure",
+          "network": 1,
+          "height": 1086,
+          "expected": "valid_pure_pow",
+          "block_hash": "af693810f6ffb7c62274f89037303fe5cc19cac8bb8024e51535ece4ab52b2d9",
+          "n_bits": "0x1f58a00d",
+          "header_hex": "000000205585e1d45a539ac2dfbb0d7fdbc417c2e5027aae3255ef45194b352246e9a3f08295028b93d984d614482496ae7338a1fb3b72d49935039dc02f9f12ac5194d8462fd1690da0581f16030000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 284201
+        },
+        {
+          "name": "testnet_height_1087_pure",
+          "network": 1,
+          "height": 1087,
+          "expected": "valid_pure_pow",
+          "block_hash": "b406bac50ab232e1cefab66803c434d4f618fa28d0a0b7305e47414323b88aaf",
+          "n_bits": "0x1f56f51d",
+          "header_hex": "00000020d9b252abe4ec3515e52480bbc8ca19cce53f303790f87422c6b7fff6103869afaf5d2af7149463ff9bfc471b98630cc24400e0a3b567c0e132050c2dfc6a4765462fd1691df5561f80070000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 284462
+        },
+        {
+          "name": "testnet_height_1088_pure",
+          "network": 1,
+          "height": 1088,
+          "expected": "valid_pure_pow",
+          "block_hash": "8cff444965868f95c809c9947ab50e883be0e99d053c851562ce1181b0559a68",
+          "n_bits": "0x1f555235",
+          "header_hex": "00000020af8ab8234341475e30b7a0d028fa18f6d434c40368b6facee132b20ac5ba06b4b2c786945194268f97bdd16ab223f1963e3c8a22331bc8ab46d669d6c037029c462fd1693552551fc0010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 284723
+        },
+        {
+          "name": "testnet_height_1089_pure",
+          "network": 1,
+          "height": 1089,
+          "expected": "valid_pure_pow",
+          "block_hash": "5309d7b3e4fc0b8c41b91b8fcc41f40a2f9917759cff52b327df2b216a597aaa",
+          "n_bits": "0x1f53b731",
+          "header_hex": "00000020689a55b08111ce6215853c059de9e03b880eb57a94c909c8958f86654944ff8c2d610e01c586c594dcbf62699bce276637ea0249d5fadbfe4a5e50dc773e59e1472fd16931b7531f3c020000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 284984
+        },
+        {
+          "name": "testnet_height_1090_pure",
+          "network": 1,
+          "height": 1090,
+          "expected": "valid_pure_pow",
+          "block_hash": "71e0a90c8180c87fd0a61ae57df4394a5154a5f3b9c31becd5c7e9569129dc8a",
+          "n_bits": "0x1f5223ea",
+          "header_hex": "00000020aa7a596a212bdf27b352ff9c7517992f0af441cc8f1bb9418c0bfce4b3d7095387d6a5ccf9f8ea2af386e230e7b0c8034a4aee2ab4e5d94f319cceea1cc31fbd472fd169ea23521f810a0000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 285245
+        },
+        {
+          "name": "testnet_height_1091_pure",
+          "network": 1,
+          "height": 1091,
+          "expected": "valid_pure_pow",
+          "block_hash": "b1a3cb77bc375ba74a4b204ee01b43977e681514a2ba82dfe66098e90bd0835c",
+          "n_bits": "0x1f50983d",
+          "header_hex": "000000208adc299156e9c7d5ec1bc3b9f3a554514a39f47de51aa6d07fc880810ca9e0719a936eeb6bcd8bbd169bd185fba30095f0c162238bf38c79a48a1a7c6adc7fa4472fd1693d98501faa000000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 285506
+        },
+        {
+          "name": "testnet_height_1092_pure",
+          "network": 1,
+          "height": 1092,
+          "expected": "valid_pure_pow",
+          "block_hash": "6846ad7c0df6bdf1088176e4578cab09dedff731e99a46cae74b8bb10bfd7b6d",
+          "n_bits": "0x1f4f1403",
+          "header_hex": "000000205c83d00be99860e6df82baa21415687e97431be04e204b4aa75b37bc77cba3b1456fb9ec4d84ff20750dac6545604ae06646d2a52a64cc01f068bb4cd67d901e472fd16903144f1f18070000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 285767
+        },
+        {
+          "name": "testnet_height_1093_pure",
+          "network": 1,
+          "height": 1093,
+          "expected": "valid_pure_pow",
+          "block_hash": "900fdb873b869f9391fb68a22123a18122feedaa4dc42958e9b9ab26b56241eb",
+          "n_bits": "0x1f4d9719",
+          "header_hex": "000000206d7bfd0bb18b4be7ca469ae931f7dfde09ab8c57e4768108f1bdf60d7cad4668526910b39908fce61393e68906eee035e67f8d11215fb747a19766aac1a3bb9e472fd16919974d1fac060000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 286028
+        },
+        {
+          "name": "testnet_height_1094_pure",
+          "network": 1,
+          "height": 1094,
+          "expected": "valid_pure_pow",
+          "block_hash": "0353a0342f426bf9c9bb11eedb6ff2a2eee33e820262cccba059956a27264db3",
+          "n_bits": "0x1f4c215c",
+          "header_hex": "00000020eb4162b526abb9e95829c44daaedfe2281a12321a268fb91939f863b87db0f90f56ae6d6799236210e3bb0ebd2b454466cdfee9ea1b3f2878a17f6c9fc0c7c8c472fd1695c214c1f03020000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 286289
+        },
+        {
+          "name": "testnet_height_1095_pure",
+          "network": 1,
+          "height": 1095,
+          "expected": "valid_pure_pow",
+          "block_hash": "c0e666f8e190973f8b139b2ab5d9c79e47056514f6b2647133af77dc034b0ed2",
+          "n_bits": "0x1f4ab2a6",
+          "header_hex": "00000020b34d26276a9559a0cbcc6202823ee3eea2f26fdbee11bbc9f96b422f34a05303b5d2d5d97b5f22d4493bdf9c5e0d9c86c9a8a3d59f41611e94f756ce880a5e51482fd169a6b24a1ff2070000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 286550
+        },
+        {
+          "name": "testnet_height_1096_pure",
+          "network": 1,
+          "height": 1096,
+          "expected": "valid_pure_pow",
+          "block_hash": "414c7f77dc30ee2f7418bf8e363bf36bc7e15ad54f0e487dd782e22b1d2309d9",
+          "n_bits": "0x1f494ad7",
+          "header_hex": "00000020d20e4b03dc77af337164b2f6146505479ec7d9b52a9b138b3f9790e1f866e6c07ee04e4cc93aa36c30e4426dafbe39c5b881a6d62c820701aacde4dfd25533f8482fd169d74a491f02020000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 286811
+        },
+        {
+          "name": "testnet_height_1097_pure",
+          "network": 1,
+          "height": 1097,
+          "expected": "valid_pure_pow",
+          "block_hash": "590f643747f1f4c1a234338f2447f7253ae41934c3126c8ac982165f6e481601",
+          "n_bits": "0x1f47e9cc",
+          "header_hex": "00000020d909231d2be282d77d480e4fd55ae1c76bf33b368ebf18742fee30dc777f4c41cf7442a00d8d7a7bc8050fa91a0542c8da3dd8bfd0b41350c95c2c0554f12d80482fd169cce9471f37120000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 287072
+        },
+        {
+          "name": "testnet_height_1098_pure",
+          "network": 1,
+          "height": 1098,
+          "expected": "valid_pure_pow",
+          "block_hash": "4a069eb656217d2df634b522ab892eea9029a17eca2ca58685067345204a555c",
+          "n_bits": "0x1f468f65",
+          "header_hex": "000000200116486e5f1682c98a6c12c33419e43a25f747248f3334a2c1f4f14737640f59fbafe52891dff9fae9d208ac50cfec371735a0221870424f0700aecf666a3125482fd169658f461f87050000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 287333
+        },
+        {
+          "name": "testnet_height_1099_pure",
+          "network": 1,
+          "height": 1099,
+          "expected": "valid_pure_pow",
+          "block_hash": "037860c5830edc9c332ef46b1585e3b88cf2ca082604be94841b7d5da603d076",
+          "n_bits": "0x1f453b82",
+          "header_hex": "000000205c554a204573068586a52cca7ea12990ea2e89ab22b534f62d7d2156b69e064a26965e30172e6cf2f2d8e7e20d3b465bccc23387b65b317d7207b7b511144259482fd169823b451f78030000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 287594
+        },
+        {
+          "name": "testnet_height_1100_pure",
+          "network": 1,
+          "height": 1100,
+          "expected": "valid_pure_pow",
+          "block_hash": "f315145280a5a65503f2f46aa4313984a466b636a201c763afa081a33a4d4c1e",
+          "n_bits": "0x1f43ee03",
+          "header_hex": "0000002076d003a65d7d1b8494be042608caf28cb8e385156bf42e339cdc0e83c5607803c4950307a63f1e5221573fd9fbcbf3526f4101d3298f2da958427c797c6ede4e482fd16903ee431f21010000",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 287855
+        },
+        {
+          "name": "testnet_height_1101_auxpow",
+          "network": 1,
+          "height": 1101,
+          "expected": "valid_auxpow",
+          "block_hash": "71bc0d3280901694a76f86468fd3ecd2ae85c92d63e698d53f1c5f3eb7fb558b",
+          "n_bits": "0x1f42a6cb",
+          "header_hex": "000108201e4c4d3aa381a0af63c701a236b666a4843931a46af4f20355a6a580521415f35a14585e6981e339be8d6902ba13306f4d6832e6dd5085c5446b17c0d9bb8945492fd169cba6421f0000000001000000010000000000000000000000000000000000000000000000000000000000000000ffffffff400313ba0900041f2fd1690895409530090000002cfabe6d6d71bc0d3280901694a76f86468fd3ecd2ae85c92d63e698d53f1c5f3eb7fb558b010000000000000000000000020000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf900c2eb0b000000001600149594b113003fc808f4cdddab6d1ffc546200f95d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010207a42b016bbbcfb54e9eff762d528644d1b5c4b37c41cf72e7ae38f9d9bd4f92bbd6c7b1c056ea9c8402b20c86ee75ab8f908785d9e0c6263e205a9cfd5c35d1e1f2fd1696728151c09250bf1",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 288116
+        },
+        {
+          "name": "testnet_height_1102_auxpow",
+          "network": 1,
+          "height": 1102,
+          "expected": "valid_auxpow",
+          "block_hash": "5993b92f69ba4771a9948d20af5b3d815b152df1ec9b471e9db588c744a3675b",
+          "n_bits": "0x1f4165ba",
+          "header_hex": "000108208b55fbb73e5f1c3fd598e6632dc985aed2ecd38f46866fa794169080320dbc710c881106928d0f9fb44609581fd2dc476d46507326ea45e99a3d59692be07762492fd169ba65411f0000000001000000010000000000000000000000000000000000000000000000000000000000000000ffffffff400313ba0900041f2fd16908954095302f0100002cfabe6d6d5993b92f69ba4771a9948d20af5b3d815b152df1ec9b471e9db588c744a3675b010000000000000000000000020000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf900c2eb0b000000001600149594b113003fc808f4cdddab6d1ffc546200f95d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010207a42b016bbbcfb54e9eff762d528644d1b5c4b37c41cf72e7ae38f9d9bd4f92b13fa321a15f77ec58e630a87a8a364e7f649fb07fd571010b47ebc119d1e2c0b1f2fd1696728151c380cff26",
+          "block_file": "/home/yaroslav/.tidecoin/testnet/blocks/blk00000.dat",
+          "block_file_offset": 288689
+        }
+      ]
+    }
+  ]
+}
