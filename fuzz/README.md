@@ -12,6 +12,33 @@ run
 
 in this directory.
 
+## Tidecoin Node-Parity Fuzz Targets
+
+The `tidecoin/` fuzz target family mirrors the node fuzz surfaces that belong in
+this library:
+
+- `tidecoin_transaction_policy` mirrors the stateless parts of node
+  `transaction.cpp`: transaction decoding/sanity, txid/wtxid/weight/vsize,
+  RBF/finality helpers, `IsStandardTx`, input/witness standardness, sigop cost,
+  and the Rust standard relay-precheck wrapper.
+- `tidecoin_script_policy` mirrors the script-policy parts of node
+  `script.cpp`: script decoding, minimal instruction walking, sigop counting,
+  dust calculation, witness-program classification, standard output policy, and
+  policy script-flag derivation.
+- `tidecoin_block_sanity` mirrors the library-owned parts of node `block.cpp`:
+  block decoding, context-free block sanity, merkle/witness-root derivation,
+  checked-block construction, block hash, weight, and BIP34 coinbase-height
+  extraction.
+- `tidecoin_pow` mirrors the library-owned parts of node `pow.cpp`: compact
+  target derivation, height-gated yespower/scrypt mining-hash selection,
+  proof-of-work checks, AuxPoW context checks, permitted difficulty transitions,
+  and next-work calculation over synthetic header windows.
+
+The full node `coins_view.cpp` and package-policy fuzz surfaces require UTXO
+and mempool/package state. They are intentionally not faked in `rust-tidecoin`;
+they belong to the future chain-connect/mempool validation crate documented in
+`ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md`.
+
 ## Fuzzing with weak cryptography
 
 You may wish to replace the hashing and signing code with broken crypto,

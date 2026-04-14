@@ -454,7 +454,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         if script_bytes.is_empty() {
             return Ok(());
         }
-        if sigversion != SigVersion::WitnessV1_512 && script_bytes.len() > MAX_SCRIPT_SIZE {
+        if script_bytes.len() > MAX_SCRIPT_SIZE {
             return Err(self.fail(ScriptError::ScriptSize));
         }
 

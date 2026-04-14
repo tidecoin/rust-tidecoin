@@ -8,14 +8,25 @@
 use core::cmp;
 use core::fmt;
 
+use consensus_core::{
+    VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
+    VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
+    VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
+    VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
+};
 use encoding::CompactSizeEncoder;
 
 use super::constants::{MAX_BLOCK_SIGOPS_COST, WITNESS_SCALE_FACTOR};
+use crate::network::Params;
 use crate::script::{
     Instruction, ScriptExt as _, ScriptPubKey, ScriptPubKeyExt as _, ScriptSigExt as _,
 };
-use crate::transaction::{InputWeightPrediction, OutPoint, Transaction, TxOut, Version};
-use crate::{Amount, FeeRate, Witness, WitnessVersion};
+use crate::transaction::{
+    check_transaction_sanity, InputWeightPrediction, OutPoint, Transaction, TransactionExt,
+    TransactionSanityError, TxOut, Version,
+};
+use crate::{Amount, BlockHeight, FeeRate, PqPublicKey, Witness, WitnessVersion};
 
 /// Maximum weight of a transaction for it to be relayed by most nodes on the network.
 pub const MAX_STANDARD_TX_WEIGHT: u32 = 800_000;
@@ -65,11 +76,53 @@ pub const TX_MIN_STANDARD_VERSION: Version = Version::ONE;
 /// Default transaction version range accepted by node policy.
 pub const TX_MAX_STANDARD_VERSION: Version = Version::THREE;
 
+/// Tidecoin node TRUC transaction version.
+pub const TRUC_VERSION: Version = Version::THREE;
+/// Maximum sigop-adjusted virtual size for a stateless TRUC transaction.
+pub const TRUC_MAX_VSIZE: i64 = 10_000;
+/// Maximum sigop-adjusted virtual size for a TRUC child spending unconfirmed TRUC parents.
+///
+/// This requires mempool ancestor state and is exposed for higher validation layers.
+pub const TRUC_CHILD_MAX_VSIZE: i64 = 4_000;
+
 /// Maximum number of ephemeral dust outputs permitted in a standard transaction.
 pub const MAX_DUST_OUTPUTS_PER_TX: usize = 1;
 
 pub(crate) const MAX_OP_RETURN_RELAY: usize =
     MAX_STANDARD_TX_WEIGHT as usize / WITNESS_SCALE_FACTOR;
+
+/// Mandatory script verification flags used by Tidecoin node relay policy.
+pub const MANDATORY_SCRIPT_VERIFY_FLAGS: u32 = VERIFY_P2SH
+    | VERIFY_NULLDUMMY
+    | VERIFY_CHECKLOCKTIMEVERIFY
+    | VERIFY_CHECKSEQUENCEVERIFY
+    | VERIFY_WITNESS;
+
+/// Standard script verification flags used by Tidecoin node relay policy before AuxPoW PQ flags.
+pub const STANDARD_SCRIPT_VERIFY_FLAGS: u32 = MANDATORY_SCRIPT_VERIFY_FLAGS
+    | VERIFY_MINIMALDATA
+    | VERIFY_DISCOURAGE_UPGRADABLE_NOPS
+    | VERIFY_CLEANSTACK
+    | VERIFY_MINIMALIF
+    | VERIFY_NULLFAIL
+    | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM
+    | VERIFY_CONST_SCRIPTCODE;
+
+/// Standard but not mandatory script verification flags used by Tidecoin node relay policy.
+pub const STANDARD_NOT_MANDATORY_VERIFY_FLAGS: u32 =
+    STANDARD_SCRIPT_VERIFY_FLAGS & !MANDATORY_SCRIPT_VERIFY_FLAGS;
+
+/// Returns the Tidecoin node's standard policy script flags for the next block height.
+pub fn standard_policy_script_flags(
+    params: impl AsRef<Params>,
+    next_block_height: BlockHeight,
+) -> u32 {
+    let mut flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if params.as_ref().auxpow_start_height.is_some_and(|height| next_block_height >= height) {
+        flags |= VERIFY_PQ_STRICT | VERIFY_WITNESS_V1_512 | VERIFY_SHA512;
+    }
+    flags
+}
 
 /// Standard transaction policy error reasons, mirroring Tidecoin node strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +145,124 @@ pub enum StandardTxError {
     /// Transaction contains too many dust outputs.
     Dust,
 }
+
+/// Standard relay-precheck policy configuration mirrored from Tidecoin node defaults.
+///
+/// This covers only stateless and caller-supplied-UTXO standard relay prechecks. It does not model
+/// dynamic mempool policy such as fee admission, conflicts, package limits, RBF, or package
+/// ephemeral-dust spending.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StandardRelayPrecheckPolicy {
+    /// Maximum OP_RETURN scriptPubKey bytes allowed across null-data outputs.
+    pub max_datacarrier_bytes: Option<usize>,
+    /// Whether bare multisig outputs are accepted by relay policy.
+    pub permit_bare_multisig: bool,
+    /// Dust relay feerate used for dust threshold calculation.
+    pub dust_relay_fee: FeeRate,
+}
+
+impl StandardRelayPrecheckPolicy {
+    /// Tidecoin node default standard relay-precheck policy.
+    pub const DEFAULT: Self = Self {
+        max_datacarrier_bytes: Some(MAX_OP_RETURN_RELAY),
+        permit_bare_multisig: DEFAULT_PERMIT_BAREMULTISIG,
+        dust_relay_fee: FeeRate::DUST,
+    };
+}
+
+impl Default for StandardRelayPrecheckPolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Error returned by [`check_standard_relay_prechecks`].
+///
+/// These errors mirror the node's standard relay-policy reason strings where this stateless helper
+/// overlaps with the node mempool pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StandardRelayPrecheckError {
+    /// Context-free transaction sanity failed before policy checks.
+    TransactionSanity(TransactionSanityError),
+    /// Coinbase transactions are only valid inside blocks, not as loose relay transactions.
+    Coinbase,
+    /// Transaction-local `IsStandardTx` policy failed.
+    StandardTx(StandardTxError),
+    /// Witness version 1 outputs are not standard before AuxPoW activation.
+    WitnessV1PreAuxpow,
+    /// Non-witness serialized transaction size is below the node relay floor.
+    TxSizeSmall,
+    /// UTXO-aware non-witness input standardness failed.
+    InputsNotStandard,
+    /// UTXO-aware witness standardness failed.
+    WitnessNotStandard,
+    /// Standard transaction sigop cost exceeds the node relay limit.
+    TooManySigops {
+        /// Computed sigop cost.
+        cost: usize,
+    },
+    /// TRUC transaction sigop-adjusted virtual size exceeds the stateless node limit.
+    TrucTxSize {
+        /// Computed sigop-adjusted virtual size.
+        vsize: i64,
+    },
+}
+
+impl StandardRelayPrecheckError {
+    /// Returns the Tidecoin node-compatible reason string for this policy failure.
+    pub const fn reason(&self) -> &'static str {
+        match self {
+            Self::TransactionSanity(_) => "transaction-sanity",
+            Self::Coinbase => "coinbase",
+            Self::StandardTx(err) => err.reason(),
+            Self::WitnessV1PreAuxpow => "witness-v1-pre-auxpow",
+            Self::TxSizeSmall => "tx-size-small",
+            Self::InputsNotStandard => "bad-txns-nonstandard-inputs",
+            Self::WitnessNotStandard => "bad-witness-nonstandard",
+            Self::TooManySigops { .. } => "bad-txns-too-many-sigops",
+            Self::TrucTxSize { .. } => "TRUC-violation",
+        }
+    }
+}
+
+impl From<TransactionSanityError> for StandardRelayPrecheckError {
+    fn from(err: TransactionSanityError) -> Self {
+        Self::TransactionSanity(err)
+    }
+}
+
+impl From<StandardTxError> for StandardRelayPrecheckError {
+    fn from(err: StandardTxError) -> Self {
+        Self::StandardTx(err)
+    }
+}
+
+impl fmt::Display for StandardRelayPrecheckError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TransactionSanity(err) => {
+                write!(f, "{}: {err}", self.reason())
+            }
+            Self::TooManySigops { cost } => {
+                write!(f, "{}: {} exceeds {}", self.reason(), cost, MAX_STANDARD_TX_SIGOPS_COST)
+            }
+            Self::TrucTxSize { vsize } => {
+                write!(
+                    f,
+                    "{}: version=3 tx is too big: {} > {}",
+                    self.reason(),
+                    vsize,
+                    TRUC_MAX_VSIZE
+                )
+            }
+            _ => f.write_str(self.reason()),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for StandardRelayPrecheckError {}
 
 impl StandardTxError {
     /// Returns the Tidecoin node-compatible reason string.
@@ -163,9 +334,12 @@ fn classify_multisig(script_pubkey: &ScriptPubKey) -> Option<(u8, u8)> {
     let mut num_pubkeys = 0u8;
     loop {
         match instructions.next()? {
-            Ok(Instruction::PushBytes(_)) => {
+            Ok(Instruction::PushBytes(pubkey))
+                if PqPublicKey::from_prefixed_slice(pubkey.as_bytes()).is_ok() =>
+            {
                 num_pubkeys = num_pubkeys.saturating_add(1);
             }
+            Ok(Instruction::PushBytes(_)) => return None,
             Ok(Instruction::Op(op)) => {
                 if op.decode_pushnum()? != num_pubkeys {
                     return None;
@@ -182,6 +356,16 @@ fn classify_multisig(script_pubkey: &ScriptPubKey) -> Option<(u8, u8)> {
     }
 
     instructions.next().is_none().then_some((required_sigs, num_pubkeys))
+}
+
+fn is_p2pk(script_pubkey: &ScriptPubKey) -> bool {
+    let mut instructions = script_pubkey.instructions();
+    matches!(
+        (instructions.next(), instructions.next(), instructions.next()),
+        (Some(Ok(Instruction::PushBytes(pubkey))), Some(Ok(Instruction::Op(op))), None)
+            if op == crate::opcodes::all::OP_CHECKSIG
+                && PqPublicKey::from_prefixed_slice(pubkey.as_bytes()).is_ok()
+    )
 }
 
 fn is_standard_null_data(script_pubkey: &ScriptPubKey) -> bool {
@@ -201,6 +385,7 @@ fn is_standard_null_data(script_pubkey: &ScriptPubKey) -> bool {
 fn classify_standard_script(script_pubkey: &ScriptPubKey) -> Option<StandardScriptType> {
     if script_pubkey.is_p2pkh()
         || script_pubkey.is_p2sh()
+        || is_p2pk(script_pubkey)
         || script_pubkey.is_p2wpkh()
         || script_pubkey.is_p2wsh()
         || script_pubkey.is_p2wsh512()
@@ -291,6 +476,89 @@ pub fn is_standard_tx(
         .count();
     if dust_outputs > MAX_DUST_OUTPUTS_PER_TX {
         return Err(StandardTxError::Dust);
+    }
+
+    Ok(())
+}
+
+/// Checks the standard-relay precheck subset of the Tidecoin node mempool path.
+///
+/// This deliberately mirrors the part of `MemPoolAccept::PreChecks` that can be evaluated from a
+/// transaction, chain parameters, the next block height, and supplied spent outputs:
+///
+/// - context-free transaction sanity and loose-transaction coinbase rejection,
+/// - `IsStandardTx`,
+/// - pre-AuxPoW witness-v1 output policy,
+/// - minimum non-witness transaction size,
+/// - `AreInputsStandard`,
+/// - `IsWitnessStandard`,
+/// - standard transaction sigop-cost limit.
+/// - stateless TRUC transaction virtual-size limit.
+///
+/// It does **not** perform full mempool acceptance. Fee admission, conflicts, RBF, ancestor and
+/// descendant limits, package ephemeral-dust spending, input existence, coinbase maturity, and
+/// `CheckTxInputs`-style value checks require mempool/UTXO state and belong to a higher validation
+/// layer.
+pub fn check_standard_relay_prechecks<S>(
+    tx: &Transaction,
+    params: impl AsRef<Params>,
+    next_block_height: BlockHeight,
+    spent: S,
+    policy: StandardRelayPrecheckPolicy,
+) -> Result<(), StandardRelayPrecheckError>
+where
+    S: FnMut(&OutPoint) -> Option<TxOut>,
+{
+    check_transaction_sanity(tx)?;
+
+    if tx.is_coinbase() {
+        return Err(StandardRelayPrecheckError::Coinbase);
+    }
+
+    is_standard_tx(
+        tx,
+        policy.max_datacarrier_bytes,
+        policy.permit_bare_multisig,
+        policy.dust_relay_fee,
+    )?;
+
+    let params = params.as_ref();
+    let witness_v1_allowed =
+        params.auxpow_start_height.is_some_and(|height| next_block_height >= height);
+    if !witness_v1_allowed
+        && tx
+            .outputs
+            .iter()
+            .any(|txout| txout.script_pubkey.witness_version() == Some(WitnessVersion::V1))
+    {
+        return Err(StandardRelayPrecheckError::WitnessV1PreAuxpow);
+    }
+
+    if tx.base_size() < MIN_STANDARD_TX_NONWITNESS_SIZE as usize {
+        return Err(StandardRelayPrecheckError::TxSizeSmall);
+    }
+
+    let mut spent = spent;
+    if !are_inputs_standard(tx, &mut spent) {
+        return Err(StandardRelayPrecheckError::InputsNotStandard);
+    }
+
+    if tx.inputs.iter().any(|input| !input.witness.is_empty())
+        && !is_witness_standard(tx, &mut spent)
+    {
+        return Err(StandardRelayPrecheckError::WitnessNotStandard);
+    }
+
+    let sigop_cost = tx.total_sigop_cost(&mut spent);
+    if sigop_cost > MAX_STANDARD_TX_SIGOPS_COST as usize {
+        return Err(StandardRelayPrecheckError::TooManySigops { cost: sigop_cost });
+    }
+
+    if tx.version == TRUC_VERSION {
+        let vsize = get_virtual_tx_size(tx.weight().to_wu() as i64, sigop_cost as i64);
+        if vsize > TRUC_MAX_VSIZE {
+            return Err(StandardRelayPrecheckError::TrucTxSize { vsize });
+        }
     }
 
     Ok(())
@@ -450,7 +718,7 @@ fn witness_standard_for_program<T: crate::script::ScriptHashableTag>(
 
 #[cfg(test)]
 mod tests {
-    use hashes::sha256;
+    use hashes::{sha256, sha512};
 
     use super::*;
     use crate::blockdata::script::{Builder, PushBytesBuf, ScriptBufExt as _};
@@ -479,6 +747,73 @@ mod tests {
         }
     }
 
+    fn witness_from_items(items: Vec<Vec<u8>>) -> Witness {
+        Witness::from_slice(&items)
+    }
+
+    fn p2wsh_script_pubkey(witness_script: &WitnessScriptBuf) -> ScriptPubKeyBuf {
+        ScriptPubKeyBuf::builder()
+            .push_int_unchecked(0)
+            .push_slice(sha256::Hash::hash(witness_script.as_bytes()).to_byte_array())
+            .into_script()
+    }
+
+    fn p2wsh512_script_pubkey(witness_script: &WitnessScriptBuf) -> ScriptPubKeyBuf {
+        ScriptPubKeyBuf::builder()
+            .push_int_unchecked(1)
+            .push_slice(sha512::Hash::hash(witness_script.as_bytes()).to_byte_array())
+            .into_script()
+    }
+
+    fn p2sh_wrapped_witness_program_script_sig(witness_program: &ScriptPubKeyBuf) -> ScriptSigBuf {
+        Builder::new()
+            .push_slice(PushBytesBuf::try_from(witness_program.as_bytes().to_vec()).unwrap())
+            .into_script()
+    }
+
+    fn tx_with_witness(script_sig: ScriptSigBuf, witness: Witness) -> Transaction {
+        let mut tx =
+            tx_with_single_input(script_sig, vec![prevout(ScriptPubKeyBuf::new(), 30_000)]);
+        tx.inputs[0].witness = witness;
+        tx
+    }
+
+    fn node_sized_witness_script(drop_count: usize) -> WitnessScriptBuf {
+        let mut builder = Builder::new();
+        for _ in 0..13 {
+            builder = builder.push_slice(vec![1u8; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE]);
+        }
+        builder = builder.push_slice(vec![1u8; 479]);
+        for _ in 0..drop_count {
+            builder = builder.push_opcode(crate::opcodes::all::OP_DROP);
+        }
+        builder.into_script()
+    }
+
+    fn assert_witness_standard_for_native_and_wrapped(
+        witness_program: ScriptPubKeyBuf,
+        witness: Witness,
+        expected: bool,
+    ) {
+        let native_tx = tx_with_witness(ScriptSigBuf::new(), witness.clone());
+        assert_eq!(
+            is_witness_standard(&native_tx, |_| Some(prevout(witness_program.clone(), 1))),
+            expected,
+            "native witness program standardness mismatch"
+        );
+
+        let wrapped_tx =
+            tx_with_witness(p2sh_wrapped_witness_program_script_sig(&witness_program), witness);
+        assert_eq!(
+            is_witness_standard(&wrapped_tx, |_| Some(prevout(
+                witness_program.to_p2sh().unwrap(),
+                1
+            ))),
+            expected,
+            "P2SH-wrapped witness program standardness mismatch"
+        );
+    }
+
     fn deterministic_pubkey(scheme: PqScheme, tag: u8) -> crate::crypto::pq::PqPublicKey {
         let seed: Vec<u8> = (0..scheme.deterministic_seed_len())
             .map(|i| tag ^ (i as u8).wrapping_mul(131))
@@ -491,6 +826,22 @@ mod tests {
         ScriptPubKeyBuf::builder()
             .push_slice(PushBytesBuf::try_from(pubkey.to_prefixed_bytes()).unwrap())
             .push_opcode(crate::opcodes::all::OP_CHECKSIG)
+            .into_script()
+    }
+
+    fn pq_bare_multisig_script(
+        required_sigs: i32,
+        pubkeys: &[crate::crypto::pq::PqPublicKey],
+    ) -> ScriptPubKeyBuf {
+        let mut builder = ScriptPubKeyBuf::builder().push_int(required_sigs).unwrap();
+        for pubkey in pubkeys {
+            builder =
+                builder.push_slice(PushBytesBuf::try_from(pubkey.to_prefixed_bytes()).unwrap());
+        }
+        builder
+            .push_int(pubkeys.len() as i32)
+            .unwrap()
+            .push_opcode(crate::opcodes::all::OP_CHECKMULTISIG)
             .into_script()
     }
 
@@ -522,6 +873,70 @@ mod tests {
         assert_eq!(p2wpkh.minimal_non_dust(), Amount::from_sat(5_637).unwrap());
         assert_eq!(p2wsh.minimal_non_dust(), Amount::from_sat(5_676).unwrap());
         assert_eq!(p2wsh512.minimal_non_dust(), Amount::from_sat(5_772).unwrap());
+    }
+
+    #[test]
+    fn is_standard_tx_matches_node_p2pk_classification() {
+        let p2pk = pq_p2pk_script();
+        let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(p2pk, 30_000)]);
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                FeeRate::DUST
+            ),
+            Ok(())
+        );
+
+        let invalid_p2pk = ScriptPubKeyBuf::builder()
+            .push_slice([0x42u8; 33])
+            .push_opcode(crate::opcodes::all::OP_CHECKSIG)
+            .into_script();
+        let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(invalid_p2pk, 30_000)]);
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                FeeRate::DUST
+            ),
+            Err(StandardTxError::ScriptPubKey)
+        );
+    }
+
+    #[test]
+    fn is_standard_tx_matches_node_multisig_pubkey_validation() {
+        let keys = [
+            deterministic_pubkey(PqScheme::Falcon512, 0x41),
+            deterministic_pubkey(PqScheme::Falcon512, 0x42),
+        ];
+        let valid_multisig = pq_bare_multisig_script(2, &keys);
+        let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(valid_multisig, 30_000)]);
+        assert_eq!(is_standard_tx(&tx, Some(MAX_OP_RETURN_RELAY), true, FeeRate::DUST), Ok(()));
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                FeeRate::DUST
+            ),
+            Err(StandardTxError::BareMultisig)
+        );
+
+        let invalid_multisig = ScriptPubKeyBuf::builder()
+            .push_int(1)
+            .unwrap()
+            .push_slice([0x43u8; 33])
+            .push_int(1)
+            .unwrap()
+            .push_opcode(crate::opcodes::all::OP_CHECKMULTISIG)
+            .into_script();
+        let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(invalid_multisig, 30_000)]);
+        assert_eq!(
+            is_standard_tx(&tx, Some(MAX_OP_RETURN_RELAY), true, FeeRate::DUST),
+            Err(StandardTxError::ScriptPubKey)
+        );
     }
 
     #[test]
@@ -586,12 +1001,8 @@ mod tests {
         );
 
         tx.outputs.truncate(1);
-        tx.outputs[0].script_pubkey = ScriptPubKeyBuf::builder()
-            .push_opcode(crate::opcodes::all::OP_1)
-            .push_slice([3u8; 33])
-            .push_opcode(crate::opcodes::all::OP_1)
-            .push_opcode(crate::opcodes::all::OP_CHECKMULTISIG)
-            .into_script();
+        let pubkey = deterministic_pubkey(PqScheme::Falcon512, 0x31);
+        tx.outputs[0].script_pubkey = pq_bare_multisig_script(1, &[pubkey]);
         tx.outputs[0].amount = Amount::from_sat(30_000).unwrap();
         assert_eq!(
             is_standard_tx(
@@ -889,6 +1300,170 @@ mod tests {
     }
 
     #[test]
+    fn is_witness_standard_matches_node_native_and_wrapped_p2wsh_boundaries() {
+        let simple_script: WitnessScriptBuf =
+            Builder::new().push_opcode(crate::opcodes::all::OP_TRUE).into_script();
+        let p2wsh = p2wsh_script_pubkey(&simple_script);
+
+        let mut limit_items = vec![vec![1u8]; MAX_STANDARD_P2WSH_STACK_ITEMS];
+        limit_items.push(simple_script.as_bytes().to_vec());
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh.clone(),
+            witness_from_items(limit_items),
+            true,
+        );
+
+        let mut too_many_items = vec![vec![1u8]; MAX_STANDARD_P2WSH_STACK_ITEMS + 1];
+        too_many_items.push(simple_script.as_bytes().to_vec());
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh,
+            witness_from_items(too_many_items),
+            false,
+        );
+
+        let item_limit_script: WitnessScriptBuf =
+            Builder::new().push_opcode(crate::opcodes::all::OP_DROP).into_script();
+        let item_limit_spk = p2wsh_script_pubkey(&item_limit_script);
+        assert_witness_standard_for_native_and_wrapped(
+            item_limit_spk.clone(),
+            witness_from_items(vec![
+                vec![1u8; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE],
+                item_limit_script.as_bytes().to_vec(),
+            ]),
+            true,
+        );
+        assert_witness_standard_for_native_and_wrapped(
+            item_limit_spk,
+            witness_from_items(vec![
+                vec![1u8; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE + 1],
+                item_limit_script.as_bytes().to_vec(),
+            ]),
+            false,
+        );
+
+        let max_script = node_sized_witness_script(15);
+        assert_eq!(max_script.len(), MAX_STANDARD_P2WSH_SCRIPT_SIZE);
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh_script_pubkey(&max_script),
+            witness_from_items(vec![vec![1u8], vec![1u8], max_script.as_bytes().to_vec()]),
+            true,
+        );
+
+        let oversized_script = node_sized_witness_script(16);
+        assert_eq!(oversized_script.len(), MAX_STANDARD_P2WSH_SCRIPT_SIZE + 1);
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh_script_pubkey(&oversized_script),
+            witness_from_items(vec![
+                vec![1u8],
+                vec![1u8],
+                vec![1u8],
+                oversized_script.as_bytes().to_vec(),
+            ]),
+            false,
+        );
+    }
+
+    #[test]
+    fn is_witness_standard_matches_node_p2wsh512_boundaries() {
+        let simple_script: WitnessScriptBuf =
+            Builder::new().push_opcode(crate::opcodes::all::OP_TRUE).into_script();
+        let p2wsh512 = p2wsh512_script_pubkey(&simple_script);
+
+        let mut limit_items = vec![vec![1u8]; MAX_STANDARD_P2WSH_STACK_ITEMS];
+        limit_items.push(simple_script.as_bytes().to_vec());
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh512.clone(),
+            witness_from_items(limit_items),
+            true,
+        );
+
+        let mut too_many_items = vec![vec![1u8]; MAX_STANDARD_P2WSH_STACK_ITEMS + 1];
+        too_many_items.push(simple_script.as_bytes().to_vec());
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh512,
+            witness_from_items(too_many_items),
+            false,
+        );
+
+        let item_limit_script: WitnessScriptBuf =
+            Builder::new().push_opcode(crate::opcodes::all::OP_DROP).into_script();
+        let item_limit_spk = p2wsh512_script_pubkey(&item_limit_script);
+        assert_witness_standard_for_native_and_wrapped(
+            item_limit_spk.clone(),
+            witness_from_items(vec![
+                vec![1u8; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE],
+                item_limit_script.as_bytes().to_vec(),
+            ]),
+            true,
+        );
+        assert_witness_standard_for_native_and_wrapped(
+            item_limit_spk,
+            witness_from_items(vec![
+                vec![1u8; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE + 1],
+                item_limit_script.as_bytes().to_vec(),
+            ]),
+            false,
+        );
+
+        let max_script = node_sized_witness_script(15);
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh512_script_pubkey(&max_script),
+            witness_from_items(vec![vec![1u8], vec![1u8], max_script.as_bytes().to_vec()]),
+            true,
+        );
+
+        let oversized_script = node_sized_witness_script(16);
+        assert_witness_standard_for_native_and_wrapped(
+            p2wsh512_script_pubkey(&oversized_script),
+            witness_from_items(vec![
+                vec![1u8],
+                vec![1u8],
+                vec![1u8],
+                oversized_script.as_bytes().to_vec(),
+            ]),
+            false,
+        );
+    }
+
+    #[test]
+    fn pq_witness_item_policy_boundary_is_stricter_than_consensus_push_boundary() {
+        let scheme = PqScheme::MlDsa87;
+        let pubkey = deterministic_pubkey(scheme, 0x87);
+        let witness_script: WitnessScriptBuf = Builder::new()
+            .push_slice(PushBytesBuf::try_from(pubkey.to_prefixed_bytes()).unwrap())
+            .push_opcode(crate::opcodes::all::OP_CHECKSIG)
+            .into_script();
+        let prev_script = p2wsh_script_pubkey(&witness_script);
+
+        let policy_limit_tx = tx_with_witness(
+            ScriptSigBuf::new(),
+            witness_from_items(vec![
+                vec![0x42; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE],
+                witness_script.as_bytes().to_vec(),
+            ]),
+        );
+        assert!(is_witness_standard(&policy_limit_tx, |_| Some(prevout(prev_script.clone(), 1))));
+
+        let policy_reject_tx = tx_with_witness(
+            ScriptSigBuf::new(),
+            witness_from_items(vec![
+                vec![0x42; MAX_STANDARD_P2WSH_STACK_ITEM_SIZE + 1],
+                witness_script.as_bytes().to_vec(),
+            ]),
+        );
+        assert!(!is_witness_standard(&policy_reject_tx, |_| Some(prevout(prev_script.clone(), 1))));
+
+        let consensus_push_limit_tx = tx_with_witness(
+            ScriptSigBuf::new(),
+            witness_from_items(vec![vec![0x42; 8192], witness_script.as_bytes().to_vec()]),
+        );
+        assert!(!is_witness_standard(&consensus_push_limit_tx, |_| Some(prevout(
+            prev_script.clone(),
+            1
+        ))));
+    }
+
+    #[test]
     fn is_standard_tx_covers_additional_node_cases() {
         let output_script = ScriptPubKeyBuf::builder()
             .push_opcode(crate::opcodes::all::OP_DUP)
@@ -954,12 +1529,8 @@ mod tests {
             Err(StandardTxError::ScriptPubKey)
         );
 
-        tx.outputs[0].script_pubkey = ScriptPubKeyBuf::builder()
-            .push_opcode(crate::opcodes::all::OP_1)
-            .push_slice([3u8; 33])
-            .push_opcode(crate::opcodes::all::OP_1)
-            .push_opcode(crate::opcodes::all::OP_CHECKMULTISIG)
-            .into_script();
+        let pubkey = deterministic_pubkey(PqScheme::Falcon512, 0x32);
+        tx.outputs[0].script_pubkey = pq_bare_multisig_script(1, &[pubkey]);
         assert_eq!(is_standard_tx(&tx, Some(MAX_OP_RETURN_RELAY), true, FeeRate::DUST), Ok(()));
 
         tx.outputs[0].script_pubkey = ScriptPubKeyBuf::builder()
@@ -983,6 +1554,156 @@ mod tests {
             ),
             Err(StandardTxError::TxSize)
         );
+    }
+
+    #[test]
+    fn standard_relay_prechecks_reject_small_non_witness_transaction_after_is_standard_tx() {
+        let mut tx = tx_with_single_input(
+            ScriptSigBuf::new(),
+            vec![prevout(
+                ScriptPubKeyBuf::builder()
+                    .push_opcode(crate::opcodes::all::OP_RETURN)
+                    .into_script(),
+                0,
+            )],
+        );
+        tx.inputs[0].previous_output =
+            OutPoint { txid: Txid::from_byte_array([0x91; 32]), vout: 0 };
+
+        assert!(tx.base_size() < MIN_STANDARD_TX_NONWITNESS_SIZE as usize);
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                FeeRate::DUST
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            check_standard_relay_prechecks(
+                &tx,
+                Params::REGTEST,
+                BlockHeight::from_u32(0),
+                |_| Some(prevout(ScriptPubKeyBuf::new(), 1)),
+                StandardRelayPrecheckPolicy::default(),
+            ),
+            Err(StandardRelayPrecheckError::TxSizeSmall)
+        );
+    }
+
+    #[test]
+    fn standard_relay_prechecks_reject_witness_v1_outputs_before_auxpow() {
+        let script_pubkey =
+            ScriptPubKeyBuf::builder().push_int_unchecked(1).push_slice([0x61; 64]).into_script();
+        let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(script_pubkey, 10_000)]);
+        let input_prevout = prevout(
+            Address::p2pkh(PubkeyHash::from_byte_array([0x62; 20]), Network::Testnet)
+                .script_pubkey(),
+            10_000,
+        );
+        let spent = |_: &OutPoint| Some(input_prevout.clone());
+
+        assert_eq!(
+            check_standard_relay_prechecks(
+                &tx,
+                Params::TESTNET,
+                BlockHeight::from_u32(999),
+                spent,
+                StandardRelayPrecheckPolicy::default(),
+            ),
+            Err(StandardRelayPrecheckError::WitnessV1PreAuxpow)
+        );
+        assert_eq!(
+            check_standard_relay_prechecks(
+                &tx,
+                Params::TESTNET,
+                BlockHeight::from_u32(1000),
+                |_| Some(input_prevout.clone()),
+                StandardRelayPrecheckPolicy::default(),
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn standard_policy_script_flags_match_node_auxpow_activation() {
+        let base = STANDARD_SCRIPT_VERIFY_FLAGS;
+        assert_eq!(standard_policy_script_flags(Params::TESTNET, BlockHeight::from_u32(999)), base);
+        assert_eq!(
+            standard_policy_script_flags(Params::TESTNET, BlockHeight::from_u32(1000)),
+            base | VERIFY_PQ_STRICT | VERIFY_WITNESS_V1_512 | VERIFY_SHA512
+        );
+        assert_eq!(
+            standard_policy_script_flags(Params::MAINNET, BlockHeight::from_u32(u32::MAX)),
+            base
+        );
+    }
+
+    #[test]
+    fn standard_relay_prechecks_enforce_stateless_truc_vsize_limit() {
+        let mut tx = tx_with_single_input(
+            ScriptSigBuf::new(),
+            vec![prevout(
+                ScriptPubKeyBuf::builder()
+                    .push_opcode(crate::opcodes::all::OP_DUP)
+                    .push_opcode(crate::opcodes::all::OP_HASH160)
+                    .push_slice([0x71; 20])
+                    .push_opcode(crate::opcodes::all::OP_EQUALVERIFY)
+                    .push_opcode(crate::opcodes::all::OP_CHECKSIG)
+                    .into_script(),
+                30_000,
+            )],
+        );
+        tx.version = TRUC_VERSION;
+        tx.inputs[0].witness.push(vec![0x42; (TRUC_MAX_VSIZE as usize * 4) + 1]);
+
+        let input_prevout = prevout(
+            ScriptPubKeyBuf::builder().push_int_unchecked(0).push_slice([0x72; 20]).into_script(),
+            30_000,
+        );
+        let Err(StandardRelayPrecheckError::TrucTxSize { vsize }) = check_standard_relay_prechecks(
+            &tx,
+            Params::REGTEST,
+            BlockHeight::from_u32(0),
+            |_| Some(input_prevout.clone()),
+            StandardRelayPrecheckPolicy::default(),
+        ) else {
+            panic!("oversized TRUC transaction should fail stateless relay prechecks");
+        };
+        assert!(vsize > TRUC_MAX_VSIZE);
+    }
+
+    #[test]
+    fn standard_relay_prechecks_enforce_standard_sigop_cost_limit() {
+        let pubkey = deterministic_pubkey(PqScheme::Falcon512, 0x63);
+        let bare_multisig = pq_bare_multisig_script(1, &[pubkey]);
+        let outputs = (0..=MAX_STANDARD_TX_SIGOPS_COST / 80)
+            .map(|_| prevout(bare_multisig.clone(), 30_000))
+            .collect();
+        let tx = tx_with_single_input(ScriptSigBuf::new(), outputs);
+        let input_prevout = prevout(
+            Address::p2pkh(PubkeyHash::from_byte_array([0x64; 20]), Network::Regtest)
+                .script_pubkey(),
+            10_000,
+        );
+        let policy = StandardRelayPrecheckPolicy {
+            permit_bare_multisig: true,
+            ..StandardRelayPrecheckPolicy::default()
+        };
+
+        let Err(StandardRelayPrecheckError::TooManySigops { cost }) =
+            check_standard_relay_prechecks(
+                &tx,
+                Params::REGTEST,
+                BlockHeight::from_u32(0),
+                |_| Some(input_prevout.clone()),
+                policy,
+            )
+        else {
+            panic!("too many standard sigops should be rejected");
+        };
+        assert!(cost > MAX_STANDARD_TX_SIGOPS_COST as usize);
     }
 
     #[test]
@@ -1043,15 +1764,7 @@ mod tests {
                     .0
             })
             .collect();
-        let mut builder = ScriptPubKeyBuf::builder().push_int(2).unwrap();
-        for key in &keys {
-            builder = builder.push_slice(PushBytesBuf::try_from(key.to_prefixed_bytes()).unwrap());
-        }
-        let script_pubkey = builder
-            .push_int(2)
-            .unwrap()
-            .push_opcode(crate::opcodes::all::OP_CHECKMULTISIG)
-            .into_script();
+        let script_pubkey = pq_bare_multisig_script(2, &keys);
         let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(script_pubkey, 30_000)]);
 
         assert_eq!(

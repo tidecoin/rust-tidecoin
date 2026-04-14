@@ -540,6 +540,36 @@ These tests are already part of the new proof surface:
   - generic stack/opcode/witness invariants still meaningful under Tidecoin
   - PQ-oriented live runtime checks
 
+## Active Fuzz Coverage
+
+The Rust fuzz crate now has active Tidecoin-node-shaped targets for the
+library-owned fuzz surfaces:
+
+- [fuzz/fuzz_targets/tidecoin/transaction_policy.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/fuzz/fuzz_targets/tidecoin/transaction_policy.rs)
+  mirrors the stateless parts of the node `transaction.cpp` fuzz target:
+  transaction decoding/sanity, txid/wtxid, weight/vsize, RBF/finality helpers,
+  `IsStandardTx`, input/witness standardness, sigop cost, and the standard
+  relay-precheck wrapper.
+- [fuzz/fuzz_targets/tidecoin/script_policy.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/fuzz/fuzz_targets/tidecoin/script_policy.rs)
+  mirrors the script-policy portions of the node `script.cpp` fuzz target:
+  instruction walking, sigop counting, dust calculation, witness-program
+  classification, standard-output policy, and policy script-flag derivation.
+- [fuzz/fuzz_targets/tidecoin/block_sanity.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/fuzz/fuzz_targets/tidecoin/block_sanity.rs)
+  mirrors the library-owned parts of the node `block.cpp` fuzz target:
+  block decoding, context-free block sanity, merkle/witness-root derivation,
+  checked-block construction, block hash, weight, and BIP34 coinbase-height
+  extraction.
+- [fuzz/fuzz_targets/tidecoin/pow.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/fuzz/fuzz_targets/tidecoin/pow.rs)
+  mirrors the library-owned pieces of the node `pow.cpp` fuzz target: compact
+  target derivation, yespower/scrypt mining-hash selection, PoW validation,
+  AuxPoW context checks, permitted difficulty transitions, and next-work
+  calculation over synthetic header windows.
+
+The node `coins_view.cpp` and package-policy fuzz surfaces are not implemented
+inside `rust-tidecoin` because they require UTXO and mempool/package state. They
+belong to the future chain-connect/mempool validation crate, not to primitives or
+the byte-level consensus wrapper.
+
 ## Gaps Versus Archived Coverage
 
 The current Tidecoin-native test surface now covers the major archived proof
@@ -548,7 +578,9 @@ classes with Tidecoin-node parity or Tidecoin-native local invariants.
 Main remaining gaps:
 
 1. The stale vendored Core-era corpora have been archived under [consensus/tests/archived/data](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/archived/data); they are temporary migration reference only and should be deleted later once the Tidecoin-native proof surface is accepted.
-2. Some optional diagnostics and coverage counters could still be richer, but
+2. Full UTXO-backed coins-view/package-policy fuzz parity remains future-crate
+   scope and should be implemented with real chainstate/mempool ownership.
+3. Some optional diagnostics and coverage counters could still be richer, but
    they are not blockers for the active runtime architecture.
 
 ## Implementation Order

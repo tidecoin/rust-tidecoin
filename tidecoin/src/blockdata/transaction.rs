@@ -436,7 +436,7 @@ impl TransactionExtPriv for Transaction {
         ) -> usize {
             if witness_program.is_p2wpkh() {
                 1
-            } else if witness_program.is_p2wsh() {
+            } else if witness_program.is_p2wsh() || witness_program.is_p2wsh512() {
                 // Treat the last item of the witness as the witnessScript
                 witness.last().map(WitnessScript::from_bytes).map(|s| s.count_sigops()).unwrap_or(0)
             } else {
@@ -1520,6 +1520,11 @@ mod tests {
             bytes.extend_from_slice(&[tag; 32]);
             ScriptPubKeyBuf::from_bytes(bytes)
         }
+        fn p2wsh512_script(tag: u8) -> ScriptPubKeyBuf {
+            let mut bytes = vec![0x51, 0x40];
+            bytes.extend_from_slice(&[tag; 64]);
+            ScriptPubKeyBuf::from_bytes(bytes)
+        }
         fn pushed_script_sig(script: &ScriptPubKeyBuf) -> ScriptSigBuf {
             let script = script.as_bytes();
             assert!(script.len() <= 75);
@@ -1540,6 +1545,7 @@ mod tests {
             P2sh,
             P2wpkh,
             P2wsh,
+            P2wsh512,
         }
         impl PrevoutKind {
             fn txout(self) -> Option<TxOut> {
@@ -1548,6 +1554,7 @@ mod tests {
                     Self::P2sh => Some(prevout(p2sh_script(0x11))),
                     Self::P2wpkh => Some(prevout(p2wpkh_script(0x12))),
                     Self::P2wsh => Some(prevout(p2wsh_script(0x13))),
+                    Self::P2wsh512 => Some(prevout(p2wsh512_script(0x14))),
                 }
             }
         }
@@ -1631,6 +1638,21 @@ mod tests {
                 },
                 3,
                 PrevoutKind::P2sh,
+                0,
+            ),
+            // 3 sigops: P2WSH-512 counts the executed witness script like the node.
+            (
+                Transaction {
+                    version: Version::TWO,
+                    lock_time: absolute::LockTime::ZERO,
+                    inputs: vec![TxIn {
+                        witness: Witness::from_iter([multisig_3_of_3.as_bytes()]),
+                        ..synthetic_txin(0x79, 0, &[])
+                    }],
+                    outputs: vec![prevout(p2sh_script(0x7a))],
+                },
+                3,
+                PrevoutKind::P2wsh512,
                 0,
             ),
             // 80 sigops: bare multisig output uses the consensus fallback of 20 sigops x 4.

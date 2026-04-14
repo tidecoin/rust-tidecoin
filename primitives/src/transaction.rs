@@ -115,9 +115,6 @@ pub struct Transaction {
 
 #[cfg(feature = "alloc")]
 impl Transaction {
-    /// Maximum standard transaction weight on the Tidecoin network.
-    pub const MAX_STANDARD_WEIGHT: Weight = Weight::from_wu(400_000);
-
     /// Computes a "normalized TXID" which does not include any signatures.
     ///
     /// This function is needed only for legacy (pre-Segwit or P2SH-wrapped segwit version 0)

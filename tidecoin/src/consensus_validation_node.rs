@@ -240,8 +240,8 @@ mod tests {
         PqPublicKey, PqScheme, PqSchemeCryptoExt as _, PqSecretKey, PqSignature,
     };
     use crate::opcodes::all::{
-        OP_ADD, OP_CHECKMULTISIG, OP_CHECKSIG, OP_DUP, OP_EQUAL, OP_EQUALVERIFY, OP_FROMALTSTACK,
-        OP_HASH160, OP_NUMEQUAL, OP_SHA256, OP_SHA512, OP_TOALTSTACK, OP_TRUE,
+        OP_ADD, OP_CHECKMULTISIG, OP_CHECKSIG, OP_DROP, OP_DUP, OP_EQUAL, OP_EQUALVERIFY,
+        OP_FROMALTSTACK, OP_HASH160, OP_NUMEQUAL, OP_SHA256, OP_SHA512, OP_TOALTSTACK, OP_TRUE,
     };
     use crate::pqhd;
     use crate::script::PushBytesBuf;
@@ -1342,6 +1342,45 @@ mod tests {
                 VERIFY_WITNESS | VERIFY_P2SH | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
             ),
             Err(TidecoinValidationError::Script(ScriptError::DiscourageUpgradableWitnessProgram,))
+        );
+    }
+
+    fn witness_v1_512_script_with_size(len: usize) -> ScriptPubKeyBuf {
+        let mut builder = ScriptPubKeyBuf::builder();
+        let full_chunk = PushBytesBuf::try_from(vec![0x42; 8192]).unwrap();
+        for _ in 0..7 {
+            builder = builder.push_slice(&full_chunk).push_opcode(OP_DROP);
+        }
+        let used = 7 * (3 + 8192 + 1) + 1;
+        let tail_len = len.checked_sub(used + 4).expect("script size too small for fixture");
+        let tail = PushBytesBuf::try_from(vec![0x24; tail_len]).unwrap();
+        builder.push_slice(&tail).push_opcode(OP_DROP).push_opcode(OP_TRUE).into_script()
+    }
+
+    fn verify_witness_v1_512_script_size(script_len: usize) -> Result<(), TidecoinValidationError> {
+        let witness_script = witness_v1_512_script_with_size(script_len);
+        assert_eq!(witness_script.len(), script_len);
+        let program = sha512::Hash::hash(witness_script.as_bytes()).to_byte_array();
+        let script_pubkey =
+            ScriptPubKeyBuf::builder().push_int(1).unwrap().push_slice(program).into_script();
+        let witness = Witness::from_slice(&[witness_script.as_bytes()]);
+        verify_script_case(
+            &ScriptSigBuf::new(),
+            &script_pubkey,
+            &witness,
+            Amount::from_sat(0).unwrap(),
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_WITNESS_V1_512,
+        )
+    }
+
+    #[test]
+    fn witness_v1_512_script_size_boundary_matches_node() {
+        require_node_harness!();
+
+        verify_witness_v1_512_script_size(65_536).unwrap();
+        assert_eq!(
+            verify_witness_v1_512_script_size(65_537),
+            Err(TidecoinValidationError::Script(ScriptError::ScriptSize))
         );
     }
 

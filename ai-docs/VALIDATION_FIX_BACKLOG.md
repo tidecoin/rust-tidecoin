@@ -360,6 +360,32 @@ Remaining depth work belongs in the node-backed corpus, not in a second
 verification implementation in `tidecoin`: add any missing node PQ vectors to
 the shared Tidecoin-node harness and keep consensus-core as the single verifier.
 
+#### Continuous fuzz parity
+
+Rust now has active cargo-fuzz targets for the Tidecoin-node fuzz surfaces that
+belong inside this repository:
+
+- `tidecoin_transaction_policy` mirrors the stateless transaction and policy
+  checks from node `transaction.cpp`.
+- `tidecoin_script_policy` mirrors the script classification, sigop, dust, and
+  standardness checks from node `script.cpp`, including policy script-flag
+  derivation.
+- `tidecoin_block_sanity` mirrors the library-owned block sanity checks from
+  node `block.cpp`: context-free block sanity, merkle/witness-root derivation,
+  checked-block construction, block hash, weight, and BIP34 coinbase-height
+  extraction.
+- `tidecoin_pow` mirrors compact target, mining hash selection, PoW validation,
+  AuxPoW context, difficulty-transition, and next-work checks from node
+  `pow.cpp`.
+
+Still future scope:
+
+- `coins_view.cpp` parity needs UTXO set ownership.
+- package-policy fuzz needs mempool/package ownership.
+
+Those targets should be added when the chain-connect/mempool validation crate is
+introduced, not by duplicating chainstate or mempool logic in `rust-tidecoin`.
+
 ## Closed
 
 - `done` Close the final residual node-test tails from the post-push audit:

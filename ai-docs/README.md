@@ -318,6 +318,10 @@ Current status note:
 - Add chain-level parity coverage that remains open below the script
   interpreter: AuxPoW validation, yespower mining hash, target-check APIs, and
   broader difficulty retargeting vectors.
+- Keep the fuzz surface aligned with the Tidecoin node fuzz targets. Current
+  Rust cargo-fuzz coverage includes stateless transaction/policy, script-policy,
+  block-sanity, and PoW targets; UTXO-backed `coins_view` and package-policy
+  fuzz belong to the future chain-connect/mempool validation crate.
 
 ## Master Plan
 

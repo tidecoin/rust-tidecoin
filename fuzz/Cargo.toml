@@ -56,6 +56,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "tidecoin_block_sanity"
+path = "fuzz_targets/tidecoin/block_sanity.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "tidecoin_deserialize_block"
 path = "fuzz_targets/tidecoin/deserialize_block.rs"
 test = false
@@ -105,8 +112,29 @@ doc = false
 bench = false
 
 [[bin]]
+name = "tidecoin_pow"
+path = "fuzz_targets/tidecoin/pow.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "tidecoin_script_bytes_to_asm_fmt"
 path = "fuzz_targets/tidecoin/script_bytes_to_asm_fmt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tidecoin_script_policy"
+path = "fuzz_targets/tidecoin/script_policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tidecoin_transaction_policy"
+path = "fuzz_targets/tidecoin/transaction_policy.rs"
 test = false
 doc = false
 bench = false

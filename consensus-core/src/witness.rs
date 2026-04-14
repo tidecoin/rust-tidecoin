@@ -227,7 +227,7 @@ fn build_witness_v1_512_plan(
         sigversion: WitnessSigVersion::V1_512,
         script_bytes: exec_script_bytes.to_vec(),
         stack_items: witness_items(witness, witness.len() - 1),
-        sigops: WitnessSigops::None,
+        sigops: WitnessSigops::CountExecutedScript,
     })
 }
 
@@ -339,7 +339,7 @@ mod tests {
         match plan {
             WitnessExecutionPlan::Execute { sigversion, script_bytes, stack_items, sigops } => {
                 assert_eq!(sigversion, WitnessSigVersion::V1_512);
-                assert_eq!(sigops, WitnessSigops::None);
+                assert_eq!(sigops, WitnessSigops::CountExecutedScript);
                 assert_eq!(script_bytes, exec_script);
                 assert_eq!(stack_items, vec![vec![1u8]]);
             }
