@@ -979,6 +979,12 @@ mod tests {
         )
     }
 
+    fn oversized_stripped_block() -> Block {
+        let mut coinbase = block_coinbase(2, 0x51);
+        coinbase.outputs[0].script_pubkey = ScriptPubKeyBuf::from_bytes(vec![0x51; 1_500_100]);
+        block_from_transactions(vec![coinbase])
+    }
+
     #[test]
     fn check_block_sanity_edges_match_node() {
         require_node_harness!();
@@ -1004,6 +1010,7 @@ mod tests {
             ("bad_merkle", bad_merkle, false),
             ("bad_transaction", block_from_transactions(vec![block_coinbase(1, 0x51)]), false),
             ("too_many_legacy_sigops", block_from_transactions(vec![too_many_sigops]), false),
+            ("oversized_stripped_block", oversized_stripped_block(), false),
         ];
 
         let harness = node_harness();

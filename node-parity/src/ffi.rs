@@ -49,6 +49,16 @@ unsafe extern "C" {
         check_merkle_root: c_int,
     ) -> c_int;
 
+    /// Runs Tidecoin node-equivalent UTXO-independent contextual block validation.
+    pub fn tidecoin_node_check_contextual_block(
+        block_hex: *const c_char,
+        network: c_int,
+        height: c_int,
+        lock_time_cutoff: i64,
+        enforce_bip34_height: c_int,
+        expect_witness_commitment: c_int,
+    ) -> c_int;
+
     /// Runs Tidecoin node-equivalent permitted difficulty transition checks.
     pub fn tidecoin_node_permitted_difficulty_transition(
         network: c_int,

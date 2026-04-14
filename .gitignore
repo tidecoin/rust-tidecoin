@@ -1,4 +1,4 @@
-# .gitignore for rust-bitcoin repository workspace.
+# .gitignore for rust-tidecoin repository workspace.
 
 # Lock files
 Cargo.lock
@@ -16,6 +16,10 @@ hashes/target
 bitcoin/dep_test
 mutants.out*
 fuzz/coverage
+
+# Python tooling artifacts
+__pycache__/
+*.py[cod]
 
 # Local tooling
 .maintainer-tools

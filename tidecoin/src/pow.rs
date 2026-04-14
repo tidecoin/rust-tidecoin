@@ -3365,6 +3365,14 @@ mod tests {
     }
 
     #[cfg(feature = "std")]
+    fn try_header_from_window(headers: &[(u32, Header)], height: BlockHeight) -> Option<Header> {
+        let height = height.to_u32();
+        headers
+            .iter()
+            .find_map(|(candidate, header)| (*candidate == height).then(|| header.clone()))
+    }
+
+    #[cfg(feature = "std")]
     fn fixture_params(network: i64) -> Params {
         match network {
             1 => Params::TESTNET,
@@ -3521,12 +3529,6 @@ mod tests {
 
             for candidate_height in (start + 1)..=end {
                 let current_height = candidate_height - 1;
-                let first_target_height =
-                    current_height.saturating_sub(params.pow_averaging_window);
-                if first_target_height.saturating_sub(10) < start {
-                    continue;
-                }
-
                 let current = header_from_window(&headers, BlockHeight::from_u32(current_height));
                 let observed =
                     header_from_window(&headers, BlockHeight::from_u32(candidate_height));
@@ -3535,11 +3537,17 @@ mod tests {
                     BlockHeight::from_u32(current_height),
                     &params,
                     Some(observed.time.to_u32()),
-                    |height| -> Result<Header, core::convert::Infallible> {
-                        Ok(header_from_window(&headers, height))
+                    |height| -> Result<Header, BlockHeight> {
+                        try_header_from_window(&headers, height).ok_or(height)
                     },
-                )
-                .expect("real testnet retarget window should have required history");
+                );
+                let got = match got {
+                    Ok(got) => got,
+                    Err(missing) if missing.to_u32() < start => continue,
+                    Err(missing) => panic!(
+                        "{name} next target for height {candidate_height} requested missing fixture height {missing}"
+                    ),
+                };
 
                 assert_eq!(got, observed.bits, "{name} candidate_height={candidate_height}");
             }
@@ -4266,9 +4274,65 @@ mod tests {
 
         let yespower_header = pow_vector_header();
         harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&yespower_header), 0, Some(1))
+            .expect("node accepts height-aware yespower header");
+        harness
             .has_valid_header_pow_hex(&header_consensus_hex(&yespower_header), 0, None)
-            .expect("node accepts yespower header without height");
+            .expect("node accepts yespower header through CheckProofOfWorkAny");
+        validate_pow_at_height(&yespower_header, Params::MAINNET, BlockHeight::from_u32(1))
+            .expect("Rust accepts height-aware yespower header");
         validate_pow_any(&yespower_header, Params::MAINNET).expect("Rust accepts yespower header");
+
+        let mut bad_yespower = yespower_header;
+        bad_yespower.bits = CompactTarget::from_consensus(0x0101_0000);
+        assert!(harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&bad_yespower), 0, Some(1))
+            .is_err());
+        assert!(harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&bad_yespower), 0, None)
+            .is_err());
+        assert_eq!(
+            validate_pow_at_height(&bad_yespower, Params::MAINNET, BlockHeight::from_u32(1)),
+            Err(PowValidationError::BadProofOfWork)
+        );
+        assert_eq!(
+            validate_pow_any(&bad_yespower, Params::MAINNET),
+            Err(PowValidationError::BadProofOfWork)
+        );
+
+        let mut scrypt_header =
+            test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
+        let scrypt_target =
+            derive_target(scrypt_header.bits, Params::REGTEST).expect("valid target");
+        while !scrypt_target.is_met_by(scrypt_pow_hash(&scrypt_header)) {
+            scrypt_header.nonce += 1;
+        }
+        harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&scrypt_header), 2, Some(0))
+            .expect("node accepts height-aware scrypt header");
+        harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&scrypt_header), 2, None)
+            .expect("node accepts scrypt header through CheckProofOfWorkAny");
+        validate_pow_at_height(&scrypt_header, Params::REGTEST, BlockHeight::from_u32(0))
+            .expect("Rust accepts height-aware scrypt header");
+        validate_pow_any(&scrypt_header, Params::REGTEST).expect("Rust accepts scrypt header");
+
+        let mut bad_scrypt = scrypt_header;
+        bad_scrypt.bits = CompactTarget::from_consensus(0x0101_0000);
+        assert!(harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&bad_scrypt), 2, Some(0))
+            .is_err());
+        assert!(harness
+            .has_valid_header_pow_hex(&header_consensus_hex(&bad_scrypt), 2, None)
+            .is_err());
+        assert_eq!(
+            validate_pow_at_height(&bad_scrypt, Params::REGTEST, BlockHeight::from_u32(0)),
+            Err(PowValidationError::BadProofOfWork)
+        );
+        assert_eq!(
+            validate_pow_any(&bad_scrypt, Params::REGTEST),
+            Err(PowValidationError::BadProofOfWork)
+        );
 
         let auxpow_header = valid_auxpow_header();
         harness

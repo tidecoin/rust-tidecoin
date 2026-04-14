@@ -10,6 +10,7 @@
 #include <core_io.h>
 #include <crypto/scrypt.h>
 #include <crypto/yespower/tidecoin_pow.h>
+#include <hash.h>
 #include <logging.h>
 #include <pq/pq_api.h>
 #include <pq/pq_txsize.h>
@@ -520,6 +521,80 @@ bool CheckBlockBridge(
     return true;
 }
 
+bool CheckWitnessMalleationBridge(const CBlock& block, bool expect_witness_commitment)
+{
+    if (expect_witness_commitment) {
+        if (block.m_checked_witness_commitment) return true;
+
+        const int commitpos = GetWitnessCommitmentIndex(block);
+        if (commitpos != NO_WITNESS_COMMITMENT) {
+            if (block.vtx.empty() || block.vtx[0]->vin.empty()) return false;
+            const auto& witness_stack{block.vtx[0]->vin[0].scriptWitness.stack};
+            if (witness_stack.size() != 1 || witness_stack[0].size() != 32) {
+                return false;
+            }
+
+            uint256 hash_witness = BlockWitnessMerkleRoot(block, /*mutated=*/nullptr);
+            CHash256().Write(hash_witness).Write(witness_stack[0]).Finalize(hash_witness);
+            if (memcmp(hash_witness.begin(), &block.vtx[0]->vout[commitpos].scriptPubKey[6], 32)) {
+                return false;
+            }
+
+            block.m_checked_witness_commitment = true;
+            return true;
+        }
+    }
+
+    for (const auto& tx : block.vtx) {
+        if (tx->HasWitness()) return false;
+    }
+
+    return true;
+}
+
+bool IsFinalTxBridge(const CTransaction& tx, int height, int64_t lock_time_cutoff)
+{
+    if (tx.nLockTime == 0) return true;
+    const int64_t threshold =
+        static_cast<int64_t>(tx.nLockTime) < LOCKTIME_THRESHOLD ? height : lock_time_cutoff;
+    if (static_cast<int64_t>(tx.nLockTime) < threshold) return true;
+
+    for (const auto& txin : tx.vin) {
+        if (txin.nSequence != CTxIn::SEQUENCE_FINAL) return false;
+    }
+    return true;
+}
+
+bool ContextualCheckBlockBridge(
+    const CBlock& block,
+    const Consensus::Params& params,
+    int height,
+    int64_t lock_time_cutoff,
+    bool enforce_bip34_height,
+    bool expect_witness_commitment)
+{
+    if (!CheckBlockBridge(block, params, /*check_pow=*/false, /*check_merkle_root=*/true)) {
+        return false;
+    }
+
+    for (const auto& tx : block.vtx) {
+        if (!IsFinalTxBridge(*tx, height, lock_time_cutoff)) return false;
+    }
+
+    if (enforce_bip34_height) {
+        const CScript expect = CScript() << height;
+        if (block.vtx[0]->vin[0].scriptSig.size() < expect.size() ||
+            !std::equal(expect.begin(), expect.end(), block.vtx[0]->vin[0].scriptSig.begin())) {
+            return false;
+        }
+    }
+
+    if (!CheckWitnessMalleationBridge(block, expect_witness_commitment)) return false;
+    if (GetBlockWeight(block) > MAX_BLOCK_WEIGHT) return false;
+
+    return true;
+}
+
 CScriptWitness BuildWitness(const uint8_t* const* items, const size_t* lens, size_t count)
 {
     CScriptWitness witness;
@@ -682,6 +757,30 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_block(
             params,
             check_pow != 0,
             check_merkle_root != 0) ? 1 : 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_contextual_block(
+    const char* block_hex,
+    int network,
+    int height,
+    int64_t lock_time_cutoff,
+    int enforce_bip34_height,
+    int expect_witness_commitment)
+{
+    try {
+        CBlock block;
+        if (!DecodeBlockHex(block, block_hex)) return 0;
+        const Consensus::Params params = BridgeConsensusParams(network);
+        return ContextualCheckBlockBridge(
+            block,
+            params,
+            height,
+            lock_time_cutoff,
+            enforce_bip34_height != 0,
+            expect_witness_commitment != 0) ? 1 : 0;
     } catch (const std::exception&) {
         return -1;
     }

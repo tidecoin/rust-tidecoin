@@ -59,6 +59,23 @@ int tidecoin_node_check_block(
     return -1;
 }
 
+int tidecoin_node_check_contextual_block(
+    const char* block_hex,
+    int network,
+    int height,
+    int64_t lock_time_cutoff,
+    int enforce_bip34_height,
+    int expect_witness_commitment)
+{
+    (void)block_hex;
+    (void)network;
+    (void)height;
+    (void)lock_time_cutoff;
+    (void)enforce_bip34_height;
+    (void)expect_witness_commitment;
+    return -1;
+}
+
 int tidecoin_node_permitted_difficulty_transition(
     int network,
     int64_t height,

@@ -188,7 +188,8 @@ Current fixture coverage:
   metadata, testnet activation acceptance, pre-activation rejection, and missing
   payload decode rejection.
 - `tidecoin/tests/data/testnet_retarget_windows.json` now contains real
-  testnet headers around activation and the first local AuxPoW payload. Mainnet
+  testnet headers for genesis-to-activation legacy min-difficulty walk-back,
+  activation, the first local AuxPoW payload, and a post-AuxPoW span. Mainnet
   AuxPoW vectors are not applicable while mainnet `auxpow_start_height` is
   disabled in Tidecoin chain params.
 
@@ -246,22 +247,28 @@ Current state:
 - Tidecoin-native pure-header PoW hash APIs exist:
   `yespower_pow_hash`, `scrypt_pow_hash`, and height-gated selection.
 - `validate_pow_at_height(...)` validates the selected hash against `nBits`,
-  not the header identity hash.
+  not the header identity hash, with node-bridge pass/fail coverage for
+  height-aware yespower and scrypt proof checks.
+- `validate_pow_any(...)` mirrors the node heightless `CheckProofOfWorkAny`
+  path, with node-bridge pass/fail coverage for yespower and scrypt.
 - `tidecoin::block_validation::contextual_check_block_header(...)` now uses
   `next_target_after(...)` to check exact contextual `nBits`, MTP, BIP94
   timewarp, version gates, and selected PoW/AuxPoW proof.
 - `tidecoin::block_validation::contextual_check_block(...)` now adds the
   node-shaped non-UTXO block context layer: context-free block sanity,
   contextual header checks, transaction finality using the CSV-height cutoff
-  rule, BIP34 coinbase height, and pre-activation witness rejection.
-- Real testnet fixture windows cover the activation boundary and first local
-  AuxPoW payload.
+  rule, BIP34 coinbase height, and pre-activation witness rejection. Focused
+  node-bridge tests cover these cases plus larger 65-transaction final and
+  non-final blocks.
+- Real testnet fixture windows cover genesis-to-activation legacy
+  min-difficulty walk-back, activation, the first local AuxPoW payload, and a
+  longer early post-AuxPoW local-chain header span through height 1600. Rust
+  verifies both observed `nBits` and contextual header acceptance over the
+  checkable contiguous candidates.
 
 Needed:
-- expand `CheckProofOfWorkAny` coverage beyond the first focused bridge-backed
-  header validation cases
-- add broader long-range contextual header walks beyond the current real
-  testnet activation/first-AuxPoW windows
+- add broader historical contextual header walks outside the current local
+  testnet window set if new node data exposes additional edges
 - defer UTXO/chain-connect ownership to a future separate crate if Rust is meant
   to validate full node block connection: BIP30, sequence locks, spend
   availability, fees, and value-in/value-out checks require a chainstate/UTXO
@@ -283,7 +290,8 @@ regtest boundary cases. The public interval constant is
 Focused retargeting tests now exist in `tidecoin/src/pow.rs`, including the
 node legacy overflow-guarded scaling path, first mainnet historical retarget,
 activation-boundary behavior, insufficient post-AuxPoW window behavior,
-real testnet activation/first-AuxPoW windows, and transition-envelope checks.
+real testnet genesis-to-activation, activation, first-AuxPoW, and early
+post-AuxPoW windows, and transition-envelope checks.
 Current state:
 - The missing node parameter fields are now represented in
   `tidecoin::network::Params`: strict AuxPoW chain ID, post-AuxPoW averaging
@@ -302,13 +310,16 @@ Current state:
   `PermittedDifficultyTransition(...)` so header-window validation can check
   both pre-activation legacy bounds and post-activation max-adjust bounds.
 - `tidecoin/tests/data/testnet_retarget_windows.json` provides real
-  node-extracted windows for `auxpow_start_height` and the first local AuxPoW
-  payload; Rust verifies observed `nBits` through `next_target_after(...)`.
+  node-extracted windows for genesis-to-activation legacy min-difficulty
+  walk-back, `auxpow_start_height`, the first local AuxPoW payload, and a
+  longer early post-AuxPoW local-chain span through height 1600; Rust verifies
+  observed `nBits` through `next_target_after(...)` and validates checkable
+  contextual headers.
 
 Still missing:
-- Historical long-range chain difficulty walk with known block headers
+- Historical chain difficulty walks outside the current local testnet window set
 - Overflow and minimum-difficulty boundary cases
-- Testnet min-difficulty rule activation and walk-back behavior with more than one historical block
+- Additional testnet min-difficulty edge cases if historical data exposes them
 
 #### Standalone PQ signature operation tests
 

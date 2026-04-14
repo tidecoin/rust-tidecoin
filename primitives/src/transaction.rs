@@ -267,6 +267,11 @@ impl Transaction {
 /// This mirrors the node's `CheckTransaction` checks that only depend on the
 /// transaction itself. It intentionally does not validate UTXO availability,
 /// input scripts, finality, fees, or other contextual rules.
+///
+/// # Errors
+///
+/// Returns [`TransactionSanityError`] when the transaction violates a
+/// context-free Tidecoin transaction sanity rule.
 #[cfg(feature = "alloc")]
 pub fn check_transaction_sanity(tx: &Transaction) -> Result<(), TransactionSanityError> {
     validate_transaction_has_inputs(tx)?;

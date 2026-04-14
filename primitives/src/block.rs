@@ -210,6 +210,11 @@ impl Block<Unchecked> {
 /// This mirrors the node's `CheckBlock` rules that do not depend on UTXO state,
 /// previous-block context, or script execution. Header PoW/AuxPoW validation is
 /// intentionally separate.
+///
+/// # Errors
+///
+/// Returns [`BlockSanityError`] when the block violates a context-free
+/// Tidecoin block sanity rule.
 #[cfg(feature = "alloc")]
 pub fn check_block_sanity(block: &Block<Unchecked>) -> Result<(), BlockSanityError> {
     check_block_sanity_inner(block).map(|_| ())

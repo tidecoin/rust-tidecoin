@@ -549,9 +549,10 @@ Checklist:
     activation acceptance, pre-activation rejection, and missing payload decode
     rejection
   - current state: `tidecoin/tests/data/testnet_retarget_windows.json` now
-    includes real testnet headers around activation and the first local AuxPoW
-    payload; mainnet AuxPoW vectors do not apply while mainnet AuxPoW
-    activation is disabled
+    includes real testnet headers for genesis-to-activation legacy
+    min-difficulty walk-back, activation, the first local AuxPoW payload, and a
+    longer early post-AuxPoW local-chain span through height 1600; mainnet
+    AuxPoW vectors do not apply while mainnet AuxPoW activation is disabled
   - remaining gap: add any remaining historical real-chain edge fixtures if
     they are discovered in node data
 - [~] yespower/scrypt PoW-hash selection and target-check vectors
@@ -563,12 +564,14 @@ Checklist:
     for callers that have also computed the contextual difficulty target
   - current state: the node-parity bridge now exposes node yespower and scrypt
     pure-header hash oracles, and tests pin both hash classes plus the
-    pure-header validation entry point, heightless header PoW bridge path, and
+    pure-header validation entry point, height-aware `CheckProofOfWork`
+    pass/fail cases, heightless `CheckProofOfWorkAny` pass/fail cases, and
     AuxPoW parent proof path against node-shaped C++ bridge data
-  - current state: real testnet retarget windows now cover activation and the
-    first local AuxPoW-adjacent target predictions
-  - remaining gap: broader long-range height-window target-check vectors are
-    still open
+  - current state: real testnet retarget windows now cover genesis-to-activation
+    legacy min-difficulty walk-back, activation, first local AuxPoW payload, and
+    an early post-AuxPoW header span through height 1600
+  - remaining gap: broader historical target-check vectors outside the current
+    local testnet window set are still open
 - [x] Subsidy/reward schedule tests
 - [~] Difficulty retargeting edge-case tests
   - current state: `tidecoin::pow::next_target_after` now switches at
@@ -578,9 +581,12 @@ Checklist:
   - current state: `tidecoin::pow::permitted_difficulty_transition` now ports
     the node transition-envelope rule, with focused node-bridge comparison for
     mainnet legacy bounds and synthetic post-AuxPoW coverage
-  - current state: real testnet activation/first-AuxPoW windows now verify
-    observed `nBits` against `next_target_after`
-  - remaining gap: broader long-range historical/node-vector coverage
+  - current state: real testnet windows now verify observed `nBits` against
+    `next_target_after` from genesis through activation and over a post-AuxPoW
+    span through height 1600, including testnet legacy min-difficulty walk-back
+    context
+  - remaining gap: broader historical/node-vector coverage outside the current
+    local testnet window set
 - [~] Contextual header and non-UTXO block validation
   - current state: `tidecoin::block_validation::contextual_check_block_header`
     validates previous-hash linkage, exact next `nBits`, previous MTP,
@@ -590,8 +596,12 @@ Checklist:
     validates context-free block sanity plus transaction finality, BIP34
     coinbase height, and pre-activation witness rejection over the same
     previous-header/history callback
-  - current state: real testnet activation and first-AuxPoW fixture headers
-    exercise the new contextual header path
+  - current state: focused node-bridge parity tests cover the new finality,
+    BIP34 coinbase-height, pre-activation witness, and larger 65-transaction
+    contextual block cases
+  - current state: real testnet fixture windows now exercise the contextual
+    header path contiguously across genesis-to-activation, activation, first
+    local AuxPoW payload, and an early post-AuxPoW span through height 1600
   - deferred separate-crate scope: UTXO-dependent chain-connect validation,
     including BIP30, sequence locks, spend availability, and fee/value checks.
     This requires chainstate/database ownership and is intentionally not folded

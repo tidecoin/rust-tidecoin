@@ -214,7 +214,7 @@ impl<T> Script<T> {
                     }
                     x if x == OP_CHECKMULTISIG.to_u8() || x == OP_CHECKMULTISIGVERIFY.to_u8() => {
                         if accurate {
-                            count += pushnum_cache.map(usize::from).unwrap_or(20);
+                            count += pushnum_cache.map_or(20, usize::from);
                         } else {
                             count += 20;
                         }

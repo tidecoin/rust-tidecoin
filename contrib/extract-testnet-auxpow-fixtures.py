@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import struct
 import sys
 from io import BytesIO
@@ -25,7 +26,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--node-repo",
-        default="/home/yaroslav/dev/tidecoin/tidecoin",
+        default=os.environ.get(
+            "TIDECOIN_NODE_REPO",
+            str(Path(__file__).resolve().parents[2] / "tidecoin"),
+        ),
         help="Path to the Tidecoin node repository.",
     )
     parser.add_argument(
@@ -146,7 +150,7 @@ def decode_blocks(
                 "block_hash": header_obj.hash_hex,
                 "n_bits": f"0x{block.nBits:08x}",
                 "header_hex": header.hex(),
-                "block_file": str(block_file),
+                "block_file": block_file.name,
                 "block_file_offset": offset,
             }
             if height in selected_heights:
@@ -194,7 +198,6 @@ def main() -> None:
     payload = {
         "provenance": {
             "source": "local Tidecoin testnet blk*.dat decoded with blocks/xor.dat",
-            "datadir": str(datadir),
             "note": (
                 "Height 1000 activates post-AuxPoW rules; a local chain may still "
                 "contain pure PoW headers after that because AuxPoW is permitted, not mandatory."

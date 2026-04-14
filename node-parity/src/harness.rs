@@ -5,15 +5,15 @@ use std::path::PathBuf;
 
 use crate::error::{NodeParityError, ScriptError};
 use crate::ffi::{
-    tidecoin_node_block_subsidy, tidecoin_node_check_block, tidecoin_node_check_transaction,
-    tidecoin_node_has_valid_header_pow, tidecoin_node_mlkem512_decaps,
-    tidecoin_node_mlkem512_encaps_deterministic, tidecoin_node_mlkem512_keypair_from_coins,
-    tidecoin_node_parse_script_asm, tidecoin_node_permitted_difficulty_transition,
-    tidecoin_node_pq_compute_public_key, tidecoin_node_pq_keygen_from_seed,
-    tidecoin_node_pq_p2sh_p2wpkh_input_vsize, tidecoin_node_pq_p2wpkh_input_vsize,
-    tidecoin_node_pq_sign_message, tidecoin_node_pq_verify_message,
-    tidecoin_node_pqhd_keygen_from_stream_key, tidecoin_node_scrypt_pow_hash,
-    tidecoin_node_verify_script_case, tidecoin_node_verify_tx_input,
+    tidecoin_node_block_subsidy, tidecoin_node_check_block, tidecoin_node_check_contextual_block,
+    tidecoin_node_check_transaction, tidecoin_node_has_valid_header_pow,
+    tidecoin_node_mlkem512_decaps, tidecoin_node_mlkem512_encaps_deterministic,
+    tidecoin_node_mlkem512_keypair_from_coins, tidecoin_node_parse_script_asm,
+    tidecoin_node_permitted_difficulty_transition, tidecoin_node_pq_compute_public_key,
+    tidecoin_node_pq_keygen_from_seed, tidecoin_node_pq_p2sh_p2wpkh_input_vsize,
+    tidecoin_node_pq_p2wpkh_input_vsize, tidecoin_node_pq_sign_message,
+    tidecoin_node_pq_verify_message, tidecoin_node_pqhd_keygen_from_stream_key,
+    tidecoin_node_scrypt_pow_hash, tidecoin_node_verify_script_case, tidecoin_node_verify_tx_input,
     tidecoin_node_yespower_pow_hash,
 };
 use crate::fixtures::TIDECOIN_NODE_REPO_ENV;
@@ -144,6 +144,35 @@ impl TidecoinNodeHarness {
             1 => Ok(()),
             0 => Err(NodeParityError::BridgeFailure("invalid block")),
             _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_block")),
+        }
+    }
+
+    /// Runs node-equivalent UTXO-independent contextual block validation.
+    pub fn check_contextual_block_hex(
+        &self,
+        block_hex: &str,
+        network: i32,
+        height: i32,
+        lock_time_cutoff: i64,
+        enforce_bip34_height: bool,
+        expect_witness_commitment: bool,
+    ) -> Result<(), NodeParityError> {
+        let block_hex =
+            CString::new(block_hex).map_err(|_| NodeParityError::InvalidCString("block hex"))?;
+        let rc = unsafe {
+            tidecoin_node_check_contextual_block(
+                block_hex.as_ptr(),
+                network,
+                height,
+                lock_time_cutoff,
+                i32::from(enforce_bip34_height),
+                i32::from(expect_witness_commitment),
+            )
+        };
+        match rc {
+            1 => Ok(()),
+            0 => Err(NodeParityError::BridgeFailure("invalid contextual block")),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_contextual_block")),
         }
     }
 
