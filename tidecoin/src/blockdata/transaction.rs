@@ -1269,13 +1269,10 @@ mod tests {
         let tx_bytes = hex!(
             "010000000001000100e1f505000000001976a9140389035a9225b3839e2bbf32d826a1e222031fd888ac00000000"
         );
-        let tx: Transaction = encoding::decode_from_slice(&tx_bytes).expect("deserialize tx");
+        let err = encoding::decode_from_slice::<Transaction>(&tx_bytes)
+            .expect_err("zero-input transaction should be rejected");
 
-        assert_eq!(tx.inputs.len(), 0);
-        assert_eq!(tx.outputs.len(), 1);
-
-        let reser = encoding::encode_to_vec(&tx);
-        assert_eq!(tx_bytes, *reser);
+        assert!(format!("{err:?}").contains("NoInputs"));
     }
 
     #[test]

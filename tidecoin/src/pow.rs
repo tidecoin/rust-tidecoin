@@ -3517,6 +3517,10 @@ mod tests {
             let name = window["name"].as_str().expect("retarget window name");
             let start = window["start_height"].as_u64().expect("retarget window start") as u32;
             let end = window["end_height"].as_u64().expect("retarget window end") as u32;
+            let first_checked_candidate = window["first_checked_candidate_height"]
+                .as_u64()
+                .map(|height| height as u32)
+                .unwrap_or(start + 1);
             let headers = window["headers"]
                 .as_array()
                 .expect("retarget window headers")
@@ -3527,7 +3531,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            for candidate_height in (start + 1)..=end {
+            for candidate_height in first_checked_candidate..=end {
                 let current_height = candidate_height - 1;
                 let current = header_from_window(&headers, BlockHeight::from_u32(current_height));
                 let observed =
@@ -3541,15 +3545,55 @@ mod tests {
                         try_header_from_window(&headers, height).ok_or(height)
                     },
                 );
-                let got = match got {
-                    Ok(got) => got,
-                    Err(missing) if missing.to_u32() < start => continue,
-                    Err(missing) => panic!(
+                let got = got.unwrap_or_else(|missing| {
+                    panic!(
                         "{name} next target for height {candidate_height} requested missing fixture height {missing}"
-                    ),
-                };
+                    )
+                });
 
                 assert_eq!(got, observed.bits, "{name} candidate_height={candidate_height}");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn real_testnet_retarget_windows_pass_permitted_transition_envelope() {
+        let params = Params::TESTNET;
+
+        for window in real_testnet_retarget_window_cases() {
+            let name = window["name"].as_str().expect("retarget window name");
+            let start = window["start_height"].as_u64().expect("retarget window start") as u32;
+            let end = window["end_height"].as_u64().expect("retarget window end") as u32;
+            let first_checked_candidate = window["first_checked_candidate_height"]
+                .as_u64()
+                .map(|height| height as u32)
+                .unwrap_or(start + 1);
+            let headers = window["headers"]
+                .as_array()
+                .expect("retarget window headers")
+                .iter()
+                .map(|case| {
+                    let height = case["height"].as_u64().expect("fixture height") as u32;
+                    (height, header_from_fixture_case(case))
+                })
+                .collect::<Vec<_>>();
+
+            for candidate_height in first_checked_candidate..=end {
+                let current =
+                    header_from_window(&headers, BlockHeight::from_u32(candidate_height - 1));
+                let observed =
+                    header_from_window(&headers, BlockHeight::from_u32(candidate_height));
+
+                assert!(
+                    permitted_difficulty_transition(
+                        &params,
+                        BlockHeight::from_u32(candidate_height),
+                        current.bits,
+                        observed.bits,
+                    ),
+                    "{name} candidate_height={candidate_height} permitted transition"
+                );
             }
         }
     }

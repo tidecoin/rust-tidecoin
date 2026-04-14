@@ -551,7 +551,7 @@ Checklist:
   - current state: `tidecoin/tests/data/testnet_retarget_windows.json` now
     includes active-chain RPC testnet headers for genesis-to-activation legacy
     min-difficulty walk-back, activation, the first local AuxPoW payload, an
-    early post-AuxPoW span, and a later AuxPoW span through height 11567;
+    early post-AuxPoW span, and later AuxPoW spans through height 16120;
     mainnet AuxPoW vectors do not apply while mainnet AuxPoW activation is
     disabled
   - remaining gap: add any remaining historical real-chain edge fixtures if
@@ -570,10 +570,20 @@ Checklist:
     AuxPoW parent proof path against node-shaped C++ bridge data
   - current state: real testnet retarget windows now cover genesis-to-activation
     legacy min-difficulty walk-back, activation, first local AuxPoW payload, and
-    active-chain post-AuxPoW header spans through height 11567
+    active-chain post-AuxPoW header spans through height 16120
   - remaining gap: broader historical target-check vectors outside the active
     chain fixture set are still open
 - [x] Subsidy/reward schedule tests
+  - current state: `tidecoin::subsidy::block_subsidy` implements the node's
+    doubling-interval quartering schedule, and Rust tests mirror the node's
+    transition-boundary checks plus the pinned total subsidy through height
+    `14_000_000`
+  - current state: node-bridge subsidy coverage walks every representable
+    transition boundary for mainnet, testnet, and regtest
+  - scope boundary: coinbase reward-claim validation remains deferred with
+    UTXO/chain-connect work because the node check depends on transaction fees
+  - design handoff: future chain-connect ownership is specified in
+    [CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md)
 - [~] Difficulty retargeting edge-case tests
   - current state: `tidecoin::pow::next_target_after` now switches at
     `auxpow_start_height`, uses the node legacy overflow-guarded scaling path,
@@ -584,7 +594,7 @@ Checklist:
     mainnet legacy bounds and synthetic post-AuxPoW coverage
   - current state: real testnet windows now verify observed `nBits` against
     `next_target_after` from genesis through activation and over a post-AuxPoW
-    span through height 11567, including testnet legacy min-difficulty
+    span through height 16120, including testnet legacy min-difficulty
     walk-back context
   - remaining gap: broader historical/node-vector coverage outside the active
     chain fixture set
@@ -595,17 +605,20 @@ Checklist:
     post-AuxPoW base-version validity, and selected PoW/AuxPoW proof
   - current state: `tidecoin::block_validation::contextual_check_block`
     validates context-free block sanity plus transaction finality, BIP34
-    coinbase height, and pre-activation witness rejection over the same
+    coinbase height, pre-activation witness rejection, witness commitment
+    validation, and full witness-inclusive block weight over the same
     previous-header/history callback
   - current state: focused node-bridge parity tests cover the new finality,
-    BIP34 coinbase-height, pre-activation witness, and larger 65-transaction
-    contextual block cases
+    BIP34 coinbase-height, pre-activation witness, witness commitment, full
+    weight, and larger 65-transaction contextual block cases
   - current state: real testnet fixture windows now exercise the contextual
     header path contiguously across genesis-to-activation, activation, first
     local AuxPoW payload, and active-chain post-AuxPoW spans through height
-    11567
+    16120
   - deferred separate-crate scope: UTXO-dependent chain-connect validation,
     including BIP30, sequence locks, spend availability, and fee/value checks.
+    The proposed crate boundary and API draft are in
+    [CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md).
     This requires chainstate/database ownership and is intentionally not folded
     into the current protocol-library crate.
 - [x] Standalone PQ signature operation tests where still useful below the node-backed layer

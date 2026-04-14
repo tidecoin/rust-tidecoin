@@ -15,7 +15,7 @@ use crate::block::{
 };
 use crate::network::Params;
 use crate::pow::{self, AuxPowValidationError, PowValidationError};
-use crate::{BlockTime, CompactTarget, Transaction};
+use crate::{BlockTime, CompactTarget, Transaction, Weight};
 use units::absolute::LOCK_TIME_THRESHOLD;
 
 /// Maximum timestamp rollback allowed on BIP94 difficulty-adjustment blocks.
@@ -168,6 +168,10 @@ pub enum ContextualBlockError<E = Infallible> {
         /// Input index inside the transaction.
         input_index: usize,
     },
+    /// Witness commitment or reserved value validation failed.
+    InvalidWitnessCommitment(InvalidBlockError),
+    /// The witness-inclusive block weight exceeds the node consensus limit.
+    WeightLimit,
 }
 
 impl<E> fmt::Display for ContextualBlockError<E> {
@@ -187,6 +191,10 @@ impl<E> fmt::Display for ContextualBlockError<E> {
                 f,
                 "unexpected witness before activation at transaction {transaction_index}, input {input_index}"
             ),
+            Self::InvalidWitnessCommitment(err) => {
+                write!(f, "witness commitment validation failed: {err}")
+            }
+            Self::WeightLimit => write!(f, "block weight limit failed"),
         }
     }
 }
@@ -201,6 +209,7 @@ where
             Self::Sanity(err) => Some(err),
             Self::Header(err) => Some(err),
             Self::CoinbaseHeight(err) => Some(err),
+            Self::InvalidWitnessCommitment(err) => Some(err),
             _ => None,
         }
     }
@@ -372,12 +381,15 @@ where
         .checked_add(BlockHeightInterval::from_u32(1))
         .ok_or(ContextualBlockError::HeightOverflow)?;
 
-    let checked = block.clone().validate().map_err(ContextualBlockError::Sanity)?;
+    crate::block::check_block_sanity(block)
+        .map_err(InvalidBlockError::from)
+        .map_err(ContextualBlockError::Sanity)?;
+    let (header, transactions) = block.as_parts();
     contextual_check_block_header_with_options(
         params,
         previous_header,
         previous_height,
-        checked.header(),
+        header,
         &mut get_header_by_height,
         options,
     )
@@ -386,21 +398,21 @@ where
     let previous_mtp =
         median_time_past(previous_header, previous_height, &mut get_header_by_height)
             .map_err(ContextualBlockError::Header)?;
-    let lock_time_cutoff = if height >= params.csv_height {
-        previous_mtp.to_u32()
-    } else {
-        checked.header().time.to_u32()
-    };
+    let lock_time_cutoff =
+        if height >= params.csv_height { previous_mtp.to_u32() } else { header.time.to_u32() };
 
-    for (index, tx) in checked.transactions().iter().enumerate() {
+    for (index, tx) in transactions.iter().enumerate() {
         if !is_final_transaction(tx, height, lock_time_cutoff) {
             return Err(ContextualBlockError::NonFinalTransaction { index });
         }
     }
 
     if height >= params.bip34_height {
-        let coinbase_height =
-            checked.bip34_block_height().map_err(ContextualBlockError::CoinbaseHeight)?;
+        let coinbase_height = block
+            .clone()
+            .assume_checked(None)
+            .bip34_block_height()
+            .map_err(ContextualBlockError::CoinbaseHeight)?;
         if coinbase_height != u64::from(height.to_u32()) {
             return Err(ContextualBlockError::BadCoinbaseHeight {
                 expected: height,
@@ -410,7 +422,7 @@ where
     }
 
     if height < params.segwit_height {
-        for (transaction_index, tx) in checked.transactions().iter().enumerate() {
+        for (transaction_index, tx) in transactions.iter().enumerate() {
             for (input_index, input) in tx.inputs.iter().enumerate() {
                 if !input.witness.is_empty() {
                     return Err(ContextualBlockError::UnexpectedWitness {
@@ -420,6 +432,17 @@ where
                 }
             }
         }
+    } else {
+        let (witness_commitment_valid, _) = block.check_witness_commitment();
+        if !witness_commitment_valid {
+            return Err(ContextualBlockError::InvalidWitnessCommitment(
+                InvalidBlockError::InvalidWitnessCommitment,
+            ));
+        }
+    }
+
+    if block.weight().to_wu() > Weight::MAX_BLOCK.to_wu() {
+        return Err(ContextualBlockError::WeightLimit);
     }
 
     Ok(())
@@ -624,14 +647,18 @@ mod tests {
     }
 
     #[cfg(feature = "tidecoin-node-validation")]
-    fn synthetic_witness_block(previous: &Header, height: BlockHeight) -> Block<Unchecked> {
+    fn synthetic_witness_block_with_spend_witness(
+        previous: &Header,
+        height: BlockHeight,
+        spend_witness: alloc::vec::Vec<u8>,
+    ) -> Block<Unchecked> {
         const RESERVED_VALUE: [u8; 32] = [0; 32];
 
         let mut coinbase = coinbase_tx(height.to_u32() as u8);
         coinbase.inputs[0].witness.push(RESERVED_VALUE);
 
         let mut spend = spend_tx(2, absolute::LockTime::ZERO, Sequence::MAX);
-        spend.inputs[0].witness.push([0x42]);
+        spend.inputs[0].witness.push(spend_witness);
 
         let placeholder = synthetic_block(previous, height, vec![coinbase.clone(), spend.clone()]);
         let (_, commitment) = placeholder
@@ -643,6 +670,19 @@ mod tests {
         coinbase.outputs[0].script_pubkey = ScriptPubKeyBuf::from_bytes(commitment_script);
 
         synthetic_block(previous, height, vec![coinbase, spend])
+    }
+
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn synthetic_witness_block(previous: &Header, height: BlockHeight) -> Block<Unchecked> {
+        synthetic_witness_block_with_spend_witness(previous, height, vec![0x42])
+    }
+
+    #[cfg(feature = "tidecoin-node-validation")]
+    fn with_bad_witness_reserved_value(block: Block<Unchecked>) -> Block<Unchecked> {
+        let (header, mut transactions) = block.into_parts();
+        transactions[0].inputs[0].witness.clear();
+        transactions[0].inputs[0].witness.push([1; 32]);
+        Block::new_unchecked(header, transactions)
     }
 
     fn contextual_block_options() -> ContextualHeaderCheck {
@@ -714,6 +754,10 @@ mod tests {
             let name = window["name"].as_str().expect("retarget window name");
             let start = window["start_height"].as_u64().expect("retarget window start") as u32;
             let end = window["end_height"].as_u64().expect("retarget window end") as u32;
+            let first_checked_candidate = window["first_checked_candidate_height"]
+                .as_u64()
+                .map(|height| height as u32)
+                .unwrap_or(start + 1);
             let headers = window["headers"]
                 .as_array()
                 .expect("retarget window headers")
@@ -726,7 +770,7 @@ mod tests {
                 .collect::<alloc::vec::Vec<_>>();
 
             let mut checked = 0usize;
-            for candidate_height in (start + 1)..=end {
+            for candidate_height in first_checked_candidate..=end {
                 let current_height = candidate_height - 1;
                 let previous_height = BlockHeight::from_u32(current_height);
                 let previous = header_at(&headers, previous_height);
@@ -746,14 +790,10 @@ mod tests {
                             .ok_or(height)
                     },
                 );
-                match result {
-                    Ok(()) => checked += 1,
-                    Err(ContextualHeaderError::HeaderLookup { height, source })
-                        if height == source && height.to_u32() < start => {}
-                    Err(err) => {
-                        panic!("{name} contextual header at height {candidate_height}: {err}")
-                    }
+                if let Err(err) = result {
+                    panic!("{name} contextual header at height {candidate_height}: {err}");
                 }
+                checked += 1;
             }
 
             assert!(checked > 0, "{name} should contain at least one checkable header");
@@ -978,6 +1018,88 @@ mod tests {
 
             assert_eq!(node_valid, expected_valid, "{name} node contextual block");
             assert_eq!(rust_valid, expected_valid, "{name} Rust contextual block");
+        }
+    }
+
+    #[cfg(feature = "tidecoin-node-validation")]
+    #[test]
+    fn contextual_block_witness_and_weight_match_node_bridge() {
+        require_node_harness!();
+
+        let headers = synthetic_context_headers();
+        let previous_height = BlockHeight::from_u32(10);
+        let height = BlockHeight::from_u32(11);
+        let previous = header_at(&headers, previous_height);
+        let previous_mtp = median_time_past(&previous, previous_height, &mut |height| -> Result<
+            Header,
+            Infallible,
+        > {
+            Ok(header_at(&headers, height))
+        })
+        .expect("synthetic headers have MTP history");
+
+        let valid_witness = synthetic_witness_block(&previous, height);
+        let bad_witness_commitment =
+            with_bad_witness_reserved_value(synthetic_witness_block(&previous, height));
+        let overweight_witness = synthetic_witness_block_with_spend_witness(
+            &previous,
+            height,
+            vec![0x42; Weight::MAX_BLOCK.to_wu() as usize],
+        );
+        let (_, overweight_transactions) = overweight_witness.as_parts();
+        assert!(
+            overweight_transactions[1].inputs[0].witness.size()
+                > Weight::MAX_BLOCK.to_wu() as usize,
+            "synthetic overweight witness item was not retained: got {}",
+            overweight_transactions[1].inputs[0].witness.size()
+        );
+        assert!(
+            overweight_witness.weight().to_wu() > Weight::MAX_BLOCK.to_wu(),
+            "synthetic overweight fixture must exceed the block limit: got {}, max {}",
+            overweight_witness.weight().to_wu(),
+            Weight::MAX_BLOCK.to_wu()
+        );
+
+        let cases = [
+            ("valid_witness", valid_witness, true),
+            ("bad_witness_commitment", bad_witness_commitment, false),
+            ("overweight_witness", overweight_witness, false),
+        ];
+
+        let harness = TidecoinNodeHarness::from_env().expect("TidecoinNodeHarness::from_env");
+        for (name, block, expected_contextual_valid) in cases {
+            let block_hex = encode_consensus_hex(&block);
+            assert!(
+                harness.check_block_hex(&block_hex, 2, false, true).is_ok(),
+                "{name} should pass node CheckBlock before contextual witness checks"
+            );
+            assert!(
+                crate::block::check_block_sanity(&block).is_ok(),
+                "{name} should pass Rust CheckBlock-style sanity before contextual witness checks"
+            );
+
+            let node_valid = harness
+                .check_contextual_block_hex(
+                    &block_hex,
+                    2,
+                    height.to_u32() as i32,
+                    previous_mtp.to_u32().into(),
+                    true,
+                    true,
+                )
+                .is_ok();
+            let rust_valid = contextual_check_block_with_options(
+                Params::REGTEST,
+                &previous,
+                previous_height,
+                &block,
+                |height| -> Result<Header, Infallible> { Ok(header_at(&headers, height)) },
+                contextual_block_options(),
+            )
+            .is_ok();
+
+            assert_eq!(node_valid, expected_contextual_valid, "{name} node contextual block");
+            assert_eq!(rust_valid, expected_contextual_valid, "{name} Rust contextual block");
         }
     }
 

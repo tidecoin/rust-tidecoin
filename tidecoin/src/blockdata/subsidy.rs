@@ -49,6 +49,47 @@ mod tests {
         block_subsidy(BlockHeight::from_u32(height), Params::new(network)).to_sat()
     }
 
+    fn subsidy_sat_with_interval(height: u32, interval: u32) -> u64 {
+        let mut params = Params::MAINNET;
+        params.subsidy_initial_interval = interval;
+        block_subsidy(BlockHeight::from_u32(height), params).to_sat()
+    }
+
+    fn assert_subsidy_transitions(interval: u32) {
+        assert!(interval > 0);
+
+        let mut previous_subsidy = Amount::FORTY_TDC.to_sat();
+        let mut step_interval = u64::from(interval);
+        let mut boundary = step_interval;
+
+        assert_eq!(subsidy_sat_with_interval(0, interval), previous_subsidy);
+
+        for _ in 0..=64 {
+            if boundary > u64::from(u32::MAX) {
+                break;
+            }
+
+            let boundary_height = boundary as u32;
+            let expected = previous_subsidy >> 2;
+            if boundary_height > 0 {
+                assert_eq!(
+                    subsidy_sat_with_interval(boundary_height - 1, interval),
+                    previous_subsidy
+                );
+            }
+            assert_eq!(subsidy_sat_with_interval(boundary_height, interval), expected);
+
+            previous_subsidy = expected;
+            if previous_subsidy == 0 {
+                break;
+            }
+
+            step_interval =
+                step_interval.checked_mul(2).expect("test interval doubling stays within u64");
+            boundary = boundary.checked_add(step_interval).expect("test boundary stays within u64");
+        }
+    }
+
     #[test]
     fn mainnet_subsidy_matches_node_doubling_interval_schedule() {
         let interval = crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL;
@@ -58,6 +99,48 @@ mod tests {
         assert_eq!(subsidy_sat(interval, Network::Tidecoin), 1_000_000_000);
         assert_eq!(subsidy_sat(interval * 3 - 1, Network::Tidecoin), 1_000_000_000);
         assert_eq!(subsidy_sat(interval * 3, Network::Tidecoin), 250_000_000);
+    }
+
+    #[test]
+    fn subsidy_transition_boundaries_match_node_unit_test_shape() {
+        assert_subsidy_transitions(crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL);
+        assert_subsidy_transitions(20);
+        assert_subsidy_transitions(150);
+        assert_subsidy_transitions(1000);
+    }
+
+    #[test]
+    fn subsidy_total_to_fixed_height_matches_node_unit_test() {
+        const MAX_HEIGHT: u64 = 14_000_000;
+        const EXPECTED_TOTAL: u128 = 2_059_564_062_500_000;
+
+        let interval0 = u64::from(crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL);
+        let mut sum = 0u128;
+        let mut subsidy = u128::from(Amount::FORTY_TDC.to_sat());
+        let mut height = 0u64;
+        let mut interval = interval0;
+        let mut next_change = interval0;
+
+        while height < MAX_HEIGHT {
+            let end = core::cmp::min(MAX_HEIGHT, next_change);
+            let blocks = end - height;
+            assert!(subsidy <= u128::from(Amount::FORTY_TDC.to_sat()));
+
+            sum += subsidy * u128::from(blocks);
+            height = end;
+            if height >= MAX_HEIGHT {
+                break;
+            }
+
+            subsidy >>= 2;
+            interval = interval.checked_mul(2).expect("interval doubling stays within u64");
+            next_change = next_change.checked_add(interval).expect("next change stays within u64");
+            if subsidy == 0 {
+                break;
+            }
+        }
+
+        assert_eq!(sum, EXPECTED_TOTAL);
     }
 
     #[test]
@@ -104,6 +187,34 @@ mod tests {
                 .expect("node block subsidy bridge");
 
             assert_eq!(rust, node, "network={network:?} height={height}");
+        }
+
+        for (network, network_id) in
+            [(Network::Tidecoin, 0), (Network::Testnet, 1), (Network::Regtest, 2)]
+        {
+            let interval = u64::from(Params::new(network).subsidy_initial_interval);
+            let mut step_interval = interval;
+            let mut boundary = interval;
+
+            for _ in 0..=64 {
+                if boundary > i32::MAX as u64 {
+                    break;
+                }
+
+                let boundary_height = boundary as u32;
+                for height in [boundary_height.saturating_sub(1), boundary_height] {
+                    let rust = subsidy_sat(height, network);
+                    let node = harness
+                        .block_subsidy(network_id, height as i32)
+                        .expect("node block subsidy bridge");
+                    assert_eq!(rust, node, "network={network:?} height={height}");
+                }
+
+                step_interval =
+                    step_interval.checked_mul(2).expect("test interval doubling stays within u64");
+                boundary =
+                    boundary.checked_add(step_interval).expect("test boundary stays within u64");
+            }
         }
     }
 }

@@ -18,6 +18,7 @@ Audited Rust surfaces:
 - `primitives/src/transaction.rs`
 - `consensus/src/lib.rs`
 - `consensus-core/src/*`
+- `ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md`
 - `node-parity/src/*`
 - selected p2p/network settings where they overlap exposed chain settings
 
@@ -72,15 +73,15 @@ The most important current facts:
 | Byte-oriented single-input spend verification | `consensus/src/lib.rs` | No direct equivalent; node validates spends during `ConnectBlock` | Implemented as a library adapter. It is not a block, header, or chain validator. |
 | Transaction, block, header, AuxPoW wire codecs | `primitives` | `primitives/block.*`, `primitives/transaction.*`, serialization code | Mostly implemented. AuxPoW wire modeling lives here; context validation lives in `tidecoin::pow`. |
 | Exposed consensus params | `tidecoin/src/network/params.rs` | `consensus/params.h`, `kernel/chainparams.cpp` | Partial. PoW/AuxPoW retarget fields plus CSV and Segwit heights are now exposed; full-node fields like BIP34 hash, versionbits deployments, minimum chain work, and assume-valid are still intentionally not modeled. Also exposes a `bip16_time` field that is not present in node `Consensus::Params`. |
-| Subsidy schedule | `tidecoin/src/blockdata/subsidy.rs` | node subsidy code and `nSubsidyHalvingInterval` | Implemented and node-parity tested for the current schedule. |
+| Subsidy schedule | `tidecoin::subsidy::block_subsidy` in `tidecoin/src/blockdata/subsidy.rs` | `validation.cpp::GetBlockSubsidy`, `nSubsidyHalvingInterval` | Implemented. Rust tests now mirror the node's transition-boundary and fixed-height total-emission tests, and the node-parity bridge walks every representable transition boundary for mainnet, testnet, and regtest. Coinbase reward-claim validation remains `ConnectBlock` scope because it requires UTXO-derived fees. |
 | Target/work integer math | `tidecoin/src/pow.rs` | `pow.cpp`, `arith_uint256` | Mostly implemented for library-level header validation. Node-style `derive_target(...)`, height-aware proof checks, heightless `validate_pow_any(...)`, and transition bounds exist; remaining work is broader node-vector coverage. |
 | Header PoW validation | `tidecoin/src/blockdata/block.rs::HeaderExt::validate_pow`, `tidecoin::pow::validate_pow_any`, and `tidecoin::pow::validate_auxpow_context` | `CheckProofOfWork`, `CheckProofOfWorkAny`, `CheckBlockHeader`, `CheckAuxPowContext`, `HasValidProofOfWork` | Partially implemented. Rust derives target from `nBits`, takes params and height when available, uses selected yespower/scrypt mining hashes for pure headers, exposes the heightless node path, and validates AuxPoW context rules with synthetic, node-generated, node-bridge, and real testnet header fixtures. |
-| Difficulty retargeting | `tidecoin/src/pow.rs::next_target_after` and `tidecoin/src/pow.rs::permitted_difficulty_transition` | `GetNextWorkRequired*`, `CalculateNextWorkRequired*`, `PermittedDifficultyTransition` | Partially implemented. The old/new switch, post-AuxPoW averaging-window path, node legacy overflow-guarded scaling, first mainnet historical retarget, permitted transition envelope, and active-chain RPC testnet genesis-to-activation, activation, first-AuxPoW, early post-AuxPoW, and later AuxPoW retarget windows through height 11567 exist; broader historical chains remain missing. |
+| Difficulty retargeting | `tidecoin/src/pow.rs::next_target_after` and `tidecoin/src/pow.rs::permitted_difficulty_transition` | `GetNextWorkRequired*`, `CalculateNextWorkRequired*`, `PermittedDifficultyTransition` | Partially implemented. The old/new switch, post-AuxPoW averaging-window path, node legacy overflow-guarded scaling, first mainnet historical retarget, permitted transition envelope, and active-chain RPC testnet genesis-to-activation, activation, first-AuxPoW, early post-AuxPoW, and later AuxPoW retarget windows through height 16120 exist; broader historical chains remain missing. |
 | AuxPoW validation | Wire structs in `primitives`; context validator in `tidecoin::pow` | `CheckAuxPowContext`, `CAuxPow::check`, `HasValidProofOfWork` | Partially implemented. Synthetic and node-generated fixtures cover flag/payload consistency, activation, strict chain ID, merge-mining commitment shape, deterministic chain index, parent scrypt PoW, and real testnet AuxPoW headers. Invalid historical real-chain edge cases remain open if discovered. |
 | Context-free transaction sanity | `primitives::transaction::check_transaction_sanity`; decoder calls the same function | `CheckTransaction` | Implemented for library-scope context-free sanity: empty input/output rejection, stripped-weight limit, money range, duplicate inputs, null-prevout rules, and coinbase scriptSig length 2..=106. Node-backed edge tests exist. |
-| Context-free block sanity | `primitives::block::check_block_sanity`; high-level `tidecoin` re-export | `CheckBlock` | Implemented for context-free block structure: empty block, first/only coinbase, merkle root, per-transaction sanity, stripped/full weight, legacy sigop cost, and witness commitment checks. Header PoW/AuxPoW context remains intentionally separate. Node-backed edge tests exist. |
-| Contextual header/block validation | `tidecoin::block_validation` | `ContextualCheckBlockHeader`, `ContextualCheckBlock`, `AcceptBlockHeader`, `ConnectBlock` | Header-context pass implemented: previous-hash link, exact next `nBits`, previous MTP, BIP94 timewarp bound, optional future-time check, buried version gates, post-AuxPoW base-version check, and PoW/AuxPoW validation. Non-UTXO block-context checks now cover transaction finality, BIP34 coinbase height, and pre-activation witness rejection, with focused node-bridge parity tests. UTXO/chain-connect validation is deferred to a future separate crate. |
-| UTXO/chain connect | Deferred separate crate | `ConnectBlock`, `CheckTxInputs`, chainstate code | Out of current `rust-tidecoin` scope. This requires chainstate/UTXO database ownership and should be implemented later as a dedicated chain-validation crate, not folded into the protocol library. |
+| Context-free block sanity | `primitives::block::check_block_sanity`; high-level `tidecoin` re-export | `CheckBlock` | Implemented for context-free block structure: empty block, first/only coinbase, merkle root and Merkle-mutation duplicate txid rejection, per-transaction sanity, stripped-size limit, and legacy sigop cost. Header PoW/AuxPoW, witness commitment, and full witness-inclusive weight are intentionally separate because the node handles those outside the context-free `CheckBlock` body. Node-backed edge tests exist. |
+| Contextual header/block validation | `tidecoin::block_validation` | `ContextualCheckBlockHeader`, `ContextualCheckBlock`, `AcceptBlockHeader`, `ConnectBlock` | Header-context pass implemented: previous-hash link, exact next `nBits`, previous MTP, BIP94 timewarp bound, optional future-time check, buried version gates, post-AuxPoW base-version check, and PoW/AuxPoW validation. Non-UTXO block-context checks now cover transaction finality, BIP34 coinbase height, pre-activation witness rejection, witness commitment validation, and full block weight, with focused node-bridge parity tests. UTXO/chain-connect validation is deferred to a future separate crate. |
+| UTXO/chain connect | Deferred separate crate; design note in `ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md` | `ConnectBlock`, `CheckTxInputs`, `SequenceLocks`, chainstate code | Out of current `rust-tidecoin` protocol-crate scope. This requires chainstate/UTXO database ownership and should be implemented later as a dedicated chain-validation crate, not folded into `tidecoin`, `primitives`, `consensus-core`, or `consensus`. |
 
 ## Consensus Parameter Audit
 
@@ -388,6 +389,20 @@ state to close these items. When this functionality is needed, add it as a
 separate crate layered over the existing primitives, PoW, contextual validation,
 and consensus-core surfaces.
 
+The concrete design handoff for this future crate is
+[`CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md`](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md).
+That spec defines the intended layer split:
+
+- `primitives::transaction::check_transaction_sanity` mirrors node
+  `CheckTransaction`
+- `primitives::block::check_block_sanity` mirrors context-free node
+  `CheckBlock`
+- `tidecoin::block_validation` mirrors node contextual header/block checks that
+  do not need UTXO state
+- the future chain-validation crate mirrors `ConnectBlock`, `CheckTxInputs`,
+  sequence locks, fee accounting, BIP30, coinbase maturity, and coinbase
+  reward-claim validation
+
 ## Priority Implementation Plan
 
 1. Keep `validate_pow_at_height(header, params, height)` as the node-shaped
@@ -453,7 +468,7 @@ This is the current code-facing backlog implied by the audit.
   node legacy overflow-guarded scaling, the first mainnet historical retarget,
   `CalculateNextWorkRequiredNew` behavior, and active-chain RPC testnet windows
   spanning genesis-to-activation, activation, the first local AuxPoW payload,
-  an early post-AuxPoW range, and a later AuxPoW range through height 11567. The
+  an early post-AuxPoW range, and later AuxPoW ranges through height 16120. The
   early testnet windows intentionally include genesis history so the legacy
   min-difficulty walk-back rule has the same ancestor context as the node.
 - `permitted_difficulty_transition(...)` now covers the node's legacy and
@@ -481,18 +496,22 @@ This is the current code-facing backlog implied by the audit.
   node-shaped context-free transaction sanity owner; the decoder calls it at
   finalization.
 - `primitives::block::check_block_sanity(...)` is now the explicit
-  context-free block sanity owner and is re-exported by `tidecoin`.
+  context-free `CheckBlock` sanity owner and is re-exported by `tidecoin`.
+  It intentionally stops before witness commitment and full block weight,
+  matching the node's `CheckBlock`/`ContextualCheckBlock` split.
 - `tidecoin::block_validation::contextual_check_block_header(...)` now owns
   contextual header rules over an explicit previous-header/history callback.
 - `tidecoin::block_validation::contextual_check_block(...)` now owns non-UTXO
   contextual block rules: context-free block sanity, header context,
-  transaction finality, BIP34 coinbase height, and pre-activation witness
-  rejection, with focused node-bridge parity coverage.
+  transaction finality, BIP34 coinbase height, witness malleation, and full
+  block weight, with focused node-bridge parity coverage.
 - Node-backed context-free block sanity coverage includes empty blocks, missing
-  coinbase, multiple coinbase, bad merkle root, invalid coinbase transaction,
-  legacy sigop limit, and a valid-merkle oversized stripped block.
+  coinbase, multiple coinbase, bad merkle root, Merkle-mutation duplicate txids,
+  invalid coinbase transaction, legacy sigop limit, and a valid-merkle
+  oversized stripped block.
 - Node-backed contextual block coverage includes finality, BIP34 coinbase
-  height, pre-activation witness rejection, and larger 65-transaction final and
+  height, pre-activation witness rejection, witness commitment mismatch, full
+  witness-inclusive weight rejection, and larger 65-transaction final and
   non-final blocks.
 - UTXO/chain-connect validation is deferred to a future separate crate with an
   explicit chainstate/UTXO abstraction.
@@ -528,7 +547,7 @@ Minimum fixture set before claiming this layer is covered:
 - `GetNextWorkRequired` legacy pre-activation vectors outside the current
   genesis-to-activation testnet fixture window
 - `GetNextWorkRequiredNew` post-activation averaging-window vectors beyond the
-  current active-chain testnet spans through height 11567
+  current active-chain testnet spans through height 16120
 - `PermittedDifficultyTransition` historical pre-activation and post-activation
   bounds beyond the current synthetic/node-bridge cases
 - additional `CheckTransaction` corpus vectors beyond the current edge matrix
@@ -541,6 +560,40 @@ Minimum fixture set before claiming this layer is covered:
   BIP34 coinbase-height, pre-activation witness, and larger synthetic
   node-bridge coverage, especially larger real-block fixtures and deferred
   full-chain sequence-lock cases for the future chain-validation crate
+
+### Active-Chain Retarget Fixture Workflow
+
+Regenerate `tidecoin/tests/data/testnet_retarget_windows.json` from node active
+chain RPC, not from raw `blk*.dat` file order. Raw block files may include stale
+or side-chain blocks, so they are not acceptable provenance for contextual
+header or retarget parity windows.
+
+Prerequisites:
+- a local testnet `tidecoind` with the target active-chain heights available
+- `TIDECOIN_NODE_REPO` pointing at the Tidecoin node checkout, unless the node
+  checkout is the default sibling path
+- `TIDECOIN_CLI` pointing at `tidecoin-cli`, unless the default sibling build
+  path is valid
+
+Current command:
+
+```sh
+python3 contrib/extract-testnet-auxpow-fixtures.py \
+  --active-chain-rpc \
+  --heights 999,1000,1100,1101,1102 \
+  --include-last-auxpow \
+  --retarget-windows pre_activation_long=0-999,activation=0-1000,first_auxpow=1013-1102@1041,post_auxpow_long=1013-1600@1041,late_auxpow_active=11333-11567@11361,latest_auxpow_active=15000-16120@15028 \
+  --output tidecoin/tests/data/testnet_retarget_windows.json
+```
+
+Required post-generation checks:
+- fixture provenance says `Tidecoin testnet active chain through node RPC`
+- every generated case/header has `"source": "active-chain-rpc"`
+- no `datadir`, absolute path, or `block_file` field is present
+- post-AuxPoW windows carry prehistory headers before
+  `first_checked_candidate_height`, so retarget tests do not skip missing
+  averaging-window or median-time-past history
+- `cargo test -p tidecoin --lib real_testnet -- --nocapture` passes
 
 ## Non-Goals Unless Full Node Validation Is Added
 

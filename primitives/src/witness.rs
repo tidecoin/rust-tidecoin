@@ -220,10 +220,10 @@ impl Witness {
     pub fn get(&self, index: usize) -> Option<&[u8]> {
         let pos = decode_cursor(&self.content, self.indices_start, index)?;
 
-        let mut slice = &self.content[pos..]; // Start of element.
+        let mut slice = self.content.get(pos..)?; // Start of element.
         let element_len = decode_unchecked(&mut slice);
         let end = cast_to_usize_if_valid(element_len)?;
-        Some(&slice[..end])
+        slice.get(..end)
     }
 
     /// Constructs a new witness from a list of hex strings.
@@ -686,11 +686,11 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = decode_cursor(self.inner, self.indices_start, self.current_index)?;
-        let mut slice = &self.inner[index..]; // Start of element.
+        let mut slice = self.inner.get(index..)?; // Start of element.
         let element_len = decode_unchecked(&mut slice);
         let end = cast_to_usize_if_valid(element_len)?;
         self.current_index += 1;
-        Some(&slice[..end])
+        slice.get(..end)
     }
 
     #[inline]
@@ -972,22 +972,9 @@ impl<'a> Arbitrary<'a> for Witness {
 
 /// Cast a decoded length prefix to a `usize`.
 ///
-/// This function is basically just defensive. For all sane use cases the length prefix should be
-/// less than `MAX_VEC_SIZE` (on a 32-bit machine). If the value is bigger that `u16::MAX` and we
-/// are on a 16-bit machine you'll likely hit an error later anyway, better to just check it now.
-///
-/// # 16-bits
-///
-/// The compact size may be bigger than what can be represented in a `usize` on a 16-bit machine but
-/// this shouldn't happen if we created the witness because one would get an OOM error before that.
+/// Returns `None` when a stored element length cannot be represented on the
+/// current platform.
 fn cast_to_usize_if_valid(n: u64) -> Option<usize> {
-    /// Maximum size, in bytes, of a vector we are allowed to decode.
-    const MAX_VEC_SIZE: u64 = 4_000_000;
-
-    if n > MAX_VEC_SIZE {
-        return None;
-    }
-
     usize::try_from(n).ok()
 }
 
@@ -1755,8 +1742,8 @@ mod test {
 
     #[test]
     #[cfg(feature = "alloc")]
-    fn iter_next_none_if_element_len_too_big() {
-        // Element length = 4_000_001 which is larger than MAX_VEC_SIZE (4_000_000).
+    fn iter_next_none_if_element_len_exceeds_buffer() {
+        // Element length claims more bytes than the malformed witness stores.
         let mut content = vec![0xFE];
         content.extend_from_slice(&4_000_001u32.to_le_bytes());
         let indices_start = content.len();

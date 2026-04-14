@@ -83,8 +83,11 @@ def parse_args() -> argparse.Namespace:
         "--retarget-windows",
         default="",
         help=(
-            "Comma-separated retarget windows as name=start-end. Each window is "
-            "inclusive and emits contiguous real headers for next-work tests."
+            "Comma-separated retarget windows as name=start-end or "
+            "name=start-end@first_checked_candidate. Each window is inclusive "
+            "and emits contiguous real headers; first_checked_candidate lets "
+            "the fixture carry prehistory without testing transitions before "
+            "the intended parity range."
         ),
     )
     parser.add_argument(
@@ -125,6 +128,7 @@ def parse_retarget_windows(value: str) -> list[dict]:
         name, sep, span = item.partition("=")
         if not sep:
             raise SystemExit(f"invalid retarget window {item!r}; expected name=start-end")
+        span, _, first_checked_candidate = span.partition("@")
         start, sep, end = span.partition("-")
         if not sep:
             raise SystemExit(f"invalid retarget window {item!r}; expected name=start-end")
@@ -132,7 +136,16 @@ def parse_retarget_windows(value: str) -> list[dict]:
         end_height = int(end)
         if end_height < start_height:
             raise SystemExit(f"invalid retarget window {item!r}; end is before start")
-        windows.append({"name": name, "start_height": start_height, "end_height": end_height})
+        window = {"name": name, "start_height": start_height, "end_height": end_height}
+        if first_checked_candidate:
+            check_height = int(first_checked_candidate)
+            if check_height <= start_height or check_height > end_height:
+                raise SystemExit(
+                    f"invalid retarget window {item!r}; "
+                    "first_checked_candidate must be inside start+1..end"
+                )
+            window["first_checked_candidate_height"] = check_height
+        windows.append(window)
     return windows
 
 

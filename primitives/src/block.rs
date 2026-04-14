@@ -126,24 +126,18 @@ impl Block<Unchecked> {
 
     /// Validates (or checks) a block.
     ///
-    /// We define valid as:
-    ///
-    /// * The Merkle root of the header matches Merkle root of the transaction list.
-    /// * The witness commitment in coinbase matches the transaction list.
+    /// This performs the node-aligned context-free `CheckBlock` sanity rules,
+    /// then verifies witness commitment and full block weight so the returned
+    /// checked block can safely cache the witness root.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// * The block has no transactions.
-    /// * The first transaction is not a coinbase transaction.
-    /// * A non-first transaction is a coinbase transaction.
-    /// * The block exceeds context-free size limits.
-    /// * Any transaction fails context-free transaction sanity checks.
-    /// * The legacy signature operation cost exceeds the block limit.
-    /// * The Merkle root of the header does not match the Merkle root of the transaction list.
-    /// * The witness commitment in the coinbase does not match the transaction list.
+    /// Returns [`InvalidBlockError`] if context-free block sanity, witness
+    /// commitment validation, or full block weight validation fails.
     pub fn validate(self) -> Result<Block<Checked>, InvalidBlockError> {
-        let witness_root = check_block_sanity_inner(&self).map_err(InvalidBlockError::from)?;
+        check_block_sanity_inner(&self).map_err(InvalidBlockError::from)?;
+        let witness_root =
+            check_block_witness_and_weight(&self).map_err(InvalidBlockError::from)?;
         let block = Self::new_unchecked(self.header, self.transactions);
         Ok(block.assume_checked(witness_root))
     }
@@ -208,8 +202,8 @@ impl Block<Unchecked> {
 /// Checks Tidecoin context-free block sanity rules.
 ///
 /// This mirrors the node's `CheckBlock` rules that do not depend on UTXO state,
-/// previous-block context, or script execution. Header PoW/AuxPoW validation is
-/// intentionally separate.
+/// previous-block context, script execution, or witness commitment state.
+/// Header PoW/AuxPoW validation is intentionally separate.
 ///
 /// # Errors
 ///
@@ -217,13 +211,11 @@ impl Block<Unchecked> {
 /// Tidecoin block sanity rule.
 #[cfg(feature = "alloc")]
 pub fn check_block_sanity(block: &Block<Unchecked>) -> Result<(), BlockSanityError> {
-    check_block_sanity_inner(block).map(|_| ())
+    check_block_sanity_inner(block)
 }
 
 #[cfg(feature = "alloc")]
-fn check_block_sanity_inner(
-    block: &Block<Unchecked>,
-) -> Result<Option<WitnessMerkleNode>, BlockSanityError> {
+fn check_block_sanity_inner(block: &Block<Unchecked>) -> Result<(), BlockSanityError> {
     if block.transactions.is_empty() {
         return Err(BlockSanityError::NoTransactions);
     }
@@ -271,6 +263,24 @@ fn check_block_sanity_inner(
         return Err(BlockSanityError::TooManyLegacySigops { cost: legacy_sigop_cost });
     }
 
+    Ok(())
+}
+
+/// Checks witness commitment and full witness-inclusive block weight.
+///
+/// The Tidecoin node performs these in `ContextualCheckBlock`, after
+/// `CheckBlock`, because witness data can change block weight without changing
+/// the block hash.
+///
+/// # Errors
+///
+/// Returns [`BlockSanityError::InvalidWitnessCommitment`] if the witness
+/// commitment is invalid, or [`BlockSanityError::WeightLimit`] if the
+/// witness-inclusive block weight exceeds consensus limits.
+#[cfg(feature = "alloc")]
+pub fn check_block_witness_and_weight(
+    block: &Block<Unchecked>,
+) -> Result<Option<WitnessMerkleNode>, BlockSanityError> {
     let (witness_valid, witness_root) = block.check_witness_commitment();
     if !witness_valid {
         return Err(BlockSanityError::InvalidWitnessCommitment);

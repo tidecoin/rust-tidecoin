@@ -229,8 +229,7 @@ mod tests {
     use std::fs;
     use std::thread;
 
-    use hashes::sha256;
-    use hashes::sha512;
+    use hashes::{sha256, sha256d, sha512, HashEngine as _};
     use node_parity::fixtures::test_data_path;
     use serde_json::Value;
 
@@ -250,6 +249,7 @@ mod tests {
     use crate::script::ScriptPubKeyBufExt as _;
     use crate::script::{ScriptBufExt as _, ScriptPubKeyBuf, ScriptSigBuf, WitnessScriptBuf};
     use crate::transaction::{self, OutPoint, Transaction, TxIn};
+    use crate::Weight;
     use crate::{Address, Amount, Network, PqWifKey, Sequence, TxOut, TxSighashType, Txid};
     use crate::{Block, BlockTime, CompactTarget, TxMerkleNode};
     use consensus_core::SighashCache;
@@ -877,6 +877,57 @@ mod tests {
         }
     }
 
+    fn spend_sanity_input(tag: u8) -> TxIn {
+        TxIn {
+            previous_output: OutPoint { txid: Txid::from_byte_array([tag; 32]), vout: tag.into() },
+            script_sig: ScriptSigBuf::new(),
+            sequence: Sequence::MAX,
+            witness: Witness::default(),
+        }
+    }
+
+    fn spend_sanity_tx(inputs: Vec<TxIn>, outputs: Vec<TxOut>) -> Transaction {
+        Transaction {
+            version: transaction::Version::ONE,
+            lock_time: absolute::LockTime::ZERO,
+            inputs,
+            outputs,
+        }
+    }
+
+    fn zero_output_sanity_tx() -> Transaction {
+        spend_sanity_tx(vec![spend_sanity_input(0x11)], vec![])
+    }
+
+    fn duplicate_input_sanity_tx() -> Transaction {
+        let input = spend_sanity_input(0x12);
+        spend_sanity_tx(
+            vec![input.clone(), input],
+            vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
+        )
+    }
+
+    fn null_prevout_non_coinbase_sanity_tx() -> Transaction {
+        let mut input = spend_sanity_input(0x13);
+        input.previous_output = OutPoint::COINBASE_PREVOUT;
+        spend_sanity_tx(
+            vec![input, spend_sanity_input(0x14)],
+            vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
+        )
+    }
+
+    fn oversized_stripped_sanity_tx() -> Transaction {
+        let oversized_script_len = (Weight::MAX_BLOCK.to_wu() / Weight::WITNESS_SCALE_FACTOR + 1)
+            .try_into()
+            .expect("max block size fits usize");
+        let mut tx = spend_sanity_tx(
+            vec![spend_sanity_input(0x15)],
+            vec![TxOut { amount: Amount::ONE_SAT, script_pubkey: ScriptPubKeyBuf::new() }],
+        );
+        tx.inputs[0].script_sig = ScriptSigBuf::from_bytes(vec![0x51; oversized_script_len]);
+        tx
+    }
+
     #[test]
     fn check_transaction_sanity_edges_match_node() {
         require_node_harness!();
@@ -884,6 +935,10 @@ mod tests {
         let harness = node_harness();
         let cases = [
             ("zero_inputs", zero_input_sanity_tx(), false),
+            ("zero_outputs", zero_output_sanity_tx(), false),
+            ("duplicate_input", duplicate_input_sanity_tx(), false),
+            ("null_prevout_non_coinbase", null_prevout_non_coinbase_sanity_tx(), false),
+            ("oversized_stripped", oversized_stripped_sanity_tx(), false),
             ("coinbase_scriptsig_1", coinbase_sanity_tx(1), false),
             ("coinbase_scriptsig_2", coinbase_sanity_tx(2), true),
             ("coinbase_scriptsig_100", coinbase_sanity_tx(100), true),
@@ -979,6 +1034,36 @@ mod tests {
         )
     }
 
+    fn merkle_root_allow_mutation(transactions: &[Transaction]) -> TxMerkleNode {
+        let mut hashes =
+            transactions.iter().map(|tx| tx.compute_txid().to_byte_array()).collect::<Vec<_>>();
+        assert!(!hashes.is_empty(), "test helper requires at least one transaction");
+
+        while hashes.len() > 1 {
+            if hashes.len() % 2 == 1 {
+                hashes.push(*hashes.last().expect("nonempty hashes"));
+            }
+
+            let mut next = Vec::with_capacity(hashes.len() / 2);
+            for pair in hashes.chunks_exact(2) {
+                let mut engine = sha256d::Hash::engine();
+                engine.input(&pair[0]);
+                engine.input(&pair[1]);
+                next.push(sha256d::Hash::from_engine(engine).to_byte_array());
+            }
+            hashes = next;
+        }
+
+        TxMerkleNode::from_byte_array(hashes[0])
+    }
+
+    fn duplicate_txid_merkle_mutation_block() -> Block {
+        let mut transactions = vec![block_coinbase(2, 0x51), block_spend(0x22), block_spend(0x23)];
+        transactions.push(transactions[2].clone());
+        let merkle_root = merkle_root_allow_mutation(&transactions);
+        block_with_merkle(transactions, merkle_root)
+    }
+
     fn oversized_stripped_block() -> Block {
         let mut coinbase = block_coinbase(2, 0x51);
         coinbase.outputs[0].script_pubkey = ScriptPubKeyBuf::from_bytes(vec![0x51; 1_500_100]);
@@ -1008,6 +1093,7 @@ mod tests {
                 false,
             ),
             ("bad_merkle", bad_merkle, false),
+            ("duplicate_txid_merkle_mutation", duplicate_txid_merkle_mutation_block(), false),
             ("bad_transaction", block_from_transactions(vec![block_coinbase(1, 0x51)]), false),
             ("too_many_legacy_sigops", block_from_transactions(vec![too_many_sigops]), false),
             ("oversized_stripped_block", oversized_stripped_block(), false),
