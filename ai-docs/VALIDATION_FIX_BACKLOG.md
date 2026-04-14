@@ -365,11 +365,16 @@ the shared Tidecoin-node harness and keep consensus-core as the single verifier.
 Rust now has active cargo-fuzz targets for the Tidecoin-node fuzz surfaces that
 belong inside this repository:
 
+- `consensus_script_runtime` mirrors the stateless interpreter execution paths
+  from node `script_interpreter.cpp` through the byte-oriented consensus API.
 - `tidecoin_transaction_policy` mirrors the stateless transaction and policy
   checks from node `transaction.cpp`.
 - `tidecoin_script_policy` mirrors the script classification, sigop, dust, and
   standardness checks from node `script.cpp`, including policy script-flag
   derivation.
+- `tidecoin_tx_out_policy` mirrors the library-owned output-policy pieces from
+  node `tx_out.cpp`: output consensus encoding, size/weight accounting, and dust
+  threshold helpers.
 - `tidecoin_block_sanity` mirrors the library-owned block sanity checks from
   node `block.cpp`: context-free block sanity, merkle/witness-root derivation,
   checked-block construction, block hash, weight, and BIP34 coinbase-height

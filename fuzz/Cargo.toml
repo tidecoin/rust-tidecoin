@@ -10,6 +10,7 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
+consensus = { path = "../consensus" }
 tidecoin = { path = "../tidecoin", features = [ "serde", "arbitrary" ] }
 tidecoin_consensus_encoding = { path = "../consensus_encoding", package = "tidecoin-consensus-encoding" }
 p2p = { path = "../p2p", package = "tidecoin-p2p-messages", features = ["arbitrary"] }
@@ -135,6 +136,20 @@ bench = false
 [[bin]]
 name = "tidecoin_transaction_policy"
 path = "fuzz_targets/tidecoin/transaction_policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tidecoin_tx_out_policy"
+path = "fuzz_targets/tidecoin/tx_out_policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "consensus_script_runtime"
+path = "fuzz_targets/consensus/script_runtime.rs"
 test = false
 doc = false
 bench = false

@@ -4,7 +4,6 @@
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 use tidecoin::absolute;
-use tidecoin::hashes::Hash as _;
 use tidecoin::opcodes::all;
 use tidecoin::policy;
 use tidecoin::script::{Builder, ScriptExt as _, ScriptPubKeyBuf, ScriptPubKeyExt as _};

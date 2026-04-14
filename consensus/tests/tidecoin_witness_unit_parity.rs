@@ -1,5 +1,8 @@
-use consensus::{verify_with_flags_detailed, ScriptFailure, VERIFY_P2SH, VERIFY_WITNESS};
-use hashes::{hash160, sha256};
+use consensus::{
+    verify_with_flags_detailed, ScriptFailure, VERIFY_MINIMALIF, VERIFY_P2SH, VERIFY_WITNESS,
+    VERIFY_WITNESS_V1_512,
+};
+use hashes::{hash160, sha256, sha512};
 use primitives::{
     opcodes::all,
     script::{Builder as BuilderT, ScriptBuf as PrimitiveScriptBuf},
@@ -26,6 +29,32 @@ fn p2sh_script_pubkey(redeem_script: &ScriptBuf) -> ScriptBuf {
         .push_slice(redeem_hash.to_byte_array())
         .push_opcode(all::OP_EQUAL)
         .into_script()
+}
+
+fn p2wsh512_script_pubkey(witness_script: &ScriptBuf) -> ScriptBuf {
+    let program = sha512::Hash::hash(witness_script.as_bytes()).to_byte_array();
+    Builder::new().push_opcode(all::OP_PUSHNUM_1).push_slice(program).into_script()
+}
+
+fn sized_witness_v1_script(len: usize) -> ScriptBuf {
+    let mut bytes = Vec::new();
+    for _ in 0..7 {
+        bytes.push(all::OP_PUSHDATA2.to_u8());
+        bytes.extend_from_slice(&8192u16.to_le_bytes());
+        bytes.resize(bytes.len() + 8192, 0x42);
+        bytes.push(all::OP_DROP.to_u8());
+    }
+
+    let tail_len =
+        len.checked_sub(bytes.len() + 5).expect("test script size must fit synthetic fixture");
+    assert!(tail_len <= 8192, "test helper expects one final push");
+    bytes.push(all::OP_PUSHDATA2.to_u8());
+    bytes.extend_from_slice(&(tail_len as u16).to_le_bytes());
+    bytes.resize(bytes.len() + tail_len, 0x24);
+    bytes.push(all::OP_DROP.to_u8());
+    bytes.push(all::OP_PUSHNUM_1.to_u8());
+    assert_eq!(bytes.len(), len);
+    ScriptBuf::from_bytes(bytes)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -82,6 +111,81 @@ fn assert_case(
 
     assert_eq!(ours.is_ok(), expect_ok, "{context}: unexpected local result: {ours:?}");
     ours
+}
+
+#[test]
+fn tidecoin_witness_minimalif_boundary_matches_node() {
+    let harness = try_harness();
+    let amount = sat(50_000);
+    let witness_script = Builder::new()
+        .push_opcode(all::OP_IF)
+        .push_opcode(all::OP_PUSHNUM_1)
+        .push_opcode(all::OP_ENDIF)
+        .into_script();
+    let program = sha256::Hash::hash(witness_script.as_bytes());
+    let script_pubkey = Builder::new()
+        .push_opcode(all::OP_PUSHBYTES_0)
+        .push_slice(program.to_byte_array())
+        .into_script();
+
+    assert_case(
+        &harness,
+        &ScriptBuf::new(),
+        &script_pubkey,
+        &Witness::from(vec![vec![0x01], witness_script.as_bytes().to_vec()]),
+        amount,
+        VERIFY_WITNESS | VERIFY_MINIMALIF,
+        true,
+        "witness v0 minimal-if canonical true",
+    )
+    .unwrap();
+
+    let non_minimal = assert_case(
+        &harness,
+        &ScriptBuf::new(),
+        &script_pubkey,
+        &Witness::from(vec![vec![0x02], witness_script.as_bytes().to_vec()]),
+        amount,
+        VERIFY_WITNESS | VERIFY_MINIMALIF,
+        false,
+        "witness v0 minimal-if non-canonical true",
+    )
+    .expect_err("non-minimal witness if argument fails");
+    assert_eq!(non_minimal.script_error, consensus::ScriptError::MinimalIf);
+}
+
+#[test]
+fn tidecoin_witness_v1_512_script_size_boundary_matches_node() {
+    let harness = try_harness();
+    let amount = sat(50_000);
+    let flags = VERIFY_WITNESS | VERIFY_P2SH | VERIFY_WITNESS_V1_512;
+
+    let max_script = sized_witness_v1_script(65_536);
+    assert_case(
+        &harness,
+        &ScriptBuf::new(),
+        &p2wsh512_script_pubkey(&max_script),
+        &Witness::from(vec![max_script.as_bytes().to_vec()]),
+        amount,
+        flags,
+        true,
+        "witness v1-512 script at consensus limit",
+    )
+    .unwrap();
+
+    let oversized_script = sized_witness_v1_script(65_537);
+    let oversized = assert_case(
+        &harness,
+        &ScriptBuf::new(),
+        &p2wsh512_script_pubkey(&oversized_script),
+        &Witness::from(vec![oversized_script.as_bytes().to_vec()]),
+        amount,
+        flags,
+        false,
+        "witness v1-512 script above consensus limit",
+    )
+    .expect_err("oversized witness v1-512 script fails");
+    assert_eq!(oversized.script_error, consensus::ScriptError::ScriptSize);
 }
 
 #[test]

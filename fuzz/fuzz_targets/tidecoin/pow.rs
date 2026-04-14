@@ -4,7 +4,6 @@
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 use tidecoin::block::{Header, HeaderExt as _};
-use tidecoin::hashes::Hash as _;
 use tidecoin::network::NetworkExt as _;
 use tidecoin::pow;
 use tidecoin::{BlockHeight, BlockHeightInterval, BlockTime, CompactTarget, Network};
@@ -29,8 +28,10 @@ fn do_test(data: &[u8]) {
     let _ = pow::validate_pow_at_height(&header, params, height);
     let _ = pow::validate_pow_any(&header, params);
     let _ = pow::validate_auxpow_context(&header, params, Some(height));
-    let _ = header.difficulty(params);
-    let _ = header.difficulty_float(params);
+    if pow::Target::from_compact(header.bits) != pow::Target::ZERO {
+        let _ = header.difficulty(params);
+        let _ = header.difficulty_float(params);
+    }
     let _ = header.work();
 
     if let Ok(target) = pow::derive_target(header.bits, params) {

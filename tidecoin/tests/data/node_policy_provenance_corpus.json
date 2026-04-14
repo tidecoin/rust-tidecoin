@@ -1,0 +1,522 @@
+{
+  "schema_version": 1,
+  "source_node_commit": "91625a25fbe8af17d01a5d418782c91b0e6e0eeb",
+  "source_files": {
+    "consensus_h": {
+      "path": "src/consensus/consensus.h",
+      "sha256": "2c74439b031858abe53391332afdb7beb762305c5ec8f53afd399337afbf5bb2"
+    },
+    "descriptor_cpp": {
+      "path": "src/script/descriptor.cpp",
+      "sha256": "16add6652c6230122863cd7ffefb958da4e5855e79bf7a9ae4342d5b05b51a68"
+    },
+    "descriptor_tests": {
+      "path": "src/test/descriptor_tests.cpp",
+      "sha256": "fc099d4f83af10fe6758cbba3779eeef9ce0c0669bbac9b65981147ee5da705d"
+    },
+    "descriptor_fuzz": {
+      "path": "src/test/fuzz/descriptor_parse.cpp",
+      "sha256": "6f5930859ab926316215461365b4b49bcc2fe287a2565c78ed13129f89a1fb8a"
+    },
+    "policy_h": {
+      "path": "src/policy/policy.h",
+      "sha256": "eb0807639c6e5b08b57d138b0814f399918899a8ebd19c2d881a2b8433270eea"
+    },
+    "policy_cpp": {
+      "path": "src/policy/policy.cpp",
+      "sha256": "ae477f82247f0a044ba8ccb5d8acc598e5b3154482ed927c904e11d40380cb08"
+    },
+    "pq_scheme_h": {
+      "path": "src/pq/pq_scheme.h",
+      "sha256": "3fb031c19c66bdbbe3a2ff6c28205ccb5d9b84907587cdc5bb4d8f5172ed9c18"
+    },
+    "script_standard_tests": {
+      "path": "src/test/script_standard_tests.cpp",
+      "sha256": "e7830d98403856f5a4a74f5d1d53fde2f894b3a43c49c3f85ec303744f4273e1"
+    },
+    "pq_txsize_tests": {
+      "path": "src/test/pq_txsize_tests.cpp",
+      "sha256": "4d098381cc38a48e8618d3bfaf1962e399a678cb11b5b59289960252f5fe9faa"
+    },
+    "mempool_datacarrier": {
+      "path": "test/functional/mempool_datacarrier.py",
+      "sha256": "26b821c899c8c7f6d2285186f1646794c0762e7242bafdcc1ce321101af6afbd"
+    },
+    "mempool_dust": {
+      "path": "test/functional/mempool_dust.py",
+      "sha256": "33ced5409dde677a02bed7570649713f9c726680e6dd061444e3f7984313a0db"
+    },
+    "mempool_ephemeral_dust": {
+      "path": "test/functional/mempool_ephemeral_dust.py",
+      "sha256": "7fb48a85ede54785b84c2f52ee8924f8aefcc794de4eed8d7b5534704ce9b7fe"
+    },
+    "mempool_truc": {
+      "path": "test/functional/mempool_truc.py",
+      "sha256": "951d6f377aed182bfd0b556cb2a9d64ba9140a1cc3648de45ddc5c242f6d73eb"
+    },
+    "p2p_segwit": {
+      "path": "test/functional/p2p_segwit.py",
+      "sha256": "6ffac67297798cbf3dd109180cda685b29be3b4b3a1a0536702b135fbe151a58"
+    }
+  },
+  "source_partitions": {
+    "node_unit_tests": [
+      "src/script/descriptor.cpp",
+      "src/test/descriptor_tests.cpp",
+      "src/test/script_standard_tests.cpp",
+      "src/test/pq_txsize_tests.cpp",
+      "src/policy/policy.cpp"
+    ],
+    "node_fuzz_tests": [
+      "src/test/fuzz/descriptor_parse.cpp"
+    ],
+    "node_functional_tests": [
+      "test/functional/mempool_datacarrier.py",
+      "test/functional/mempool_dust.py",
+      "test/functional/mempool_ephemeral_dust.py",
+      "test/functional/mempool_truc.py",
+      "test/functional/p2p_segwit.py"
+    ]
+  },
+  "constants": {
+    "MAX_STANDARD_TX_WEIGHT": 800000,
+    "MIN_STANDARD_TX_NONWITNESS_SIZE": 65,
+    "MAX_P2SH_SIGOPS": 15,
+    "MAX_STANDARD_TX_SIGOPS_COST_DIVISOR": 5,
+    "MAX_TX_LEGACY_SIGOPS": 2500,
+    "DEFAULT_BYTES_PER_SIGOP": 20,
+    "DEFAULT_PERMIT_BAREMULTISIG": false,
+    "MAX_STANDARD_P2WSH_STACK_ITEMS": 100,
+    "MAX_STANDARD_P2WSH_STACK_ITEM_SIZE": 5000,
+    "MAX_STANDARD_P2WSH_SCRIPT_SIZE": 65536,
+    "MAX_STANDARD_SCRIPTSIG_SIZE": 8192,
+    "DUST_RELAY_TX_FEE": 3000,
+    "DEFAULT_MIN_RELAY_TX_FEE": 100,
+    "MAX_DUST_OUTPUTS_PER_TX": 1,
+    "TX_MIN_STANDARD_VERSION": 1,
+    "TX_MAX_STANDARD_VERSION": 3,
+    "MAX_OP_RETURN_RELAY": 200000,
+    "CUSTOM_DATACARRIER_ARG": 83,
+    "TRUC_MAX_VSIZE": 10000,
+    "TRUC_CHILD_MAX_VSIZE": 4000
+  },
+  "case_count": 33,
+  "cases_sha256": "5b26286e5e17300c337a07d165c48d11ef94dc965d0fb68bfc8deb05ee3ef775",
+  "cases": [
+    {
+      "id": "descriptor_pk_script_size_Falcon512",
+      "partition": "node_unit_tests",
+      "source": "descriptor_tests",
+      "anchor": "BOOST_CHECK_EQUAL(*parsed.at(0)->ScriptSize(), scripts.back().size())",
+      "kind": "descriptor_script_size",
+      "descriptor": "pk",
+      "scheme": "Falcon512",
+      "prefix": 7,
+      "prefixed_pubkey_len": 898,
+      "expected_script_size": 902
+    },
+    {
+      "id": "descriptor_multi_1_of_1_script_size_Falcon512",
+      "partition": "node_unit_tests",
+      "source": "descriptor_cpp",
+      "anchor": "acc + DataElemSize(pk->GetSize())",
+      "kind": "descriptor_script_size",
+      "descriptor": "multi",
+      "threshold": 1,
+      "pubkeys": [
+        "Falcon512"
+      ],
+      "prefixes": [
+        7
+      ],
+      "prefixed_pubkey_lens": [
+        898
+      ],
+      "expected_script_size": 904
+    },
+    {
+      "id": "descriptor_pk_script_size_Falcon1024",
+      "partition": "node_unit_tests",
+      "source": "descriptor_tests",
+      "anchor": "BOOST_CHECK_EQUAL(*parsed.at(0)->ScriptSize(), scripts.back().size())",
+      "kind": "descriptor_script_size",
+      "descriptor": "pk",
+      "scheme": "Falcon1024",
+      "prefix": 8,
+      "prefixed_pubkey_len": 1794,
+      "expected_script_size": 1798
+    },
+    {
+      "id": "descriptor_multi_1_of_1_script_size_Falcon1024",
+      "partition": "node_unit_tests",
+      "source": "descriptor_cpp",
+      "anchor": "acc + DataElemSize(pk->GetSize())",
+      "kind": "descriptor_script_size",
+      "descriptor": "multi",
+      "threshold": 1,
+      "pubkeys": [
+        "Falcon1024"
+      ],
+      "prefixes": [
+        8
+      ],
+      "prefixed_pubkey_lens": [
+        1794
+      ],
+      "expected_script_size": 1800
+    },
+    {
+      "id": "descriptor_pk_script_size_MlDsa44",
+      "partition": "node_unit_tests",
+      "source": "descriptor_tests",
+      "anchor": "BOOST_CHECK_EQUAL(*parsed.at(0)->ScriptSize(), scripts.back().size())",
+      "kind": "descriptor_script_size",
+      "descriptor": "pk",
+      "scheme": "MlDsa44",
+      "prefix": 9,
+      "prefixed_pubkey_len": 1313,
+      "expected_script_size": 1317
+    },
+    {
+      "id": "descriptor_multi_1_of_1_script_size_MlDsa44",
+      "partition": "node_unit_tests",
+      "source": "descriptor_cpp",
+      "anchor": "acc + DataElemSize(pk->GetSize())",
+      "kind": "descriptor_script_size",
+      "descriptor": "multi",
+      "threshold": 1,
+      "pubkeys": [
+        "MlDsa44"
+      ],
+      "prefixes": [
+        9
+      ],
+      "prefixed_pubkey_lens": [
+        1313
+      ],
+      "expected_script_size": 1319
+    },
+    {
+      "id": "descriptor_pk_script_size_MlDsa65",
+      "partition": "node_unit_tests",
+      "source": "descriptor_tests",
+      "anchor": "BOOST_CHECK_EQUAL(*parsed.at(0)->ScriptSize(), scripts.back().size())",
+      "kind": "descriptor_script_size",
+      "descriptor": "pk",
+      "scheme": "MlDsa65",
+      "prefix": 10,
+      "prefixed_pubkey_len": 1953,
+      "expected_script_size": 1957
+    },
+    {
+      "id": "descriptor_multi_1_of_1_script_size_MlDsa65",
+      "partition": "node_unit_tests",
+      "source": "descriptor_cpp",
+      "anchor": "acc + DataElemSize(pk->GetSize())",
+      "kind": "descriptor_script_size",
+      "descriptor": "multi",
+      "threshold": 1,
+      "pubkeys": [
+        "MlDsa65"
+      ],
+      "prefixes": [
+        10
+      ],
+      "prefixed_pubkey_lens": [
+        1953
+      ],
+      "expected_script_size": 1959
+    },
+    {
+      "id": "descriptor_pk_script_size_MlDsa87",
+      "partition": "node_unit_tests",
+      "source": "descriptor_tests",
+      "anchor": "BOOST_CHECK_EQUAL(*parsed.at(0)->ScriptSize(), scripts.back().size())",
+      "kind": "descriptor_script_size",
+      "descriptor": "pk",
+      "scheme": "MlDsa87",
+      "prefix": 11,
+      "prefixed_pubkey_len": 2593,
+      "expected_script_size": 2597
+    },
+    {
+      "id": "descriptor_multi_1_of_1_script_size_MlDsa87",
+      "partition": "node_unit_tests",
+      "source": "descriptor_cpp",
+      "anchor": "acc + DataElemSize(pk->GetSize())",
+      "kind": "descriptor_script_size",
+      "descriptor": "multi",
+      "threshold": 1,
+      "pubkeys": [
+        "MlDsa87"
+      ],
+      "prefixes": [
+        11
+      ],
+      "prefixed_pubkey_lens": [
+        2593
+      ],
+      "expected_script_size": 2599
+    },
+    {
+      "id": "descriptor_multi_mixed_scheme_size_falcon512_mldsa44",
+      "partition": "node_unit_tests",
+      "source": "descriptor_tests",
+      "anchor": "Mixed-scheme multisig is permitted",
+      "kind": "descriptor_script_size",
+      "descriptor": "multi",
+      "threshold": 1,
+      "pubkeys": [
+        "Falcon512",
+        "MlDsa44"
+      ],
+      "prefixes": [
+        7,
+        9
+      ],
+      "prefixed_pubkey_lens": [
+        898,
+        1313
+      ],
+      "expected_script_size": 2220
+    },
+    {
+      "id": "datacarrier_custom_exact",
+      "partition": "node_functional_tests",
+      "source": "mempool_datacarrier",
+      "anchor": "custom_size_data = randbytes(CUSTOM_DATACARRIER_ARG - 3)",
+      "kind": "datacarrier",
+      "max_datacarrier_bytes": 83,
+      "payload": {
+        "shape": "bytes",
+        "len": 80
+      },
+      "expected": "ok"
+    },
+    {
+      "id": "datacarrier_custom_one_byte_over",
+      "partition": "node_functional_tests",
+      "source": "mempool_datacarrier",
+      "anchor": "too_long_data = randbytes(CUSTOM_DATACARRIER_ARG - 2)",
+      "kind": "datacarrier",
+      "max_datacarrier_bytes": 83,
+      "payload": {
+        "shape": "bytes",
+        "len": 81
+      },
+      "expected": "datacarrier"
+    },
+    {
+      "id": "datacarrier_disabled_rejects_bare_op_return",
+      "partition": "node_functional_tests",
+      "source": "mempool_datacarrier",
+      "anchor": "Testing a null data transaction with -datacarrier=false.",
+      "kind": "datacarrier",
+      "max_datacarrier_bytes": 0,
+      "payload": {
+        "shape": "none"
+      },
+      "expected": "datacarrier"
+    },
+    {
+      "id": "datacarrier_tiny_limit_accepts_bare_op_return",
+      "partition": "node_functional_tests",
+      "source": "mempool_datacarrier",
+      "anchor": "\"-datacarriersize=2\" and data=None",
+      "kind": "datacarrier",
+      "max_datacarrier_bytes": 2,
+      "payload": {
+        "shape": "none"
+      },
+      "expected": "ok"
+    },
+    {
+      "id": "datacarrier_tiny_limit_accepts_zero_byte_push",
+      "partition": "node_functional_tests",
+      "source": "mempool_datacarrier",
+      "anchor": "\"-datacarriersize=2\" and zero_bytes",
+      "kind": "datacarrier",
+      "max_datacarrier_bytes": 2,
+      "payload": {
+        "shape": "bytes",
+        "len": 0
+      },
+      "expected": "ok"
+    },
+    {
+      "id": "datacarrier_tiny_limit_rejects_one_byte_push",
+      "partition": "node_functional_tests",
+      "source": "mempool_datacarrier",
+      "anchor": "\"-datacarriersize=2\" and one_byte",
+      "kind": "datacarrier",
+      "max_datacarrier_bytes": 2,
+      "payload": {
+        "shape": "bytes",
+        "len": 1
+      },
+      "expected": "datacarrier"
+    },
+    {
+      "id": "bare_multisig_one_of_one",
+      "partition": "node_unit_tests",
+      "source": "script_standard_tests",
+      "anchor": "TxoutType::MULTISIG / OP_1 <pubkey> OP_1 OP_CHECKMULTISIG",
+      "kind": "bare_multisig",
+      "required_sigs": 1,
+      "pubkeys": 1,
+      "standard_with_bare_multisig": true
+    },
+    {
+      "id": "bare_multisig_one_of_three",
+      "partition": "node_unit_tests",
+      "source": "policy_cpp",
+      "anchor": "Support up to x-of-3 multisig txns as standard",
+      "kind": "bare_multisig",
+      "required_sigs": 1,
+      "pubkeys": 3,
+      "standard_with_bare_multisig": true
+    },
+    {
+      "id": "bare_multisig_three_of_three",
+      "partition": "node_unit_tests",
+      "source": "policy_cpp",
+      "anchor": "Support up to x-of-3 multisig txns as standard",
+      "kind": "bare_multisig",
+      "required_sigs": 3,
+      "pubkeys": 3,
+      "standard_with_bare_multisig": true
+    },
+    {
+      "id": "bare_multisig_zero_of_one",
+      "partition": "node_unit_tests",
+      "source": "script_standard_tests",
+      "anchor": "TxoutType::MULTISIG 0/2",
+      "kind": "bare_multisig",
+      "required_sigs": 0,
+      "pubkeys": 1,
+      "standard_with_bare_multisig": false
+    },
+    {
+      "id": "bare_multisig_two_of_one",
+      "partition": "node_unit_tests",
+      "source": "script_standard_tests",
+      "anchor": "TxoutType::MULTISIG 2/1",
+      "kind": "bare_multisig",
+      "required_sigs": 2,
+      "pubkeys": 1,
+      "standard_with_bare_multisig": false
+    },
+    {
+      "id": "bare_multisig_one_of_four",
+      "partition": "node_unit_tests",
+      "source": "policy_cpp",
+      "anchor": "if (n < 1 || n > 3) return false",
+      "kind": "bare_multisig",
+      "required_sigs": 1,
+      "pubkeys": 4,
+      "standard_with_bare_multisig": false
+    },
+    {
+      "id": "witness_v0_stack_items_at_limit",
+      "partition": "node_functional_tests",
+      "source": "p2p_segwit",
+      "anchor": "exact P2WSH witness stack item count limit",
+      "kind": "witness_standard",
+      "witness_version": 0,
+      "dimension": "stack_items",
+      "value": 100,
+      "expected": "ok"
+    },
+    {
+      "id": "witness_v0_stack_items_over_limit",
+      "partition": "node_functional_tests",
+      "source": "p2p_segwit",
+      "anchor": "P2WSH witness stack item count limit + 1",
+      "kind": "witness_standard",
+      "witness_version": 0,
+      "dimension": "stack_items",
+      "value": 101,
+      "expected": "nonstandard"
+    },
+    {
+      "id": "witness_v1_512_stack_item_at_limit",
+      "partition": "node_unit_tests",
+      "source": "policy_cpp",
+      "anchor": "MAX_STANDARD_P2WSH_STACK_ITEM_SIZE",
+      "kind": "witness_standard",
+      "witness_version": 1,
+      "dimension": "stack_item_size",
+      "value": 5000,
+      "expected": "ok"
+    },
+    {
+      "id": "witness_v1_512_stack_item_over_limit",
+      "partition": "node_unit_tests",
+      "source": "policy_cpp",
+      "anchor": "MAX_STANDARD_P2WSH_STACK_ITEM_SIZE",
+      "kind": "witness_standard",
+      "witness_version": 1,
+      "dimension": "stack_item_size",
+      "value": 5001,
+      "expected": "nonstandard"
+    },
+    {
+      "id": "witness_v0_script_at_limit",
+      "partition": "node_functional_tests",
+      "source": "p2p_segwit",
+      "anchor": "exact 65536 witnessScript size",
+      "kind": "witness_standard",
+      "witness_version": 0,
+      "dimension": "witness_script_size",
+      "value": 65536,
+      "expected": "ok"
+    },
+    {
+      "id": "witness_v0_script_over_limit",
+      "partition": "node_functional_tests",
+      "source": "p2p_segwit",
+      "anchor": "65537 witnessScript size",
+      "kind": "witness_standard",
+      "witness_version": 0,
+      "dimension": "witness_script_size",
+      "value": 65537,
+      "expected": "nonstandard"
+    },
+    {
+      "id": "dust_one_output_allowed_by_stateless_standard_policy",
+      "partition": "node_functional_tests",
+      "source": "mempool_ephemeral_dust",
+      "anchor": "single ephemeral dust output is package-valid but solo mempool stateful rules are out of scope",
+      "kind": "dust_count",
+      "dust_outputs": 1,
+      "expected": "ok"
+    },
+    {
+      "id": "dust_two_outputs_rejected",
+      "partition": "node_functional_tests",
+      "source": "mempool_ephemeral_dust",
+      "anchor": "Test that a transaction with multiple ephemeral dusts is not allowed",
+      "kind": "dust_count",
+      "dust_outputs": 2,
+      "expected": "dust"
+    },
+    {
+      "id": "truc_vsize_at_limit",
+      "partition": "node_functional_tests",
+      "source": "mempool_truc",
+      "anchor": "TRUC_MAX_VSIZE",
+      "kind": "truc_vsize",
+      "target_vsize": 10000,
+      "expected": "ok"
+    },
+    {
+      "id": "truc_vsize_over_limit",
+      "partition": "node_functional_tests",
+      "source": "mempool_truc",
+      "anchor": "target_vsize=TRUC_MAX_VSIZE + 1",
+      "kind": "truc_vsize",
+      "target_vsize": 10001,
+      "expected": "TRUC-violation"
+    }
+  ]
+}

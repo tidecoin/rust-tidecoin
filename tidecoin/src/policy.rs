@@ -876,6 +876,143 @@ mod tests {
     }
 
     #[test]
+    fn dust_threshold_boundaries_match_node_rounding_policy() {
+        let script_pubkey = ScriptPubKeyBuf::builder()
+            .push_opcode(crate::opcodes::all::OP_DUP)
+            .push_opcode(crate::opcodes::all::OP_HASH160)
+            .push_slice([0x5a; 20])
+            .push_opcode(crate::opcodes::all::OP_EQUALVERIFY)
+            .push_opcode(crate::opcodes::all::OP_CHECKSIG)
+            .into_script();
+        let dust_relay_fee = FeeRate::from_sat_per_kvb(3_702);
+        let threshold = script_pubkey.minimal_non_dust_custom(dust_relay_fee).unwrap();
+        let mut tx = tx_with_single_input(
+            ScriptSigBuf::new(),
+            vec![TxOut { amount: threshold, script_pubkey: script_pubkey.clone() }],
+        );
+
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                dust_relay_fee
+            ),
+            Ok(())
+        );
+
+        tx.outputs[0].amount = threshold.checked_sub(Amount::from_sat(1).unwrap()).unwrap();
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                dust_relay_fee
+            ),
+            Ok(())
+        );
+
+        tx.outputs.push(TxOut {
+            amount: threshold.checked_sub(Amount::from_sat(1).unwrap()).unwrap(),
+            script_pubkey,
+        });
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                dust_relay_fee
+            ),
+            Err(StandardTxError::Dust)
+        );
+    }
+
+    #[test]
+    fn is_standard_tx_datacarrier_budget_and_count_match_node_units() {
+        let op_return_payload = |len: usize| {
+            ScriptPubKeyBuf::builder()
+                .push_opcode(crate::opcodes::all::OP_RETURN)
+                .push_slice(PushBytesBuf::try_from(vec![0x42; len]).unwrap())
+                .into_script()
+        };
+        let mut tx = tx_with_single_input(
+            ScriptSigBuf::new(),
+            vec![prevout(op_return_payload(80), 0), prevout(op_return_payload(80), 0)],
+        );
+        let budget = tx.outputs[0].script_pubkey.len() + tx.outputs[1].script_pubkey.len();
+
+        assert_eq!(
+            is_standard_tx(&tx, Some(budget), DEFAULT_PERMIT_BAREMULTISIG, FeeRate::DUST),
+            Ok(())
+        );
+        assert_eq!(
+            is_standard_tx(&tx, Some(budget - 1), DEFAULT_PERMIT_BAREMULTISIG, FeeRate::DUST),
+            Err(StandardTxError::DataCarrier)
+        );
+
+        tx.outputs[0].script_pubkey = ScriptPubKeyBuf::builder()
+            .push_opcode(crate::opcodes::all::OP_RETURN)
+            .push_opcode(crate::opcodes::all::OP_RETURN)
+            .into_script();
+        assert_eq!(
+            is_standard_tx(
+                &tx,
+                Some(MAX_OP_RETURN_RELAY),
+                DEFAULT_PERMIT_BAREMULTISIG,
+                FeeRate::DUST
+            ),
+            Err(StandardTxError::ScriptPubKey)
+        );
+    }
+
+    #[test]
+    fn bare_multisig_standardness_matrix_matches_node_limits() {
+        let keys = [
+            deterministic_pubkey(PqScheme::Falcon512, 0x71),
+            deterministic_pubkey(PqScheme::Falcon512, 0x72),
+            deterministic_pubkey(PqScheme::Falcon512, 0x73),
+            deterministic_pubkey(PqScheme::Falcon512, 0x74),
+        ];
+        let cases = [
+            ("one-of-one", pq_bare_multisig_script(1, &keys[..1]), true),
+            ("one-of-three", pq_bare_multisig_script(1, &keys[..3]), true),
+            ("three-of-three", pq_bare_multisig_script(3, &keys[..3]), true),
+            ("zero-of-one", pq_bare_multisig_script(0, &keys[..1]), false),
+            ("two-of-one", pq_bare_multisig_script(2, &keys[..1]), false),
+            ("one-of-four", pq_bare_multisig_script(1, &keys), false),
+        ];
+
+        for (label, script_pubkey, standard_with_bare_multisig) in cases {
+            let tx =
+                tx_with_single_input(ScriptSigBuf::new(), vec![prevout(script_pubkey, 30_000)]);
+            let expected_with_bare = if standard_with_bare_multisig {
+                Ok(())
+            } else {
+                Err(StandardTxError::ScriptPubKey)
+            };
+            assert_eq!(
+                is_standard_tx(&tx, Some(MAX_OP_RETURN_RELAY), true, FeeRate::DUST),
+                expected_with_bare,
+                "{label}: permit_bare_multisig=true"
+            );
+            assert_eq!(
+                is_standard_tx(
+                    &tx,
+                    Some(MAX_OP_RETURN_RELAY),
+                    DEFAULT_PERMIT_BAREMULTISIG,
+                    FeeRate::DUST
+                ),
+                if standard_with_bare_multisig {
+                    Err(StandardTxError::BareMultisig)
+                } else {
+                    Err(StandardTxError::ScriptPubKey)
+                },
+                "{label}: permit_bare_multisig=false"
+            );
+        }
+    }
+
+    #[test]
     fn is_standard_tx_matches_node_p2pk_classification() {
         let p2pk = pq_p2pk_script();
         let tx = tx_with_single_input(ScriptSigBuf::new(), vec![prevout(p2pk, 30_000)]);
@@ -1672,6 +1809,74 @@ mod tests {
             panic!("oversized TRUC transaction should fail stateless relay prechecks");
         };
         assert!(vsize > TRUC_MAX_VSIZE);
+    }
+
+    #[test]
+    fn standard_relay_prechecks_truc_vsize_exact_boundary() {
+        fn tx_with_witness_payload(payload_len: usize) -> Transaction {
+            let mut tx = tx_with_single_input(
+                ScriptSigBuf::new(),
+                vec![prevout(
+                    ScriptPubKeyBuf::builder()
+                        .push_opcode(crate::opcodes::all::OP_DUP)
+                        .push_opcode(crate::opcodes::all::OP_HASH160)
+                        .push_slice([0x81; 20])
+                        .push_opcode(crate::opcodes::all::OP_EQUALVERIFY)
+                        .push_opcode(crate::opcodes::all::OP_CHECKSIG)
+                        .into_script(),
+                    30_000,
+                )],
+            );
+            tx.version = TRUC_VERSION;
+            tx.inputs[0].witness.push(vec![0x42; payload_len]);
+            tx
+        }
+
+        let input_prevout = prevout(
+            ScriptPubKeyBuf::builder().push_int_unchecked(0).push_slice([0x82; 20]).into_script(),
+            30_000,
+        );
+        let spent = |_: &OutPoint| Some(input_prevout.clone());
+        let mut exact_payload = None;
+        let mut too_large_payload = None;
+
+        for payload_len in 0..=TRUC_MAX_VSIZE as usize * 4 {
+            let tx = tx_with_witness_payload(payload_len);
+            let vsize = get_virtual_tx_size(tx.weight().to_wu() as i64, 0);
+            if vsize == TRUC_MAX_VSIZE {
+                exact_payload = Some(payload_len);
+            } else if vsize == TRUC_MAX_VSIZE + 1 {
+                too_large_payload = Some(payload_len);
+                break;
+            }
+        }
+
+        let exact_tx =
+            tx_with_witness_payload(exact_payload.expect("synthetic TRUC exact boundary exists"));
+        assert_eq!(
+            check_standard_relay_prechecks(
+                &exact_tx,
+                Params::REGTEST,
+                BlockHeight::from_u32(0),
+                spent,
+                StandardRelayPrecheckPolicy::default(),
+            ),
+            Ok(())
+        );
+
+        let too_large_tx = tx_with_witness_payload(
+            too_large_payload.expect("synthetic TRUC reject boundary exists"),
+        );
+        assert_eq!(
+            check_standard_relay_prechecks(
+                &too_large_tx,
+                Params::REGTEST,
+                BlockHeight::from_u32(0),
+                |_| Some(input_prevout.clone()),
+                StandardRelayPrecheckPolicy::default(),
+            ),
+            Err(StandardRelayPrecheckError::TrucTxSize { vsize: TRUC_MAX_VSIZE + 1 })
+        );
     }
 
     #[test]

@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use consensus::{verify_with_flags_detailed, ScriptFailure};
 use consensus_core::{
-    VERIFY_CLEANSTACK, VERIFY_MINIMALDATA, VERIFY_MINIMALIF, VERIFY_NONE, VERIFY_P2SH,
-    VERIFY_SHA512, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
+    VERIFY_CLEANSTACK, VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_MINIMALDATA, VERIFY_MINIMALIF, VERIFY_NONE, VERIFY_P2SH, VERIFY_SHA512, VERIFY_WITNESS,
+    VERIFY_WITNESS_V1_512,
 };
 use hashes::{hash160, sha256, sha512};
 use primitives::{
@@ -287,14 +288,151 @@ fn witness_v1_512_case(rng: &mut DeterministicRng) -> RandomCase {
     }
 }
 
+fn op_sha512_flag_case(rng: &mut DeterministicRng) -> RandomCase {
+    let len = 1 + rng.range(32);
+    let item = rng.bytes(len);
+    let enabled = rng.rand_bool();
+    let discourage_disabled = !enabled && rng.rand_bool();
+    let expected =
+        if enabled { sha512::Hash::hash(&item).to_byte_array().to_vec() } else { item.clone() };
+    let script_sig = build_push_script(&[(item, true), (expected, true)]);
+    let script_pubkey =
+        Builder::new().push_opcode(all::OP_SHA512).push_opcode(all::OP_EQUAL).into_script();
+    let mut flags = random_extra_flags(rng, &[VERIFY_CLEANSTACK]);
+    if enabled {
+        flags |= VERIFY_SHA512;
+    } else if discourage_disabled {
+        flags |= VERIFY_DISCOURAGE_UPGRADABLE_NOPS;
+    }
+    RandomCase {
+        label: "op_sha512_flag",
+        script_sig,
+        script_pubkey,
+        witness: Witness::new(),
+        amount: 0,
+        flags,
+    }
+}
+
+fn const_scriptcode_case(rng: &mut DeterministicRng) -> RandomCase {
+    let executed = rng.rand_bool();
+    let condition = if executed { 1 } else { 0 };
+    let script_sig = Builder::new().push_int(condition).expect("bool int").into_script();
+    let script_pubkey = Builder::new()
+        .push_opcode(all::OP_IF)
+        .push_opcode(all::OP_CODESEPARATOR)
+        .push_opcode(all::OP_ENDIF)
+        .push_opcode(all::OP_PUSHNUM_1)
+        .into_script();
+    let flags = VERIFY_CONST_SCRIPTCODE | random_extra_flags(rng, &[VERIFY_CLEANSTACK]);
+    RandomCase {
+        label: "const_scriptcode",
+        script_sig,
+        script_pubkey,
+        witness: Witness::new(),
+        amount: 0,
+        flags,
+    }
+}
+
+fn stack_altstack_case(rng: &mut DeterministicRng) -> RandomCase {
+    let item_len = 1 + rng.range(32);
+    let item = rng.bytes(item_len);
+    let rounds = 1 + rng.range(16);
+    let pushes = (0..=rounds).map(|_| (item.clone(), true)).collect::<Vec<_>>();
+    let mut builder = Builder::new();
+    for _ in 0..rounds {
+        builder = builder.push_opcode(all::OP_TOALTSTACK);
+    }
+    for _ in 0..rounds {
+        builder = builder.push_opcode(all::OP_FROMALTSTACK);
+    }
+    for _ in 0..rounds.saturating_sub(1) {
+        builder = builder.push_opcode(all::OP_DROP);
+    }
+    let script_pubkey = builder.push_opcode(all::OP_EQUAL).into_script();
+    RandomCase {
+        label: "stack_altstack",
+        script_sig: build_push_script(&pushes),
+        script_pubkey,
+        witness: Witness::new(),
+        amount: 0,
+        flags: random_extra_flags(rng, &[VERIFY_CLEANSTACK]),
+    }
+}
+
+fn nested_conditional_case(rng: &mut DeterministicRng) -> RandomCase {
+    let outer = rng.rand_bool();
+    let inner = rng.rand_bool();
+    let script_sig = Builder::new()
+        .push_int(if inner { 1 } else { 0 })
+        .expect("bool int")
+        .push_int(if outer { 1 } else { 0 })
+        .expect("bool int")
+        .into_script();
+    let script_pubkey = Builder::new()
+        .push_opcode(all::OP_IF)
+        .push_opcode(all::OP_IF)
+        .push_opcode(all::OP_PUSHNUM_1)
+        .push_opcode(all::OP_ELSE)
+        .push_opcode(all::OP_PUSHNUM_1)
+        .push_opcode(all::OP_ENDIF)
+        .push_opcode(all::OP_ELSE)
+        .push_opcode(all::OP_PUSHNUM_1)
+        .push_opcode(all::OP_ENDIF)
+        .into_script();
+    RandomCase {
+        label: "nested_conditional",
+        script_sig,
+        script_pubkey,
+        witness: Witness::new(),
+        amount: 0,
+        flags: random_extra_flags(rng, &[VERIFY_CLEANSTACK, VERIFY_MINIMALIF]),
+    }
+}
+
+fn witness_v1_512_stack_case(rng: &mut DeterministicRng) -> RandomCase {
+    let item_len = 1 + rng.range(32);
+    let item = rng.bytes(item_len);
+    let witness_script = Builder::new()
+        .push_opcode(all::OP_DUP)
+        .push_opcode(all::OP_TOALTSTACK)
+        .push_opcode(all::OP_SHA512)
+        .push_slice(sha512::Hash::hash(&item).to_byte_array())
+        .push_opcode(all::OP_EQUALVERIFY)
+        .push_opcode(all::OP_FROMALTSTACK)
+        .push_opcode(all::OP_SHA512)
+        .push_slice(sha512::Hash::hash(&item).to_byte_array())
+        .push_opcode(all::OP_EQUAL)
+        .into_script();
+    let script_pubkey = witness_v1_512_script_pubkey(&witness_script);
+    let witness = Witness::from(vec![item, witness_script.as_bytes().to_vec()]);
+    RandomCase {
+        label: "witness_v1_512_stack",
+        script_sig: ScriptBuf::new(),
+        script_pubkey,
+        witness,
+        amount: 1_000 + rng.range(100_000) as u64,
+        flags: VERIFY_WITNESS
+            | VERIFY_WITNESS_V1_512
+            | VERIFY_SHA512
+            | random_extra_flags(rng, &[VERIFY_CLEANSTACK]),
+    }
+}
+
 fn random_case(rng: &mut DeterministicRng) -> RandomCase {
-    match rng.range(6) {
+    match rng.range(12) {
         0 => legacy_arithmetic_case(rng),
         1 => minimaldata_case(rng),
         2 => control_flow_case(rng),
         3 => p2sh_case(rng),
         4 => witness_v0_case(rng),
-        _ => witness_v1_512_case(rng),
+        5 => witness_v1_512_case(rng),
+        6 => op_sha512_flag_case(rng),
+        7 => const_scriptcode_case(rng),
+        8 => stack_altstack_case(rng),
+        9 => nested_conditional_case(rng),
+        _ => witness_v1_512_stack_case(rng),
     }
 }
 

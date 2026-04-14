@@ -7,7 +7,7 @@ use tidecoin::absolute;
 use tidecoin::network::NetworkExt as _;
 use tidecoin::opcodes::all;
 use tidecoin::policy::{self, StandardRelayPrecheckPolicy};
-use tidecoin::script::{Builder, ScriptPubKeyBuf, ScriptPubKeyExt as _};
+use tidecoin::script::{Builder, ScriptPubKeyBuf};
 use tidecoin::transaction::{check_transaction_sanity, OutPoint, TransactionExt as _, TxOut};
 use tidecoin::{Amount, BlockHeight, Network, Transaction};
 use tidecoin_consensus_encoding::{decode_from_slice, encode_to_vec};
@@ -43,7 +43,7 @@ fn exercise_transaction(tx: &Transaction, seed: &[u8]) {
     let _ = tx.is_explicitly_rbf();
     let _ = tx.is_lock_time_enabled();
     let _ = tx.is_absolute_timelock_satisfied(
-        absolute::Height::from_u32(BlockHeight::MAX.to_u32()).expect("valid absolute height"),
+        absolute::Height::from_u32(500_000).expect("valid absolute height"),
         absolute::MedianTimePast::from_u32(500_000_000).expect("valid MTP"),
     );
 

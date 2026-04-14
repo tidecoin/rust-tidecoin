@@ -17,10 +17,16 @@ in this directory.
 The `tidecoin/` fuzz target family mirrors the node fuzz surfaces that belong in
 this library:
 
+- `consensus_script_runtime` mirrors the stateless interpreter-execution part of
+  node `script_interpreter.cpp` through the byte-oriented `consensus` API, with
+  base, P2SH, witness-v0, witness-v1-512, and explicit flag masks.
 - `tidecoin_transaction_policy` mirrors the stateless parts of node
   `transaction.cpp`: transaction decoding/sanity, txid/wtxid/weight/vsize,
   RBF/finality helpers, `IsStandardTx`, input/witness standardness, sigop cost,
   and the Rust standard relay-precheck wrapper.
+- `tidecoin_tx_out_policy` mirrors the library-owned parts of node `tx_out.cpp`:
+  TxOut codec roundtrips, output size/weight, dust-threshold helpers,
+  minimal-non-dust constructors, and TxOut use inside stateless policy helpers.
 - `tidecoin_script_policy` mirrors the script-policy parts of node
   `script.cpp`: script decoding, minimal instruction walking, sigop counting,
   dust calculation, witness-program classification, standard output policy, and

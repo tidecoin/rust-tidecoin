@@ -1,6 +1,9 @@
-use consensus::{verify_with_flags_detailed, ScriptError, ScriptFailure, VERIFY_NONE, VERIFY_P2SH};
+use consensus::{
+    verify_with_flags_detailed, ScriptError, ScriptFailure, VERIFY_CONST_SCRIPTCODE,
+    VERIFY_DISCOURAGE_UPGRADABLE_NOPS, VERIFY_NONE, VERIFY_P2SH, VERIFY_SHA512,
+};
 use encoding::encode_to_vec;
-use hashes::hash160;
+use hashes::{hash160, sha512};
 use primitives::{
     absolute::LockTime,
     opcodes::{all, Opcode},
@@ -97,6 +100,42 @@ fn push_data_script(data: &[u8]) -> ScriptBuf {
     Builder::new().push_slice(data).into_script()
 }
 
+fn raw_pushdata_script(len: usize) -> ScriptBuf {
+    let mut bytes = Vec::with_capacity(len + 5);
+    if len <= 75 {
+        bytes.push(len as u8);
+    } else if len <= u16::MAX as usize {
+        bytes.push(all::OP_PUSHDATA2.to_u8());
+        bytes.extend_from_slice(&(len as u16).to_le_bytes());
+    } else {
+        bytes.push(all::OP_PUSHDATA4.to_u8());
+        bytes.extend_from_slice(&(len as u32).to_le_bytes());
+    }
+    bytes.resize(bytes.len() + len, 0x42);
+    ScriptBuf::from_bytes(bytes)
+}
+
+fn sized_drop_script(len: usize) -> ScriptBuf {
+    let mut bytes = Vec::new();
+    for _ in 0..7 {
+        bytes.push(all::OP_PUSHDATA2.to_u8());
+        bytes.extend_from_slice(&8192u16.to_le_bytes());
+        bytes.resize(bytes.len() + 8192, 0x42);
+        bytes.push(all::OP_DROP.to_u8());
+    }
+
+    let tail_len =
+        len.checked_sub(bytes.len() + 5).expect("test script size must fit synthetic fixture");
+    assert!(tail_len <= 8192, "test helper expects one final push");
+    bytes.push(all::OP_PUSHDATA2.to_u8());
+    bytes.extend_from_slice(&(tail_len as u16).to_le_bytes());
+    bytes.resize(bytes.len() + tail_len, 0x24);
+    bytes.push(all::OP_DROP.to_u8());
+    bytes.push(all::OP_PUSHNUM_1.to_u8());
+    assert_eq!(bytes.len(), len);
+    ScriptBuf::from_bytes(bytes)
+}
+
 fn p2sh_script_pubkey(redeem_script: &ScriptBuf) -> ScriptBuf {
     let redeem_hash = hash160::Hash::hash(redeem_script.as_bytes());
     Builder::new()
@@ -111,6 +150,152 @@ fn is_p2sh(script: &[u8]) -> bool {
         && script[0] == all::OP_HASH160.to_u8()
         && script[1] == 20
         && script[22] == all::OP_EQUAL.to_u8()
+}
+
+#[test]
+fn tidecoin_sha512_opcode_flag_boundary_matches_node() {
+    let harness = try_harness();
+    let input = vec![0x01, 0x02, 0x03];
+    let expected = sha512::Hash::hash(&input).to_byte_array();
+
+    let enabled_script = Builder::new()
+        .push_slice(input.clone())
+        .push_opcode(all::OP_SHA512)
+        .push_slice(expected)
+        .push_opcode(all::OP_EQUAL)
+        .into_script();
+    let enabled = run_script(ScriptBuf::new(), enabled_script.clone(), VERIFY_SHA512);
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &enabled_script,
+        VERIFY_SHA512,
+        &enabled,
+        "OP_SHA512 enabled",
+    );
+    enabled.unwrap();
+
+    let disabled_nop_script = Builder::new()
+        .push_slice(input.clone())
+        .push_opcode(all::OP_SHA512)
+        .push_slice(input)
+        .push_opcode(all::OP_EQUAL)
+        .into_script();
+    let disabled = run_script(ScriptBuf::new(), disabled_nop_script.clone(), VERIFY_NONE);
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &disabled_nop_script,
+        VERIFY_NONE,
+        &disabled,
+        "OP_SHA512 disabled behaves as upgradeable NOP without discourage flag",
+    );
+    disabled.unwrap();
+
+    let discouraged = run_script(
+        ScriptBuf::new(),
+        disabled_nop_script.clone(),
+        VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    );
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &disabled_nop_script,
+        VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+        &discouraged,
+        "OP_SHA512 disabled with discourage-upgradable-nops",
+    );
+    assert_eq!(discouraged.unwrap_err().script_error, ScriptError::DiscourageUpgradableNops);
+}
+
+#[test]
+fn tidecoin_const_scriptcode_and_script_size_boundaries_match_node() {
+    let harness = try_harness();
+
+    let codeseparator_script = Builder::new()
+        .push_opcode(all::OP_FALSE)
+        .push_opcode(all::OP_IF)
+        .push_opcode(all::OP_CODESEPARATOR)
+        .push_opcode(all::OP_ENDIF)
+        .push_opcode(all::OP_PUSHNUM_1)
+        .into_script();
+    let relaxed = run_script(ScriptBuf::new(), codeseparator_script.clone(), VERIFY_NONE);
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &codeseparator_script,
+        VERIFY_NONE,
+        &relaxed,
+        "unexecuted OP_CODESEPARATOR without CONST_SCRIPTCODE",
+    );
+    relaxed.unwrap();
+
+    let strict =
+        run_script(ScriptBuf::new(), codeseparator_script.clone(), VERIFY_CONST_SCRIPTCODE);
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &codeseparator_script,
+        VERIFY_CONST_SCRIPTCODE,
+        &strict,
+        "unexecuted OP_CODESEPARATOR with CONST_SCRIPTCODE",
+    );
+    assert_eq!(strict.unwrap_err().script_error, ScriptError::OpCodeSeparator);
+
+    let max_script = sized_drop_script(65_536);
+    let max_result = run_script(ScriptBuf::new(), max_script.clone(), VERIFY_NONE);
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &max_script,
+        VERIFY_NONE,
+        &max_result,
+        "script size at consensus limit",
+    );
+    max_result.unwrap();
+
+    let oversized_script = sized_drop_script(65_537);
+    let oversized = run_script(ScriptBuf::new(), oversized_script.clone(), VERIFY_NONE);
+    assert_runtime_matches_node(
+        &harness,
+        &ScriptBuf::new(),
+        &oversized_script,
+        VERIFY_NONE,
+        &oversized,
+        "script size above consensus limit",
+    );
+    assert_eq!(oversized.unwrap_err().script_error, ScriptError::ScriptSize);
+}
+
+#[test]
+fn tidecoin_push_size_boundary_matches_node() {
+    let harness = try_harness();
+    let spend_script =
+        Builder::new().push_opcode(all::OP_DROP).push_opcode(all::OP_PUSHNUM_1).into_script();
+
+    let max_push = raw_pushdata_script(8192);
+    let max_result = run_script(max_push.clone(), spend_script.clone(), VERIFY_NONE);
+    assert_runtime_matches_node(
+        &harness,
+        &max_push,
+        &spend_script,
+        VERIFY_NONE,
+        &max_result,
+        "push element at consensus limit",
+    );
+    max_result.unwrap();
+
+    let oversized_push = raw_pushdata_script(8193);
+    let oversized = run_script(oversized_push.clone(), spend_script.clone(), VERIFY_NONE);
+    assert_runtime_matches_node(
+        &harness,
+        &oversized_push,
+        &spend_script,
+        VERIFY_NONE,
+        &oversized,
+        "push element above consensus limit",
+    );
+    assert_eq!(oversized.unwrap_err().script_error, ScriptError::PushSize);
 }
 
 fn encode_scriptnum(num: i64) -> Vec<u8> {

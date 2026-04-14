@@ -85,6 +85,12 @@ Current status note:
   [TIDECOIN_VALIDATION_CORE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/TIDECOIN_VALIDATION_CORE_AUDIT.md)
 - the current node-vs-Rust consensus/settings gap audit is captured in
   [NODE_CONSENSUS_SETTINGS_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_CONSENSUS_SETTINGS_AUDIT.md)
+- the current definition of protocol-crate node parity, and the boundary between
+  "ready now" and future UTXO/mempool crates, is captured in
+  [PROTOCOL_NODE_PARITY_READINESS.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/PROTOCOL_NODE_PARITY_READINESS.md)
+- the executable proof matrix that maps node validation surfaces to Rust tests
+  and fuzz targets is captured in
+  [NODE_PARITY_PROOF_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_PROOF_MATRIX.md)
 - archived Bitcoin/Core-era materials remain only as historical reference
 
 ## Master Status
@@ -320,8 +326,9 @@ Current status note:
   broader difficulty retargeting vectors.
 - Keep the fuzz surface aligned with the Tidecoin node fuzz targets. Current
   Rust cargo-fuzz coverage includes stateless transaction/policy, script-policy,
-  block-sanity, and PoW targets; UTXO-backed `coins_view` and package-policy
-  fuzz belong to the future chain-connect/mempool validation crate.
+  consensus script runtime, txout policy, block-sanity, and PoW targets;
+  UTXO-backed `coins_view` and package-policy fuzz belong to the future
+  chain-connect/mempool validation crate.
 
 ## Master Plan
 
