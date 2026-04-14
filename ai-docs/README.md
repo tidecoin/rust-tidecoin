@@ -616,7 +616,9 @@ Checklist:
     local AuxPoW payload, and active-chain post-AuxPoW spans through height
     16120
   - deferred separate-crate scope: UTXO-dependent chain-connect validation,
-    including BIP30, sequence locks, spend availability, and fee/value checks.
+    including BIP30/BIP34Hash handling, sequence locks, spend availability,
+    fee/value checks, versionbits state, minimum-chain-work policy, and
+    assume-valid policy.
     The proposed crate boundary and API draft are in
     [CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md).
     This requires chainstate/database ownership and is intentionally not folded

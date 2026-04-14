@@ -72,7 +72,7 @@ The most important current facts:
 | Script interpreter and witness/PQ spend rules | `consensus-core`; exposed by `consensus` and `tidecoin` | `script/interpreter.*`, `validation.cpp` script-flag scheduling | Mostly implemented. Needs exact Params/block-hash flag scheduling only if Rust grows block-context validation. |
 | Byte-oriented single-input spend verification | `consensus/src/lib.rs` | No direct equivalent; node validates spends during `ConnectBlock` | Implemented as a library adapter. It is not a block, header, or chain validator. |
 | Transaction, block, header, AuxPoW wire codecs | `primitives` | `primitives/block.*`, `primitives/transaction.*`, serialization code | Mostly implemented. AuxPoW wire modeling lives here; context validation lives in `tidecoin::pow`. |
-| Exposed consensus params | `tidecoin/src/network/params.rs` | `consensus/params.h`, `kernel/chainparams.cpp` | Partial. PoW/AuxPoW retarget fields plus CSV and Segwit heights are now exposed; full-node fields like BIP34 hash, versionbits deployments, minimum chain work, and assume-valid are still intentionally not modeled. Also exposes a `bip16_time` field that is not present in node `Consensus::Params`. |
+| Exposed consensus params | `tidecoin/src/network/params.rs` | `consensus/params.h`, `kernel/chainparams.cpp` | Deliberately scoped. PoW/AuxPoW retarget fields plus buried activation heights required by current contextual validation are exposed. Full-node fields like BIP34 hash, versionbits deployments, minimum chain work, and assume-valid are intentionally not modeled in `tidecoin::Params` until Rust owns the corresponding chain-connect/header-sync layer. The stale `bip16_time` and partial versionbits threshold/window fields were removed from active params. |
 | Subsidy schedule | `tidecoin::subsidy::block_subsidy` in `tidecoin/src/blockdata/subsidy.rs` | `validation.cpp::GetBlockSubsidy`, `nSubsidyHalvingInterval` | Implemented. Rust tests now mirror the node's transition-boundary and fixed-height total-emission tests, and the node-parity bridge walks every representable transition boundary for mainnet, testnet, and regtest. Coinbase reward-claim validation remains `ConnectBlock` scope because it requires UTXO-derived fees. |
 | Target/work integer math | `tidecoin/src/pow.rs` | `pow.cpp`, `arith_uint256` | Mostly implemented for library-level header validation. Node-style `derive_target(...)`, height-aware proof checks, heightless `validate_pow_any(...)`, and transition bounds exist; remaining work is broader node-vector coverage. |
 | Header PoW validation | `tidecoin/src/blockdata/block.rs::HeaderExt::validate_pow`, `tidecoin::pow::validate_pow_any`, and `tidecoin::pow::validate_auxpow_context` | `CheckProofOfWork`, `CheckProofOfWorkAny`, `CheckBlockHeader`, `CheckAuxPowContext`, `HasValidProofOfWork` | Partially implemented. Rust derives target from `nBits`, takes params and height when available, uses selected yespower/scrypt mining hashes for pure headers, exposes the heightless node path, and validates AuxPoW context rules with synthetic, node-generated, node-bridge, and real testnet header fixtures. |
@@ -126,7 +126,7 @@ These are the current node values observed in
 | `nSubsidyHalvingInterval` | Implemented as `subsidy_initial_interval`. Main/testnet use `262_800`, regtest uses `20`. | Keep Rust naming because Tidecoin schedule is quartering with a doubling interval, not literal halving. |
 | `script_flag_exceptions` | Not exposed. Current chainparams scan did not find assignments in the local node checkout. | Not a live gap if the map stays empty. If implementing exact `GetBlockScriptFlags`, model it as an optional exception map or document that Tidecoin has no active entries. |
 | `BIP34Height` | Exposed as `bip34_height`. | Keep name as node-aligned. |
-| `BIP34Hash` | Not exposed. Node uses it for BIP30 enforcement logic in `validation.cpp`. | Add only if Rust grows UTXO/chain-connect validation or BIP30 checks. Not required for standalone script validation. |
+| `BIP34Hash` | Not exposed. Node uses it for BIP30 enforcement logic in `validation.cpp`. | Keep out of current `tidecoin::Params`; add it to the future chain-connect settings surface when Rust implements BIP30/UTXO overwrite checks. Not required for standalone script validation. |
 | `BIP65Height` | Exposed as `bip65_height`. | Keep name as node-aligned. |
 | `BIP66Height` | Exposed as `bip66_height`. | Keep name as node-aligned. |
 | `CSVHeight` | Exposed as `csv_height`. The contextual block path uses it to select the node's lock-time cutoff source for finality. | Keep. If exact regtest override parity becomes a goal, add a separate regtest settings override layer instead of mutating the static params. |
@@ -134,8 +134,8 @@ These are the current node values observed in
 | `nAuxpowStartHeight` | Exposed as `auxpow_start_height`. Mainnet disabled as `None`, testnet `Some(1000)`, regtest `Some(0)`. | Keep. This field must become the switch for PoW hash selection, AuxPoW validation, PQ strict flags, witness-v1-512, and `OP_SHA512`. |
 | `nAuxpowChainId` | Exposed as `auxpow_chain_id`. | Keep. Must be used by AuxPoW chain ID validation, not only stored. |
 | `fStrictChainId` | Exposed as `strict_auxpow_chain_id`. Node sets it to `true` on mainnet, testnet, and regtest. | Use it when implementing AuxPoW context validation. |
-| `MinBIP9WarningHeight` | Not exposed. | Likely out of Rust library consensus scope unless implementing versionbits warning behavior. |
-| `vDeployments` | Not exposed except indirectly through `rule_change_activation_threshold` and `miner_confirmation_window`. | If versionbits state is a library goal, expose deployments. For current validation focus, buried heights and AuxPoW height are more important. |
+| `MinBIP9WarningHeight` | Not exposed. | Keep out of current protocol params. This is warning policy for a node that tracks unknown versionbits signaling, not a script-interpreter or context-free validation parameter. |
+| `vDeployments` | Not exposed. The old partial `rule_change_activation_threshold` and `miner_confirmation_window` fields were removed because no Rust versionbits state machine consumes them. | Add a typed deployment table only with a real versionbits state machine/header-index layer. Do not place deployment state in `consensus-core`; the interpreter should receive explicit flags. |
 | `powLimit` | Exposed as `max_attainable_target`, not raw `powLimit`. `derive_target(bits, params)` now matches node rejection semantics for zero, negative, overflow, and above-limit targets. | Keep using `derive_target(...)` in future proof-check APIs. |
 | `fPowAllowMinDifficultyBlocks` | Exposed as `allow_min_difficulty_blocks`. | Keep. The legacy path uses it; the post-AuxPoW path follows the node's separate optional height gate. |
 | `enforce_BIP94` | Exposed as `enforce_bip94`. | Keep name as node-aligned. Used by contextual header timestamp checks. |
@@ -146,14 +146,35 @@ These are the current node values observed in
 | `nPowAveragingWindow` | Exposed as `pow_averaging_window`. Node sets `17`. | Keep and use in post-AuxPoW retargeting. |
 | `nPowMaxAdjustDown` | Exposed as `pow_max_adjust_down`. Node sets `32` on main/testnet and `0` on regtest. | Keep; used by post-AuxPoW retargeting and `permitted_difficulty_transition(...)`. |
 | `nPowMaxAdjustUp` | Exposed as `pow_max_adjust_up`. Node sets `16` on main/testnet and `0` on regtest. | Keep; used by post-AuxPoW retargeting and `permitted_difficulty_transition(...)`. |
-| `nMinimumChainWork` | Not exposed. | Out of scope unless Rust implements chain selection/header sync. |
-| `defaultAssumeValid` | Not exposed. | Out of scope unless Rust implements node-like chain validation shortcuts. |
+| `nMinimumChainWork` | Not exposed. | Header-sync/chain-selection policy. Belongs in a future chainstate/header-sync crate, not `consensus-core` and not the current `tidecoin::Params`. |
+| `defaultAssumeValid` | Not exposed. | Script-check skipping policy for node chainstate validation. Belongs in a future full chain-validation layer only if that layer supports assume-valid shortcuts. It must not affect standalone consensus/script verification. |
 
 Rust-only exposed field:
 
 | Rust field | Node status | Required action |
 | --- | --- | --- |
-| `bip16_time` | Not present in node `Consensus::Params`. The node's `GetBlockScriptFlags` starts from `SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS` and then applies `script_flag_exceptions`. | Remove from consensus params or clearly move to a historical/provenance-only compatibility surface. It should not be treated as an active Tidecoin node consensus parameter. |
+| `bip16_time` | Not present in node `Consensus::Params`. The node's `GetBlockScriptFlags` starts from `SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS` and then applies `script_flag_exceptions`. | Removed from active Rust consensus params. |
+
+### Parameter Ownership Decisions
+
+The following decisions are current architecture, not open questions:
+
+| Field family | Current owner | Why |
+| --- | --- | --- |
+| Buried activation heights: `BIP34Height`, `BIP65Height`, `BIP66Height`, `CSVHeight`, `SegwitHeight` | `tidecoin::network::Params` | Current contextual header/block validation already uses these heights for version gates, transaction finality, coinbase height, and witness activation. |
+| AuxPoW switch and chain ID fields | `tidecoin::network::Params` | Current PoW/AuxPoW validation uses them to select yespower/scrypt proof class and validate AuxPoW context. |
+| Retarget parameters | `tidecoin::network::Params` | Current difficulty logic derives next targets from these values and is covered by node vectors. |
+| `BIP34Hash` | Future chain-connect validation crate | The node uses it only in BIP30 duplicate-overwrite logic during `ConnectBlock`. That requires UTXO/chain index state and does not belong in the script interpreter. |
+| `script_flag_exceptions` | Future chain-connect validation crate if non-empty exceptions exist | The node applies the exception map when deriving block script flags. The current chainparams checkout has no active assignments, so Rust should not add an empty public surface until the chain-connect layer derives block flags. |
+| `vDeployments` and `MinBIP9WarningHeight` | Future header-index/versionbits layer | Versionbits state depends on active-chain/header-window state and warning policy. It is not required for current buried-height validation and should not be half-modeled in `Params`. |
+| `nMinimumChainWork` | Future header-sync/chain-selection layer | It is used by the node to decide whether a candidate chain has enough accumulated work, not to validate an individual transaction, script, header, or block structure. |
+| `defaultAssumeValid` | Future chain-validation policy layer | It is an optimization policy for skipping historical script checks. It must never change the result of explicit script verification in `consensus-core` or the byte-oriented `consensus` wrapper. |
+
+`consensus-core` remains flag-driven: it executes the interpreter for the flags
+the caller supplies. It should not learn about `Params`, deployment tables,
+minimum chain work, or assume-valid. A future chain-connect crate should derive
+node-style block script flags from `Params` plus chain index/block hash context,
+then call `consensus-core`.
 
 Regtest-specific node options are also not represented: the node can override
 buried deployment heights and versionbits params through `RegTestOptions`. Rust
@@ -275,7 +296,7 @@ Required node parity tests:
 
 | Node behavior | Rust status | Required action |
 | --- | --- | --- |
-| `GetBlockScriptFlags(block_index, chainman)` derives flags from buried deployment state, script exceptions, and AuxPoW height. | Rust has `height_to_flags_with_auxpow_start_height(height, auxpow_start_height)` and manual flags. The helper enables CLTV/CSV/NULLDUMMY unconditionally in its base set, so it is not exact for pre-activation heights, genesis/regtest overrides, or future script exceptions. | Add a Params-based helper if the library wants node-like block validation: `block_script_flags(params, height, block_hash)`. It should start from P2SH/WITNESS, apply script exceptions, then add CLTV/CSV/NULLDUMMY from deployment heights, and add PQ_STRICT/WITNESS_V1_512/SHA512 at AuxPoW height. |
+| `GetBlockScriptFlags(block_index, chainman)` derives flags from buried deployment state, script exceptions, and AuxPoW height. | Rust has `height_to_flags_with_auxpow_start_height(height, auxpow_start_height)` and manual flags. The helper is a convenience wrapper, not exact node block-context flag derivation. | Implement exact `block_script_flags(params, height, block_hash)` in the future chain-connect layer, not in `consensus-core`. It should start from P2SH/WITNESS, apply script exceptions if the node ever has active Tidecoin entries, then add CLTV/CSV/NULLDUMMY from deployment heights, and add PQ_STRICT/WITNESS_V1_512/SHA512 at AuxPoW height. |
 | Node script flags for historical blocks can be exception-mapped. | Not represented. No active exception assignments were found in current `chainparams.cpp`. | Document no active Tidecoin exceptions or add an empty exception table for forward compatibility. |
 | `verify(...)` in `consensus` defaults to `VERIFY_ALL_TIDECOIN`. | Works for post-AuxPoW validation but is not height-aware. | Keep for explicit post-AuxPoW verification. For chain validation, call a height-derived flag helper instead. |
 
@@ -377,11 +398,12 @@ chain-validation crate:
 - UTXO lookup and spend availability checks
 - fee and value-in/value-out checks
 - coinbase maturity
-- BIP30 duplicate transaction overwrite behavior
+- BIP30 duplicate transaction overwrite behavior, including the node's
+  `BIP34Hash` condition
 - sequence locks against active chain state
-- signature-cache or assume-valid shortcuts
+- versionbits state and unknown-deployment warning policy
 - chainwork comparison and minimum-chainwork policy
-- assume-valid behavior
+- signature-cache and assume-valid shortcuts
 
 This is not a defect in the current `rust-tidecoin` crate. The crate should not
 claim full chain consensus coverage, and it should not grow ad-hoc database-like
@@ -431,13 +453,13 @@ This is the current code-facing backlog implied by the audit.
   present in `tidecoin::network::Params`.
 - `csv_height` and `segwit_height` are now present because contextual block
   validation needs node-aligned finality and witness activation behavior.
-- Decide whether `Params` should also carry `genesis_hash`, `BIP34Hash`,
-  `script_flag_exceptions`, `MinBIP9WarningHeight`, `vDeployments`,
-  `nMinimumChainWork`, and `defaultAssumeValid`. If Rust remains a protocol
-  library rather than a header-sync/full-node library, keep these out and
-  document that boundary.
-- Remove or demote `bip16_time` from active consensus params because the node
-  no longer models it as a consensus-param field.
+- Keep `BIP34Hash`, `script_flag_exceptions`, `MinBIP9WarningHeight`,
+  `vDeployments`, `nMinimumChainWork`, and `defaultAssumeValid` out of current
+  `tidecoin::Params`. Add them only with the chain-validation/header-sync layer
+  that consumes them.
+- `bip16_time` and partial versionbits threshold/window fields have been
+  removed from active consensus params because the current node does not expose
+  them as standalone consensus-param fields consumed by Rust.
 - Add a regtest override settings type only if node-style regtest parameter
   mutation becomes part of the public Rust API.
 

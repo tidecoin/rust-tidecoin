@@ -6,10 +6,10 @@
 //! chains (mainnet, testnet, regtest).
 //!
 //! Some field names intentionally keep the node's inherited BIP identifiers
-//! (`bip16_time`, `bip34_height`, `bip65_height`, `bip66_height`,
-//! `enforce_bip94`) because those are the names used for Tidecoin consensus
-//! activation parameters in the node. In this module they describe active
-//! Tidecoin node semantics, not upstream Bitcoin compatibility.
+//! (`bip34_height`, `bip65_height`, `bip66_height`, `enforce_bip94`) because
+//! those are the names used for Tidecoin consensus activation parameters in
+//! the node. In this module they describe active Tidecoin node semantics, not
+//! upstream Bitcoin compatibility.
 //!
 //! # Custom Parameters Example
 //!
@@ -61,7 +61,7 @@ use super::{Network, NetworkExt as _};
 #[cfg(doc)]
 use crate::pow::CompactTarget;
 use crate::pow::Target;
-use crate::{BlockHeight, BlockHeightInterval};
+use crate::BlockHeight;
 
 /// Parameters that influence chain consensus.
 #[non_exhaustive]
@@ -69,11 +69,6 @@ use crate::{BlockHeight, BlockHeightInterval};
 pub struct Params {
     /// Network for which parameters are valid.
     pub network: Network,
-    /// Time when pay-to-script-hash validation becomes active.
-    ///
-    /// The `bip16_time` name is retained to match the Tidecoin node consensus
-    /// parameter name.
-    pub bip16_time: u32,
     /// Block height at which coinbase height validation becomes active.
     ///
     /// The `bip34_height` name is retained to match the Tidecoin node consensus
@@ -106,12 +101,6 @@ pub struct Params {
     /// The `enforce_bip94` name is retained to match the Tidecoin node consensus
     /// parameter name.
     pub enforce_bip94: bool,
-    /// Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
-    /// (nPowTargetTimespan / nPowTargetSpacing).
-    /// Examples: 1916 for 95%, 1512 for testchains.
-    pub rule_change_activation_threshold: BlockHeightInterval,
-    /// Number of blocks with the same set of rules.
-    pub miner_confirmation_window: BlockHeightInterval,
     /// The maximum **attainable** target value for these params.
     ///
     /// Not all target values are attainable because consensus code uses the compact format to
@@ -155,7 +144,6 @@ impl Params {
     /// The mainnet parameters.
     pub const MAINNET: Self = Self {
         network: Network::Tidecoin,
-        bip16_time: 0,
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
@@ -166,8 +154,6 @@ impl Params {
         strict_auxpow_chain_id: true,
         subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
         enforce_bip94: false,
-        rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
-        miner_confirmation_window: BlockHeightInterval::from_u32(8064),
         max_attainable_target: Target::MAX_ATTAINABLE_MAINNET,
         pow_target_spacing: 60,
         pow_target_timespan: 432_000,
@@ -182,7 +168,6 @@ impl Params {
     /// The testnet parameters.
     pub const TESTNET: Self = Self {
         network: Network::Testnet,
-        bip16_time: 0,
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
@@ -193,8 +178,6 @@ impl Params {
         strict_auxpow_chain_id: true,
         subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
         enforce_bip94: false,
-        rule_change_activation_threshold: BlockHeightInterval::from_u32(6048),
-        miner_confirmation_window: BlockHeightInterval::from_u32(8064),
         max_attainable_target: Target::MAX_ATTAINABLE_MAINNET,
         pow_target_spacing: 60,
         pow_target_timespan: 432_000,
@@ -209,7 +192,6 @@ impl Params {
     /// The regtest parameters.
     pub const REGTEST: Self = Self {
         network: Network::Regtest,
-        bip16_time: 0,
         bip34_height: BlockHeight::from_u32(1),
         bip65_height: BlockHeight::from_u32(1),
         bip66_height: BlockHeight::from_u32(1),
@@ -220,8 +202,6 @@ impl Params {
         strict_auxpow_chain_id: true,
         subsidy_initial_interval: 20,
         enforce_bip94: true,
-        rule_change_activation_threshold: BlockHeightInterval::from_u32(108),
-        miner_confirmation_window: BlockHeightInterval::from_u32(144),
         max_attainable_target: Target::MAX_ATTAINABLE_REGTEST,
         pow_target_spacing: 60,
         pow_target_timespan: 14_400,

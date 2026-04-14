@@ -1066,6 +1066,16 @@ mod tests {
         scheme.generate_keypair_from_seed(&tagged_seed(scheme, tag)).unwrap()
     }
 
+    fn all_signature_schemes() -> [PqScheme; 5] {
+        [
+            PqScheme::Falcon512,
+            PqScheme::Falcon1024,
+            PqScheme::MlDsa44,
+            PqScheme::MlDsa65,
+            PqScheme::MlDsa87,
+        ]
+    }
+
     fn test_rng(tag: u64) -> DeterministicTestRng {
         DeterministicTestRng::new(tag)
     }
@@ -1378,6 +1388,62 @@ mod tests {
 
             let wrong_msg = [0xCCu8; 64];
             assert_eq!(sig.verify_msg64(&wrong_msg, &pk).unwrap_err(), PqError::VerificationFailed);
+        }
+    }
+
+    #[test]
+    fn corrupted_signatures_are_rejected_for_all_schemes() {
+        let msg32 = [0x5Au8; 32];
+        let msg64 = [0x33u8; 64];
+
+        for scheme in all_signature_schemes() {
+            let (pk, sk) = deterministic_keypair(scheme, scheme.prefix());
+
+            let mut rng32 = test_rng(0x5100 + u64::from(scheme.prefix()));
+            let sig32 = PqSignature::sign_msg32_with_rng(&msg32, &sk, &mut rng32).unwrap();
+            let mut corrupted32 = sig32.as_bytes().to_vec();
+            let last32 = corrupted32.last_mut().expect("signature should not be empty");
+            *last32 ^= 0x01;
+            let corrupted32 = PqSignature::from_slice(&corrupted32);
+            assert!(
+                corrupted32.verify_msg32(&msg32, &pk).is_err(),
+                "{scheme:?} corrupted 32-byte-message signature verified"
+            );
+
+            let mut rng64 = test_rng(0x6400 + u64::from(scheme.prefix()));
+            let sig64 = PqSignature::sign_msg64_with_rng(&msg64, &sk, &mut rng64).unwrap();
+            let mut corrupted64 = sig64.as_bytes().to_vec();
+            let last64 = corrupted64.last_mut().expect("signature should not be empty");
+            *last64 ^= 0x01;
+            let corrupted64 = PqSignature::from_slice(&corrupted64);
+            assert!(
+                corrupted64.verify_msg64(&msg64, &pk).is_err(),
+                "{scheme:?} corrupted 64-byte-message signature verified"
+            );
+        }
+    }
+
+    #[test]
+    fn cross_scheme_signatures_are_rejected_for_all_schemes() {
+        let msg = [0xA7u8; 32];
+        let schemes = all_signature_schemes();
+
+        for signing_scheme in schemes {
+            let (_, sk) = deterministic_keypair(signing_scheme, signing_scheme.prefix());
+            let mut rng = test_rng(0x7700 + u64::from(signing_scheme.prefix()));
+            let sig = PqSignature::sign_msg32_with_rng(&msg, &sk, &mut rng).unwrap();
+
+            for verifying_scheme in schemes {
+                if verifying_scheme == signing_scheme {
+                    continue;
+                }
+                let (wrong_pk, _) =
+                    deterministic_keypair(verifying_scheme, verifying_scheme.prefix() ^ 0x55);
+                assert!(
+                    sig.verify_msg32(&msg, &wrong_pk).is_err(),
+                    "{signing_scheme:?} signature verified against {verifying_scheme:?} key"
+                );
+            }
         }
     }
 

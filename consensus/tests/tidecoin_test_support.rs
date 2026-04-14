@@ -21,6 +21,25 @@ use primitives::{
 };
 use serde_json::Value;
 
+pub const ALL_TIDECOIN_SCRIPT_FLAGS: u32 = VERIFY_P2SH
+    | VERIFY_NULLDUMMY
+    | VERIFY_SIGPUSHONLY
+    | VERIFY_MINIMALDATA
+    | VERIFY_DISCOURAGE_UPGRADABLE_NOPS
+    | VERIFY_CLEANSTACK
+    | VERIFY_CHECKLOCKTIMEVERIFY
+    | VERIFY_CHECKSEQUENCEVERIFY
+    | VERIFY_WITNESS
+    | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM
+    | VERIFY_MINIMALIF
+    | VERIFY_NULLFAIL
+    | VERIFY_CONST_SCRIPTCODE
+    | VERIFY_PQ_STRICT
+    | VERIFY_WITNESS_V1_512
+    | VERIFY_SHA512;
+
+pub const TIDECOIN_SCRIPT_ACTIVATION_FLAGS: u32 = VERIFY_WITNESS_V1_512 | VERIFY_SHA512;
+
 pub fn try_harness() -> Option<TidecoinNodeHarness> {
     TidecoinNodeHarness::from_env().ok()
 }
@@ -58,6 +77,21 @@ pub fn normalize_flags(mut flags: u32) -> u32 {
         flags |= VERIFY_P2SH | VERIFY_WITNESS;
     }
     flags
+}
+
+pub fn is_valid_script_flag_combination(flags: u32) -> bool {
+    if flags & !ALL_TIDECOIN_SCRIPT_FLAGS != 0 {
+        return false;
+    }
+    if flags & VERIFY_CLEANSTACK != 0
+        && flags & (VERIFY_P2SH | VERIFY_WITNESS) != VERIFY_P2SH | VERIFY_WITNESS
+    {
+        return false;
+    }
+    if flags & VERIFY_WITNESS != 0 && flags & VERIFY_P2SH == 0 {
+        return false;
+    }
+    true
 }
 
 pub fn parse_script_error(name: &str) -> ScriptError {

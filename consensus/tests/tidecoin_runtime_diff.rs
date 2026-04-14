@@ -9,10 +9,13 @@ use serde_json::Value;
 mod tidecoin_test_support;
 
 use tidecoin_test_support::{
-    build_test_transaction, map_rust_script_error, node_script_result, normalize_flags,
-    parse_hex_bytes, parse_script_asm_bytes, parse_script_flags, parse_tx_inputs,
-    parse_witness_and_amount, read_fixture, try_harness,
+    build_test_transaction, is_valid_script_flag_combination, map_rust_script_error,
+    node_script_result, normalize_flags, parse_hex_bytes, parse_script_asm_bytes,
+    parse_script_flags, parse_tx_inputs, parse_witness_and_amount, read_fixture, try_harness,
+    ALL_TIDECOIN_SCRIPT_FLAGS, TIDECOIN_SCRIPT_ACTIVATION_FLAGS,
 };
+
+const SCRIPT_MONOTONICITY_TRIALS_PER_VECTOR: usize = 16;
 
 #[derive(Default, Debug)]
 struct RuntimeDiffStats {
@@ -20,11 +23,31 @@ struct RuntimeDiffStats {
     script_vectors: usize,
     tx_valid_vectors: usize,
     tx_invalid_vectors: usize,
+    script_monotonicity_checks: usize,
+    script_monotonicity_skipped_flags: usize,
     exercised_flag_counts: BTreeMap<&'static str, usize>,
     exercised_flag_combo_counts: BTreeMap<String, usize>,
     exercised_token_counts: BTreeMap<String, usize>,
     rust_error_counts: BTreeMap<String, usize>,
     node_error_counts: BTreeMap<String, usize>,
+}
+
+#[derive(Clone)]
+struct DeterministicFlagRng(u64);
+
+impl DeterministicFlagRng {
+    fn new(seed: u64) -> Self {
+        Self(seed)
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x as u32
+    }
 }
 
 fn record_exercised_token_coverage(stats: &mut RuntimeDiffStats, raw_flags: &str) {
@@ -86,8 +109,13 @@ fn record_error_counts(
 
 fn print_runtime_diff_summary(stats: &RuntimeDiffStats) {
     eprintln!(
-        "tidecoin_runtime_diff: compared_inputs={} script_vectors={} tx_valid_vectors={} tx_invalid_vectors={}",
-        stats.compared_inputs, stats.script_vectors, stats.tx_valid_vectors, stats.tx_invalid_vectors
+        "tidecoin_runtime_diff: compared_inputs={} script_vectors={} tx_valid_vectors={} tx_invalid_vectors={} script_monotonicity_checks={} script_monotonicity_skipped_flags={}",
+        stats.compared_inputs,
+        stats.script_vectors,
+        stats.tx_valid_vectors,
+        stats.tx_invalid_vectors,
+        stats.script_monotonicity_checks,
+        stats.script_monotonicity_skipped_flags
     );
     if !stats.exercised_token_counts.is_empty() {
         eprintln!("tidecoin_runtime_diff exercised tokens: {:?}", stats.exercised_token_counts);
@@ -107,6 +135,38 @@ fn print_runtime_diff_summary(stats: &RuntimeDiffStats) {
             stats.rust_error_counts, stats.node_error_counts
         );
     }
+}
+
+fn compare_script_case(
+    harness: &node_parity::TidecoinNodeHarness,
+    script_sig: &[u8],
+    script_pubkey: &[u8],
+    witness: &[Vec<u8>],
+    amount_sat: i64,
+    flags: u32,
+) -> (Result<(), ScriptError>, Result<(), ScriptError>) {
+    let witness_refs: Vec<&[u8]> = witness.iter().map(Vec::as_slice).collect();
+    let node = node_script_result(harness.verify_script_case(
+        script_sig,
+        script_pubkey,
+        &witness_refs,
+        amount_sat,
+        flags,
+    ));
+
+    let tx_bytes =
+        build_test_transaction(script_pubkey, script_sig, witness, amount_sat.max(0) as u64);
+    let ours = verify_with_flags_detailed(
+        script_pubkey,
+        amount_sat.max(0) as u64,
+        &tx_bytes,
+        None,
+        0,
+        flags,
+    )
+    .map_err(|failure| map_rust_script_error(failure.script_error));
+
+    (ours, node)
 }
 
 #[test]
@@ -150,26 +210,8 @@ fn tidecoin_runtime_diff_script_tests_pq_matches_node() {
         let flags_str = arr[position].as_str().unwrap();
         let flags = normalize_flags(parse_script_flags(flags_str));
 
-        let witness_refs: Vec<&[u8]> = witness.iter().map(Vec::as_slice).collect();
-        let node = node_script_result(harness.verify_script_case(
-            &script_sig,
-            &script_pubkey,
-            &witness_refs,
-            amount_sat,
-            flags,
-        ));
-
-        let tx_bytes =
-            build_test_transaction(&script_pubkey, &script_sig, &witness, amount_sat.max(0) as u64);
-        let ours = verify_with_flags_detailed(
-            &script_pubkey,
-            amount_sat.max(0) as u64,
-            &tx_bytes,
-            None,
-            0,
-            flags,
-        )
-        .map_err(|failure| map_rust_script_error(failure.script_error));
+        let (ours, node) =
+            compare_script_case(&harness, &script_sig, &script_pubkey, &witness, amount_sat, flags);
 
         record_exercised_token_coverage(&mut stats, flags_str);
         record_exercised_flag_coverage(&mut stats, flags);
@@ -180,12 +222,54 @@ fn tidecoin_runtime_diff_script_tests_pq_matches_node() {
             "script_tests_pq row #{index} diverged between consensus and Tidecoin node"
         );
 
+        let expected_ok = node.is_ok();
+        let mut rng = DeterministicFlagRng::new(0x7d1e_5c1a_cafe_f00d ^ index as u64);
+        for trial in 0..SCRIPT_MONOTONICITY_TRIALS_PER_VECTOR {
+            let extra_flags = rng.next_u32() & ALL_TIDECOIN_SCRIPT_FLAGS;
+            let combined_flags =
+                if expected_ok { flags & !extra_flags } else { flags | extra_flags };
+            if (combined_flags ^ flags) & TIDECOIN_SCRIPT_ACTIVATION_FLAGS != 0
+                || !is_valid_script_flag_combination(combined_flags)
+            {
+                stats.script_monotonicity_skipped_flags += 1;
+                continue;
+            }
+
+            let (monotonic_ours, monotonic_node) = compare_script_case(
+                &harness,
+                &script_sig,
+                &script_pubkey,
+                &witness,
+                amount_sat,
+                combined_flags,
+            );
+            assert_eq!(
+                monotonic_ours.is_ok(),
+                monotonic_node.is_ok(),
+                "script_tests_pq row #{index} monotonicity trial #{trial} diverged between consensus and Tidecoin node at flags={combined_flags:#x}: ours={monotonic_ours:?} node={monotonic_node:?}"
+            );
+            assert_eq!(
+                monotonic_node.is_ok(),
+                expected_ok,
+                "script_tests_pq row #{index} monotonicity trial #{trial} changed node acceptance at flags={combined_flags:#x}; base_flags={flags:#x} base_expected_ok={expected_ok}"
+            );
+            record_exercised_flag_coverage(&mut stats, combined_flags);
+            stats.script_monotonicity_checks += 1;
+        }
+
         stats.script_vectors += 1;
         stats.compared_inputs += 1;
     }
 
     print_runtime_diff_summary(&stats);
     assert!(stats.script_vectors > 0, "no Tidecoin script diff rows were executed");
+    assert!(
+        stats.script_monotonicity_checks >= stats.script_vectors,
+        "script monotonicity coverage too small: checks={} vectors={} skipped_flags={}",
+        stats.script_monotonicity_checks,
+        stats.script_vectors,
+        stats.script_monotonicity_skipped_flags
+    );
 }
 
 #[test]

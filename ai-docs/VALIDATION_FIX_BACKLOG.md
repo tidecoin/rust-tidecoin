@@ -343,13 +343,22 @@ Still missing:
 
 #### Standalone PQ signature operation tests
 
-The `tidecoin-node-validation` feature covers PQ execution through the C++ bridge, but no standalone Rust tests exercise:
-- Falcon-512/1024 sign-then-verify roundtrip with random messages
-- ML-DSA-44/65/87 sign-then-verify roundtrip with random messages
-- Signature size bounds enforcement per scheme
-- Public key size validation per scheme
-- Invalid/corrupted signature rejection
-- Cross-scheme rejection (Falcon sig against ML-DSA key)
+The standalone high-level `tidecoin` PQ surface now covers the local
+signing/keygen/key-I/O responsibilities that do not belong in verification-only
+`tidecoin-consensus-core`:
+
+- Falcon-512/1024 sign-then-verify roundtrip with deterministic randomized
+  messages
+- ML-DSA-44/65/87 sign-then-verify roundtrip with deterministic randomized
+  messages
+- signature size bound assertions per scheme
+- public key size validation per scheme
+- invalid/corrupted signature rejection per scheme
+- cross-scheme signature/key rejection across all active signature schemes
+
+Remaining depth work belongs in the node-backed corpus, not in a second
+verification implementation in `tidecoin`: add any missing node PQ vectors to
+the shared Tidecoin-node harness and keep consensus-core as the single verifier.
 
 ## Closed
 

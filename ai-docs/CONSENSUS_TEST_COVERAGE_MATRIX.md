@@ -176,6 +176,11 @@ What already exists:
   - `tx_invalid_pq.json`
   - accept/reject parity
   - script-error parity
+  - deterministic `script_tests.cpp`-style monotonicity checks that remove
+    flags from passing script vectors and add flags to failing script vectors
+    across the full 16-bit Tidecoin script-flag surface
+  - node-aligned monotonicity filtering for invalid combinations and
+    activation-style `SHA512` / `WITNESS_V1_512` flag toggles
   - exercised Tidecoin flag-token accounting
   - normalized flag-bit accounting
   - flag-combination accounting
@@ -495,6 +500,8 @@ These tests are already part of the new proof surface:
   - `tx_invalid_pq.json`
   - accept/reject parity
   - script-error parity
+  - full-flag script monotonicity checks mirroring the Tidecoin node's
+    `script_tests.cpp` random flag-add/remove proof
 
 - [consensus/tests/tidecoin_script_assets.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/tests/tidecoin_script_assets.rs)
   - node `script_assets_test.json`

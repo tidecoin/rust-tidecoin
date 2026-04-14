@@ -23,6 +23,22 @@ The future crate owns the fourth layer:
 | --- | --- | --- | --- |
 | Chain-connect validation | proposed `tidecoin-chain-validation` | `ConnectBlock`, `CheckTxInputs`, `SequenceLocks`, chainstate code | UTXO lookup, spend availability, fees, reward claim, BIP30, coinbase maturity, sequence locks, and script execution with chain-derived flags. |
 
+It should also be the first Rust layer that consumes full-node consensus
+settings that are not needed by current context-free or contextual checks:
+
+| Node setting | Future use |
+| --- | --- |
+| `BIP34Hash` | BIP30 enforcement exception in `ConnectBlock`. |
+| `script_flag_exceptions` | Exact `GetBlockScriptFlags(...)` parity if Tidecoin ever has active exception entries. |
+| `vDeployments` | Versionbits state for non-buried deployments once a header-index state machine exists. |
+| `MinBIP9WarningHeight` | Unknown-versionbits warning policy if the crate grows node-style warning behavior. |
+| `nMinimumChainWork` | Header-sync/chain-selection acceptance threshold, likely in a sibling header-sync layer if chain selection is not part of the first crate. |
+| `defaultAssumeValid` | Optional script-check shortcut policy for historical ancestors. It must not affect explicit script verification results. |
+
+These settings should not be added to `consensus-core`. The interpreter remains
+flag-driven and should not know about deployment state, assume-valid policy, or
+chain-selection thresholds.
+
 ## Why This Must Be a Separate Crate
 
 `ConnectBlock` parity needs a stateful view of the chain. Folding that into
@@ -48,8 +64,9 @@ The future crate should implement node-parity equivalents for:
 
 - `ConnectBlock`
 - `CheckTxInputs`
+- BIP30 duplicate transaction overwrite checks, including the node's BIP34-hash
+  condition
 - sequence-lock evaluation against active-chain heights and MTP
-- BIP30 duplicate transaction overwrite checks
 - coinbase maturity
 - value-in/value-out and fee calculation
 - coinbase reward claim:
