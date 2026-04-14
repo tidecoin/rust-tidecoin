@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: CC0-1.0
-"""Extract Tidecoin testnet header fixtures from a local node datadir.
+"""Extract Tidecoin testnet header fixtures.
 
-The script reads blk*.dat files directly, applies the node block-file XOR key
-when present, and prints a JSON fixture to stdout. It uses the Tidecoin node
-functional-test message parser for block deserialization so the extracted bytes
-preserve node wire behavior.
+By default the script reads blk*.dat files directly, applies the node block-file
+XOR key when present, and prints a JSON fixture to stdout. For node-parity
+retarget/contextual-header fixtures, use --active-chain-rpc so extraction asks
+the node for canonical block hashes by height and decodes those exact active
+chain blocks instead of inferring height from blk-file order. Both paths use the
+Tidecoin node functional-test message parser for block deserialization so the
+extracted bytes preserve node wire behavior.
 """
 
 from __future__ import annotations
@@ -13,7 +16,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import struct
+import subprocess
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -38,6 +43,33 @@ def parse_args() -> argparse.Namespace:
         help="Path to the testnet datadir containing blocks/blk*.dat.",
     )
     parser.add_argument(
+        "--active-chain-rpc",
+        action="store_true",
+        help=(
+            "Extract fixtures from the node's active chain through tidecoin-cli "
+            "instead of inferring height from blk*.dat file order."
+        ),
+    )
+    parser.add_argument(
+        "--cli",
+        default=os.environ.get(
+            "TIDECOIN_CLI",
+            str(
+                Path(__file__).resolve().parents[2]
+                / "tidecoin"
+                / "build"
+                / "bin"
+                / "tidecoin-cli"
+            ),
+        ),
+        help="Path to tidecoin-cli for --active-chain-rpc.",
+    )
+    parser.add_argument(
+        "--cli-args",
+        default="-testnet",
+        help="Extra tidecoin-cli arguments for --active-chain-rpc, parsed with shlex.",
+    )
+    parser.add_argument(
         "--heights",
         default="999,1000,1100,1101,1102",
         help="Comma-separated block heights to include.",
@@ -45,7 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-last-auxpow",
         action="store_true",
-        help="Also include the highest AuxPoW block found in the local datadir.",
+        help="Also include the highest AuxPoW block found in the selected source.",
     )
     parser.add_argument(
         "--retarget-windows",
@@ -180,6 +212,99 @@ def decode_blocks(
     return result, windows
 
 
+def rpc_call(cli: Path, cli_args: list[str], *args: object) -> str:
+    command = [str(cli), *cli_args, *(str(arg) for arg in args)]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as err:
+        raise SystemExit(f"tidecoin-cli not found: {cli}") from err
+    except subprocess.CalledProcessError as err:
+        message = err.stderr.strip() or err.stdout.strip() or str(err)
+        raise SystemExit(f"{' '.join(command)} failed: {message}") from err
+    return result.stdout.strip()
+
+
+def case_from_block_hex(block_hex: str, height: int, expected_hash: str | None) -> dict:
+    from test_framework.messages import CBlock, CBlockHeader
+
+    block_bytes = bytes.fromhex(block_hex)
+    block = CBlock()
+    block.deserialize(BytesIO(block_bytes))
+    header_obj = CBlockHeader(block)
+    header = header_obj.serialize()
+    if expected_hash is not None and header_obj.hash_hex != expected_hash:
+        raise SystemExit(
+            f"active-chain block hash mismatch at height {height}: "
+            f"RPC returned {expected_hash}, decoded {header_obj.hash_hex}"
+        )
+    expected = "valid_auxpow" if block.auxpow is not None else "valid_pure_pow"
+    return {
+        "name": f"testnet_height_{height}_{'auxpow' if block.auxpow is not None else 'pure'}",
+        "network": 1,
+        "height": height,
+        "expected": expected,
+        "block_hash": header_obj.hash_hex,
+        "n_bits": f"0x{block.nBits:08x}",
+        "header_hex": header.hex(),
+        "source": "active-chain-rpc",
+    }
+
+
+def active_chain_case(cli: Path, cli_args: list[str], height: int) -> dict:
+    block_hash = rpc_call(cli, cli_args, "getblockhash", height)
+    block_hex = rpc_call(cli, cli_args, "getblock", block_hash, "false")
+    return case_from_block_hex(block_hex, height, block_hash)
+
+
+def decode_active_chain(
+    cli: Path,
+    cli_args: list[str],
+    selected_heights: set[int],
+    include_last_auxpow: bool,
+    retarget_windows: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    retarget_heights = {
+        height
+        for window in retarget_windows
+        for height in range(window["start_height"], window["end_height"] + 1)
+    }
+    all_heights = selected_heights | retarget_heights
+    cases_by_height = {
+        height: active_chain_case(cli, cli_args, height) for height in sorted(all_heights)
+    }
+
+    if include_last_auxpow:
+        best_height = int(rpc_call(cli, cli_args, "getblockcount"))
+        for height in range(best_height, -1, -1):
+            case = cases_by_height.get(height)
+            if case is None:
+                case = active_chain_case(cli, cli_args, height)
+            if case["expected"] == "valid_auxpow":
+                cases_by_height.setdefault(height, case)
+                selected_heights.add(height)
+                break
+
+    cases = [cases_by_height[height] for height in sorted(selected_heights)]
+    windows = [
+        {
+            **window,
+            "network": 1,
+            "headers": [
+                cases_by_height[height]
+                for height in range(window["start_height"], window["end_height"] + 1)
+            ],
+        }
+        for window in retarget_windows
+    ]
+    return cases, windows
+
+
 def main() -> None:
     args = parse_args()
     node_repo = Path(args.node_repo)
@@ -189,18 +314,30 @@ def main() -> None:
     retarget_windows = parse_retarget_windows(args.retarget_windows)
 
     import_node_messages(node_repo)
-    cases, windows = decode_blocks(
-        blocks_dir,
-        selected_heights,
-        args.include_last_auxpow,
-        retarget_windows,
-    )
+    if args.active_chain_rpc:
+        cases, windows = decode_active_chain(
+            Path(args.cli),
+            shlex.split(args.cli_args),
+            selected_heights,
+            args.include_last_auxpow,
+            retarget_windows,
+        )
+        source = "Tidecoin testnet active chain through node RPC"
+    else:
+        cases, windows = decode_blocks(
+            blocks_dir,
+            selected_heights,
+            args.include_last_auxpow,
+            retarget_windows,
+        )
+        source = "local Tidecoin testnet blk*.dat decoded with blocks/xor.dat"
+
     payload = {
         "provenance": {
-            "source": "local Tidecoin testnet blk*.dat decoded with blocks/xor.dat",
+            "source": source,
             "note": (
-                "Height 1000 activates post-AuxPoW rules; a local chain may still "
-                "contain pure PoW headers after that because AuxPoW is permitted, not mandatory."
+                "Height 1000 activates post-AuxPoW rules; testnet may still contain "
+                "pure PoW headers after that because AuxPoW is permitted, not mandatory."
             ),
         },
         "cases": cases,

@@ -75,7 +75,7 @@ The most important current facts:
 | Subsidy schedule | `tidecoin/src/blockdata/subsidy.rs` | node subsidy code and `nSubsidyHalvingInterval` | Implemented and node-parity tested for the current schedule. |
 | Target/work integer math | `tidecoin/src/pow.rs` | `pow.cpp`, `arith_uint256` | Mostly implemented for library-level header validation. Node-style `derive_target(...)`, height-aware proof checks, heightless `validate_pow_any(...)`, and transition bounds exist; remaining work is broader node-vector coverage. |
 | Header PoW validation | `tidecoin/src/blockdata/block.rs::HeaderExt::validate_pow`, `tidecoin::pow::validate_pow_any`, and `tidecoin::pow::validate_auxpow_context` | `CheckProofOfWork`, `CheckProofOfWorkAny`, `CheckBlockHeader`, `CheckAuxPowContext`, `HasValidProofOfWork` | Partially implemented. Rust derives target from `nBits`, takes params and height when available, uses selected yespower/scrypt mining hashes for pure headers, exposes the heightless node path, and validates AuxPoW context rules with synthetic, node-generated, node-bridge, and real testnet header fixtures. |
-| Difficulty retargeting | `tidecoin/src/pow.rs::next_target_after` and `tidecoin/src/pow.rs::permitted_difficulty_transition` | `GetNextWorkRequired*`, `CalculateNextWorkRequired*`, `PermittedDifficultyTransition` | Partially implemented. The old/new switch, post-AuxPoW averaging-window path, node legacy overflow-guarded scaling, first mainnet historical retarget, permitted transition envelope, and real testnet genesis-to-activation, activation, first-AuxPoW, and early post-AuxPoW retarget windows exist; broader historical chains remain missing. |
+| Difficulty retargeting | `tidecoin/src/pow.rs::next_target_after` and `tidecoin/src/pow.rs::permitted_difficulty_transition` | `GetNextWorkRequired*`, `CalculateNextWorkRequired*`, `PermittedDifficultyTransition` | Partially implemented. The old/new switch, post-AuxPoW averaging-window path, node legacy overflow-guarded scaling, first mainnet historical retarget, permitted transition envelope, and active-chain RPC testnet genesis-to-activation, activation, first-AuxPoW, early post-AuxPoW, and later AuxPoW retarget windows through height 11567 exist; broader historical chains remain missing. |
 | AuxPoW validation | Wire structs in `primitives`; context validator in `tidecoin::pow` | `CheckAuxPowContext`, `CAuxPow::check`, `HasValidProofOfWork` | Partially implemented. Synthetic and node-generated fixtures cover flag/payload consistency, activation, strict chain ID, merge-mining commitment shape, deterministic chain index, parent scrypt PoW, and real testnet AuxPoW headers. Invalid historical real-chain edge cases remain open if discovered. |
 | Context-free transaction sanity | `primitives::transaction::check_transaction_sanity`; decoder calls the same function | `CheckTransaction` | Implemented for library-scope context-free sanity: empty input/output rejection, stripped-weight limit, money range, duplicate inputs, null-prevout rules, and coinbase scriptSig length 2..=106. Node-backed edge tests exist. |
 | Context-free block sanity | `primitives::block::check_block_sanity`; high-level `tidecoin` re-export | `CheckBlock` | Implemented for context-free block structure: empty block, first/only coinbase, merkle root, per-transaction sanity, stripped/full weight, legacy sigop cost, and witness commitment checks. Header PoW/AuxPoW context remains intentionally separate. Node-backed edge tests exist. |
@@ -451,15 +451,15 @@ This is the current code-facing backlog implied by the audit.
   scrypt headers.
 - `next_target_after(...)` now covers the `GetNextWorkRequired` old/new switch,
   node legacy overflow-guarded scaling, the first mainnet historical retarget,
-  `CalculateNextWorkRequiredNew` behavior, and real testnet windows spanning
-  genesis-to-activation, activation, the first local AuxPoW payload, and a
-  longer early post-AuxPoW local-chain range through height 1600. The early
-  testnet windows intentionally include genesis history so the legacy
+  `CalculateNextWorkRequiredNew` behavior, and active-chain RPC testnet windows
+  spanning genesis-to-activation, activation, the first local AuxPoW payload,
+  an early post-AuxPoW range, and a later AuxPoW range through height 11567. The
+  early testnet windows intentionally include genesis history so the legacy
   min-difficulty walk-back rule has the same ancestor context as the node.
 - `permitted_difficulty_transition(...)` now covers the node's legacy and
   post-AuxPoW transition envelope, with a node-bridge comparison for mainnet
-  legacy cases. Remaining work is broader historical chain vectors outside the
-  current local testnet window set.
+  legacy cases. Remaining work is broader historical chain vectors beyond the
+  current active-chain RPC fixture set.
 
 ### AuxPoW
 
@@ -471,9 +471,9 @@ This is the current code-facing backlog implied by the audit.
   scrypt PoW.
 - Node-generated positive/negative AuxPoW fixtures and real testnet headers now
   cover the first library-scope pass, including contiguous contextual header
-  walks over genesis-to-activation and early post-AuxPoW testnet spans.
+  walks over genesis-to-activation and active-chain post-AuxPoW testnet spans.
   Remaining coverage should focus on any discovered historical real-chain edge
-  cases outside the current local window set.
+  cases outside the current active-chain fixture set.
 
 ### Transaction and Block Validation
 
@@ -528,7 +528,7 @@ Minimum fixture set before claiming this layer is covered:
 - `GetNextWorkRequired` legacy pre-activation vectors outside the current
   genesis-to-activation testnet fixture window
 - `GetNextWorkRequiredNew` post-activation averaging-window vectors beyond the
-  current local early post-AuxPoW testnet span
+  current active-chain testnet spans through height 11567
 - `PermittedDifficultyTransition` historical pre-activation and post-activation
   bounds beyond the current synthetic/node-bridge cases
 - additional `CheckTransaction` corpus vectors beyond the current edge matrix

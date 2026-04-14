@@ -188,10 +188,11 @@ Current fixture coverage:
   metadata, testnet activation acceptance, pre-activation rejection, and missing
   payload decode rejection.
 - `tidecoin/tests/data/testnet_retarget_windows.json` now contains real
-  testnet headers for genesis-to-activation legacy min-difficulty walk-back,
-  activation, the first local AuxPoW payload, and a post-AuxPoW span. Mainnet
-  AuxPoW vectors are not applicable while mainnet `auxpow_start_height` is
-  disabled in Tidecoin chain params.
+  active-chain RPC testnet headers for genesis-to-activation legacy
+  min-difficulty walk-back, activation, the first local AuxPoW payload, an early
+  post-AuxPoW span, and a later AuxPoW span through height 11567. Mainnet AuxPoW
+  vectors are not applicable while mainnet `auxpow_start_height` is disabled in
+  Tidecoin chain params.
 
 Needed:
 - Invalid AuxPoW blocks beyond the current fixture file: remaining historical
@@ -260,15 +261,15 @@ Current state:
   rule, BIP34 coinbase height, and pre-activation witness rejection. Focused
   node-bridge tests cover these cases plus larger 65-transaction final and
   non-final blocks.
-- Real testnet fixture windows cover genesis-to-activation legacy
-  min-difficulty walk-back, activation, the first local AuxPoW payload, and a
-  longer early post-AuxPoW local-chain header span through height 1600. Rust
-  verifies both observed `nBits` and contextual header acceptance over the
-  checkable contiguous candidates.
+- Real testnet fixture windows are generated from node active-chain RPC and
+  cover genesis-to-activation legacy min-difficulty walk-back, activation, the
+  first local AuxPoW payload, an early post-AuxPoW range, and a later AuxPoW
+  range through height 11567. Rust verifies both observed `nBits` and
+  contextual header acceptance over the checkable contiguous candidates.
 
 Needed:
-- add broader historical contextual header walks outside the current local
-  testnet window set if new node data exposes additional edges
+- add broader historical contextual header walks outside the current
+  active-chain fixture set if new node data exposes additional edges
 - defer UTXO/chain-connect ownership to a future separate crate if Rust is meant
   to validate full node block connection: BIP30, sequence locks, spend
   availability, fees, and value-in/value-out checks require a chainstate/UTXO
@@ -291,7 +292,7 @@ Focused retargeting tests now exist in `tidecoin/src/pow.rs`, including the
 node legacy overflow-guarded scaling path, first mainnet historical retarget,
 activation-boundary behavior, insufficient post-AuxPoW window behavior,
 real testnet genesis-to-activation, activation, first-AuxPoW, and early
-post-AuxPoW windows, and transition-envelope checks.
+post-AuxPoW plus later AuxPoW windows, and transition-envelope checks.
 Current state:
 - The missing node parameter fields are now represented in
   `tidecoin::network::Params`: strict AuxPoW chain ID, post-AuxPoW averaging
@@ -310,14 +311,14 @@ Current state:
   `PermittedDifficultyTransition(...)` so header-window validation can check
   both pre-activation legacy bounds and post-activation max-adjust bounds.
 - `tidecoin/tests/data/testnet_retarget_windows.json` provides real
-  node-extracted windows for genesis-to-activation legacy min-difficulty
-  walk-back, `auxpow_start_height`, the first local AuxPoW payload, and a
-  longer early post-AuxPoW local-chain span through height 1600; Rust verifies
+  node active-chain RPC windows for genesis-to-activation legacy min-difficulty
+  walk-back, `auxpow_start_height`, the first local AuxPoW payload, an early
+  post-AuxPoW span, and a later AuxPoW span through height 11567; Rust verifies
   observed `nBits` through `next_target_after(...)` and validates checkable
   contextual headers.
 
 Still missing:
-- Historical chain difficulty walks outside the current local testnet window set
+- Historical chain difficulty walks outside the current active-chain fixture set
 - Overflow and minimum-difficulty boundary cases
 - Additional testnet min-difficulty edge cases if historical data exposes them
 
