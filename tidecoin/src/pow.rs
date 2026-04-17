@@ -1004,11 +1004,16 @@ fn permitted_legacy_difficulty_transition(
     let observed_new_target = Target::from_compact(new_bits);
     let pow_limit = params.max_attainable_target;
     let old_target = Target::from_compact(old_bits);
+    let largest_timespan = i64::from(params.pow_target_timespan) * 4;
+
+    if legacy_retarget_may_overflow(old_target, largest_timespan, pow_limit) {
+        return true;
+    }
 
     let largest_difficulty_target = cmp::min(
         scale_target_legacy_overflow(
             old_target,
-            i64::from(params.pow_target_timespan) * 4,
+            largest_timespan,
             params.pow_target_timespan,
             pow_limit,
         ),
@@ -1030,6 +1035,19 @@ fn permitted_legacy_difficulty_transition(
     );
     let minimum_new_target = Target::from_compact(smallest_difficulty_target.to_compact_lossy());
     minimum_new_target <= observed_new_target
+}
+
+fn legacy_retarget_may_overflow(target: Target, actual_timespan: i64, pow_limit: Target) -> bool {
+    if actual_timespan <= 0 {
+        return false;
+    }
+
+    let mut target = target.0;
+    if target.bits() > pow_limit.0.bits() - 1 {
+        target = target >> 1;
+    }
+
+    target > U256::MAX / U256::from(actual_timespan as u64)
 }
 
 fn permitted_post_auxpow_difficulty_transition(
@@ -4027,6 +4045,26 @@ mod tests {
     }
 
     #[test]
+    fn permitted_difficulty_transition_allows_legacy_overflow_bounds() {
+        let params = Params::MAINNET;
+        let interval = params.difficulty_adjustment_interval();
+        let old_target = Target(params.max_attainable_target.0 >> 4);
+        let old_bits = old_target.to_compact_lossy();
+
+        assert!(legacy_retarget_may_overflow(
+            old_target,
+            i64::from(params.pow_target_timespan) * 4,
+            params.max_attainable_target
+        ));
+        assert!(permitted_difficulty_transition(
+            &params,
+            BlockHeight::from_u32(interval),
+            old_bits,
+            CompactTarget::from_consensus(0x01010000)
+        ));
+    }
+
+    #[test]
     fn permitted_difficulty_transition_matches_post_auxpow_bounds() {
         let mut params = Params::MAINNET;
         params.auxpow_start_height = Some(BlockHeight::from_u32(0));
@@ -4111,12 +4149,14 @@ mod tests {
         let interval = params.difficulty_adjustment_interval();
         let old_bits = CompactTarget::from_consensus(0x1d01ffff);
         let old_target = Target::from_compact(old_bits);
+        let overflow_old_bits = Target(params.max_attainable_target.0 >> 4).to_compact_lossy();
         let cases = [
             (100, old_bits, old_bits),
             (100, old_bits, old_target.max_transition_threshold(&params).to_compact_lossy()),
             (interval, old_bits, old_target.min_transition_threshold().to_compact_lossy()),
             (interval, old_bits, old_target.max_transition_threshold(&params).to_compact_lossy()),
             (interval, old_bits, CompactTarget::from_consensus(0x1f01ffff)),
+            (interval, overflow_old_bits, CompactTarget::from_consensus(0x01010000)),
         ];
 
         for (height, old_bits, new_bits) in cases {

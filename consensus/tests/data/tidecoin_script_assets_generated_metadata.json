@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_node_commit": "91625a25fbe8af17d01a5d418782c91b0e6e0eeb",
+  "source_node_commit": "ead72073edf746586e7f4df843ee2d00a014134f",
   "source_generation": "tidecoin_tx_pq_vectors_monotonicity",
   "source_fixtures": {
     "tx_valid_pq_sha256": "3933bcfe30291185a09a87163c1925e1342154cf48d4f4c717a3290750ca6658",

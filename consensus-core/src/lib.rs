@@ -34,7 +34,6 @@ pub use self::flags::{
 pub use self::interpreter::{Interpreter, ScriptFlags, ScriptStack, SpendContext};
 #[doc(inline)]
 pub use self::pq::{PqError, PqPublicKey, PqSignature};
-pub use primitives::PqScheme;
 #[doc(inline)]
 pub use self::sighash::{
     InputsIndexError, LegacySighash, NonStandardSighashTypeError, SegwitV0Sighash, Sighash512,
@@ -46,3 +45,4 @@ pub use self::tx::{PrecomputedTransactionData, SpentOutputs, TransactionContext}
 pub use self::witness::{
     WitnessExecutionPlan, WitnessProgram, WitnessProgramClass, WitnessSigVersion, WitnessSigops,
 };
+pub use primitives::PqScheme;

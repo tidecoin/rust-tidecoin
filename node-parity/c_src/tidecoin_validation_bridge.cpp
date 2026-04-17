@@ -339,6 +339,19 @@ arith_uint256 ScaleTargetLegacyOverflowBridge(
     return target;
 }
 
+bool LegacyRetargetMayOverflowBridge(
+    arith_uint256 target,
+    int64_t actual_timespan,
+    const arith_uint256& pow_limit)
+{
+    if (actual_timespan <= 0) return false;
+    if (target.bits() > pow_limit.bits() - 1) {
+        target >>= 1;
+    }
+    const arith_uint256 max_uint{~arith_uint256{0}};
+    return target > max_uint / arith_uint256{static_cast<uint64_t>(actual_timespan)};
+}
+
 bool PermittedDifficultyTransitionBridge(
     const Consensus::Params& params,
     int64_t height,
@@ -358,6 +371,9 @@ bool PermittedDifficultyTransitionBridge(
 
             arith_uint256 largest_difficulty_target;
             largest_difficulty_target.SetCompact(old_nbits);
+            if (LegacyRetargetMayOverflowBridge(largest_difficulty_target, largest_timespan, pow_limit)) {
+                return true;
+            }
             largest_difficulty_target = ScaleTargetLegacyOverflowBridge(
                 largest_difficulty_target,
                 largest_timespan,
