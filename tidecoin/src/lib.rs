@@ -110,6 +110,16 @@ pub(crate) mod crypto;
 pub mod key_expression;
 pub mod merkle_tree;
 pub mod network;
+pub mod p2p {
+    //! Re-exports of peer-to-peer networking primitives.
+    //!
+    //! This exposes the node message magic bytes and related network helpers
+    //! through the top-level `tidecoin` crate, so downstream users do not need
+    //! to depend on the internal `tidecoin-p2p-messages` crate directly.
+
+    #[doc(inline)]
+    pub use p2p_messages::{Magic, NetworkExt};
+}
 pub mod policy;
 pub mod pow;
 pub mod pqhd;

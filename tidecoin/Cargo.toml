@@ -32,6 +32,7 @@ hex-stable = { package = "hex-conservative", version = "1.0.0", default-features
 internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false, features = ["alloc", "hex"] }
 io = { package = "tidecoin-io", path = "../io", version = "0.5.0", default-features = false, features = ["alloc", "hashes"] }
 network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.0", default-features = false, features = ["alloc"]}
+p2p_messages = { package = "tidecoin-p2p-messages", path = "../p2p", version = "0.1.0", default-features = false }
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc", "hex"] }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = ["alloc"] }
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity", version = "0.1.0", optional = true }
