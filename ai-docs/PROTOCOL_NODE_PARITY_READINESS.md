@@ -1,6 +1,9 @@
 # Protocol Node Parity Readiness
 
-Status: active scope document.
+Status: active protocol scope document.
+
+This document is subordinate to
+[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
 
 This document defines what "node parity" means for the current `rust-tidecoin`
 protocol crates before a full UTXO chain-connect or mempool-validation crate

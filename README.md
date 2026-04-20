@@ -43,6 +43,20 @@ The crate graph is intentionally layered:
 - `tidecoin`: public product crate and higher-level ergonomics
 - `node-parity`: Tidecoin Core differential/parity support for tests
 
+## PQ Type Ownership
+
+The workspace intentionally has similarly named PQ and validation-side types in
+more than one crate.
+
+- `tidecoin::*` is the normal product-facing Rust API for app, wallet, and
+  plumbing code
+- `consensus-core::*` is the shared verifier/engine layer used to implement
+  validation and lower-level consensus behavior
+
+So when both crates expose names like `PqPublicKey`, `PqSignature`, or
+`PqError`, downstream Rust code should usually start with `tidecoin::*` unless
+it is deliberately building on the lower-level shared engine.
+
 ## Consensus-sensitive changes
 
 Pure-Rust validation is checked against the real Tidecoin node. Consensus-sensitive changes should
@@ -57,6 +71,12 @@ This library should compile with any combination of features on **Rust 1.94.1**.
 
 The `std` cargo feature is enabled by default. To build without the Rust standard library, use
 `--no-default-features` or set `default-features = false` in your dependency declaration.
+
+## Feature note
+
+The `tidecoin-node-validation` feature exists for real-node parity tests and dev-only adapters.
+Normal downstream builds should keep product validation on the default pure-Rust path and should
+not enable that feature.
 
 ## Crate structure
 

@@ -1,5 +1,8 @@
 # Removed Validation Test Surfaces
 
+Status: historical replacement record; the listed public validation surfaces
+have been restored.
+
 This note records validation-test surfaces that were removed when the live
 [`tidecoin/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate stopped
 depending on `bitcoinconsensus`.

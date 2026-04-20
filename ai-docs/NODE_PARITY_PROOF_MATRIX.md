@@ -1,6 +1,9 @@
 # Node Parity Proof Matrix
 
-Status: active checkpoint matrix.
+Status: active protocol reference and checkpoint matrix.
+
+This matrix is subordinate to
+[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
 
 This matrix maps Tidecoin node validation surfaces to the Rust proof artifacts
 that exist today. The scope is protocol-library parity: stateless or

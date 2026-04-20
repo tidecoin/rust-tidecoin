@@ -1,5 +1,9 @@
 # rust-tidecoin vs mobile-native/rust-core: Full Comparison
 
+Status: wallet/mobile reference. Use
+[WALLET_API_ROADMAP.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/WALLET_API_ROADMAP.md)
+for the active wallet-facing Rust API backlog.
+
 ## Scheme Support
 
 | Aspect | `rust-tidecoin` | `mobile-native/rust-core` |

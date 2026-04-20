@@ -19,6 +19,21 @@
 //!   own RNG.
 //! * `serde` (dependency) - implements `serde`-based serialization and deserialization.
 //! * `std` - the usual dependency on `std`.
+//! * `tidecoin-node-validation` - enables internal real-node parity harnesses and dev-only
+//!   adapters. Downstream wallets and apps should not enable this for normal product use.
+//!
+//! # PQ Type Ownership
+//!
+//! This crate intentionally exposes the product-facing PQ and validation-side
+//! Rust types used by wallets, apps, and project plumbing.
+//!
+//! The lower-level [`consensus_core`] crate may expose similarly named types
+//! such as `PqPublicKey`, `PqSignature`, `PqError`, and validation-side helper
+//! types. Those are shared verifier/engine building blocks.
+//!
+//! In normal downstream Rust code, prefer the `tidecoin::*` types first. Reach
+//! for `consensus_core::*` only when you intentionally need the lower-level
+//! shared engine layer.
 
 #![no_std]
 // Experimental features we need.
@@ -73,9 +88,13 @@ mod internal_macros;
 pub mod ext {
     //! Re-export all the extension traits so downstream can use wildcard imports.
     //!
-    //! As part of stabilizing `primitives` and `units` we created a bunch of extension traits in
-    //! `rust-tidecoin` to hold all the API that we are not yet ready to stabilize. This module
-    //! re-exports all of them to improve ergonomics for users comfortable with wildcard imports.
+    //! This is a supported ergonomic surface for users who prefer method-style
+    //! access through trait imports, including project plumbing and other
+    //! advanced callers comfortable with wildcard imports.
+    //!
+    //! The traits re-exported here are ordinary public API. This module exists
+    //! to make those traits easy to bring into scope in one import instead of
+    //! listing them individually.
     //!
     //! # Examples
     //!
@@ -166,7 +185,8 @@ pub use crate::{
         PqSignature,
     },
     key_expression::{
-        KeyIndex, PqhdDescriptor, PqhdKeyExpression, PqhdKeyPathInfo, WalletOutputType,
+        KeyExpressionError, KeyIndex, PqhdDescriptor, PqhdKeyExpression, PqhdKeyPathInfo,
+        WalletOutputType,
     },
     network::params::{self, Params},
     network::{Network, NetworkKind},

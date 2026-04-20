@@ -137,9 +137,17 @@ impl fmt::Display for ScriptError {
 /// High-level validation errors produced by the Tidecoin validation engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TidecoinValidationError {
-    /// Script execution failed.
+    /// Script execution reached the consensus engine and failed with a specific
+    /// script error.
+    ///
+    /// Callers should treat this as a consensus-invalid spend for the selected
+    /// script, witness, amount, and flag combination rather than as malformed
+    /// caller input.
     Script(ScriptError),
     /// The requested input index does not exist in the spending transaction.
+    ///
+    /// This indicates a caller-side setup error. Retrying with the same input
+    /// index and transaction will fail again.
     InvalidInputIndex {
         /// The requested input index.
         index: usize,
@@ -147,12 +155,19 @@ pub enum TidecoinValidationError {
         inputs: usize,
     },
     /// Script verification flags were invalid.
+    ///
+    /// This indicates the caller supplied unsupported or inconsistent
+    /// verification bits rather than a consensus-invalid script.
     InvalidFlags,
     /// Input amount is required for the selected witness verification path.
+    ///
+    /// This indicates the caller attempted a witness-aware verification path
+    /// without providing the spent output amount required by the engine.
     AmountRequired,
-    /// The script requires a validation path the current backend does not support.
-    UnsupportedScript,
     /// A spent output needed for validation was missing.
+    ///
+    /// This indicates required prevout state was unavailable at the engine
+    /// boundary. It is a missing-context error, not a script failure.
     MissingSpentOutput(OutPoint),
 }
 
@@ -171,21 +186,11 @@ impl fmt::Display for TidecoinValidationError {
             Self::AmountRequired => {
                 f.write_str("input amount is required if witness verification is used")
             }
-            Self::UnsupportedScript => f.write_str("script requires unsupported validation path"),
             Self::MissingSpentOutput(outpoint) => {
                 write!(f, "missing spent output {:?}", outpoint)
             }
         }
     }
-}
-
-impl TidecoinValidationError {
-    /// Compatibility constant used while transplanting the mature interpreter body.
-    pub const ERR_SCRIPT: Self = Self::Script(ScriptError::Unknown);
-    /// Compatibility constant used while transplanting the mature interpreter body.
-    pub const ERR_INVALID_FLAGS: Self = Self::InvalidFlags;
-    /// Compatibility constant used while transplanting the mature interpreter body.
-    pub const ERR_AMOUNT_REQUIRED: Self = Self::AmountRequired;
 }
 
 impl From<ScriptError> for TidecoinValidationError {

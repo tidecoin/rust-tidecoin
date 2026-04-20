@@ -1,10 +1,13 @@
 # Tidecoin Node Parity Harness Plan
 
+Status: archived completed harness reference.
+
 This note defines the shared Tidecoin node-backed parity layer that sits
 next to, but not inside, `tidecoin-consensus-core`.
 
 It is intentionally a test/dev support layer, not part of the main production
-consensus engine.
+consensus engine. This file is preserved as historical architecture context,
+not as an active implementation checklist.
 
 ## Why This Exists
 
@@ -214,7 +217,6 @@ Current crate layout:
 - `node-parity/c_src/tidecoin_validation_bridge.cpp`
 - `node-parity/c_src/randombytes_stub.c`
 - `node-parity/src/lib.rs`
-- `node-parity/src/build_support.rs`
 - `node-parity/src/error.rs`
 - `node-parity/src/ffi.rs`
 - `node-parity/src/harness.rs`
@@ -225,8 +227,6 @@ Current ownership:
 - `error.rs`
   - bridge error enum
   - node script error enum or mapping table
-- `build_support.rs`
-  - shared build.rs support for compiling the Tidecoin node bridge
 - `ffi.rs`
   - raw `extern "C"` declarations
 - `harness.rs`
@@ -237,6 +237,11 @@ Current ownership:
 - `fixtures.rs`
   - fixture root discovery
   - test-data loaders
+
+Resolved note:
+
+- the earlier orphaned `src/build_support.rs` helper has been deleted
+- `node-parity/build.rs` is the only live build integration surface now
 
 ## Migration Map
 

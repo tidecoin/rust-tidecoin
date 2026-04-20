@@ -5,6 +5,13 @@
 //! Type definitions and crypto wrappers for the five post-quantum signature
 //! schemes used by Tidecoin: Falcon-512, Falcon-1024, ML-DSA-44, ML-DSA-65,
 //! and ML-DSA-87.
+//!
+//! These are the product-facing PQ types for normal `tidecoin` users.
+//!
+//! The lower-level [`consensus_core`] crate also exposes verifier-side PQ types
+//! with similar names for use inside the shared validation engine. Most wallet,
+//! app, and plumbing code should prefer the `tidecoin` versions from this
+//! module.
 
 use core::fmt;
 

@@ -1,6 +1,19 @@
 // SPDX-License-Identifier: CC0-1.0
 
 //! Shared Tidecoin consensus-validation core types.
+//!
+//! This crate is the shared validation/engine layer used by higher-level
+//! Tidecoin crates.
+//!
+//! In particular, similarly named PQ and validation-side types may exist in
+//! both `tidecoin` and `consensus-core`:
+//!
+//! - `tidecoin::*` is the normal product-facing Rust API
+//! - `consensus-core::*` is the lower-level shared verifier/engine API
+//!
+//! Most downstream application code should start with `tidecoin`. Reach for
+//! `consensus-core` directly when you intentionally need shared validation,
+//! sighash, or lower-level engine building blocks.
 
 #![no_std]
 #![warn(missing_docs)]
@@ -18,6 +31,7 @@ mod interpreter;
 mod pq;
 mod sighash;
 mod tx;
+mod verify;
 mod witness;
 
 #[doc(inline)]
@@ -41,6 +55,11 @@ pub use self::sighash::{
 };
 #[doc(inline)]
 pub use self::tx::{PrecomputedTransactionData, SpentOutputs, TransactionContext};
+#[doc(inline)]
+pub use self::verify::{
+    validate_verification_flags, verify_script_input, verify_script_input_detailed,
+    VerificationFailure,
+};
 #[doc(inline)]
 pub use self::witness::{
     WitnessExecutionPlan, WitnessProgram, WitnessProgramClass, WitnessSigVersion, WitnessSigops,

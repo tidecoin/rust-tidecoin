@@ -17,6 +17,7 @@ exclude = ["tests", "contrib"]
 [features]
 default = [ "std", "rand" ]
 std = ["base58/std", "bech32/std", "consensus_core/std", "encoding/std", "hashes/std", "hex-stable/std", "internals/std", "io/std", "network/std", "primitives/std", "units/std"]
+# Internal parity/test feature. Keep product validation on the pure-Rust path.
 tidecoin-node-validation = ["std", "rand", "dep:node_parity"]
 rand = ["rand_core/getrandom"]
 serde = ["dep:serde", "consensus_core/serde", "hashes/serde", "internals/serde", "network/serde", "primitives/serde", "units/serde"]

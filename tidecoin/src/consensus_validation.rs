@@ -5,14 +5,13 @@
 //! Tidecoin uses a Tidecoin-aware validation path for script execution,
 //! including PQ keys, `OP_SHA512`, and witness-v1-512.
 //!
-//! With the `tidecoin-node-validation` feature enabled, the public verification APIs route
-//! Tidecoin-specific spends through the Tidecoin node bridge in `consensus_validation_node`.
-//! That node-backed path already covers the migrated PQ JSON corpora and the additional
-//! SHA512, witness-v1-512, and PQ multisig parity tests in that module.
+//! Public validation always executes through the pure-Rust Tidecoin consensus
+//! core. Real-node parity remains available through explicit test/dev harnesses,
+//! not by swapping the product backend at runtime.
 //!
-//! The remaining validation gap in this crate is at the policy surface above script execution:
-//! Tidecoin node entry points such as `IsWitnessStandard`, `IsStandardTx`, and virtual-size or
-//! weight helpers are not exposed here yet.
+//! The remaining validation gap in this crate is at the policy surface above
+//! script execution: Tidecoin node entry points such as `IsWitnessStandard`,
+//! `IsStandardTx`, and virtual-size or weight helpers are not exposed here yet.
 
 use core::convert::Infallible;
 use core::fmt;
@@ -27,28 +26,19 @@ use crate::prelude::Vec;
 use crate::script::ScriptPubKey;
 use crate::transaction::{OutPoint, Transaction, TxOut};
 pub use consensus_core::{
-    VERIFY_ALL_TIDECOIN, VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
-    VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
-    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
-    VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
-    VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
+    ScriptError, TidecoinValidationError, VERIFY_ALL_TIDECOIN, VERIFY_CHECKLOCKTIMEVERIFY,
+    VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK, VERIFY_CONST_SCRIPTCODE,
+    VERIFY_DISCOURAGE_UPGRADABLE_NOPS, VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
+    VERIFY_MINIMALDATA, VERIFY_MINIMALIF, VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL,
+    VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS,
+    VERIFY_WITNESS_V1_512,
 };
-#[path = "consensus_validation_route.rs"]
-mod consensus_validation_route;
-
-#[cfg(feature = "tidecoin-node-validation")]
-#[path = "consensus_validation_tidecoin.rs"]
-mod consensus_validation_fallback;
-#[cfg(feature = "tidecoin-node-validation")]
-#[path = "consensus_validation_node.rs"]
-mod consensus_validation_impl;
-#[cfg(not(feature = "tidecoin-node-validation"))]
 #[path = "consensus_validation_tidecoin.rs"]
 mod consensus_validation_impl;
 use self::consensus_validation_impl as tidecoin;
-use self::consensus_validation_route::should_use_tidecoin_validation;
-
-pub use self::consensus_validation_impl::{ScriptError, TidecoinValidationError};
+#[cfg(all(test, feature = "tidecoin-node-validation"))]
+#[path = "consensus_validation_node.rs"]
+mod consensus_validation_node;
 
 /// Verifies spend of an input script.
 pub fn verify_script(
@@ -70,30 +60,9 @@ pub fn verify_script_with_flags<F: Into<u32>>(
 ) -> Result<(), ValidationError> {
     let flags = flags.into();
     let tx: Transaction = encoding::decode_from_slice(spending_tx)
-        .map_err(|_| ValidationError::Tidecoin(TidecoinValidationError::UnsupportedScript))?;
-
-    #[cfg(feature = "tidecoin-node-validation")]
-    {
-        if should_use_tidecoin_validation(script, &tx, index, flags) {
-            return tidecoin::verify_script_input(script, index, amount, &tx, flags)
-                .map_err(ValidationError::Tidecoin);
-        }
-
-        consensus_validation_fallback::verify_script_input(script, index, amount, &tx, flags)
-            .map_err(TidecoinValidationError::from)
-            .map_err(ValidationError::Tidecoin)
-    }
-
-    #[cfg(not(feature = "tidecoin-node-validation"))]
-    {
-        if should_use_tidecoin_validation(script, &tx, index, flags) {
-            return tidecoin::verify_script_input(script, index, amount, &tx, flags)
-                .map_err(ValidationError::Tidecoin);
-        }
-
-        let _ = (script, amount, spending_tx, flags);
-        Err(ValidationError::Tidecoin(TidecoinValidationError::UnsupportedScript))
-    }
+        .map_err(|_| ValidationError::MalformedTransaction)?;
+    tidecoin::verify_script_input(script, index, amount, &tx, flags)
+        .map_err(ValidationError::Tidecoin)
 }
 
 /// Verifies that this transaction is able to spend its inputs.
@@ -199,31 +168,65 @@ mod sealed {
 }
 
 /// Validation error from the Tidecoin validation surface.
+///
+/// This is the product-level error type for script/input verification. It
+/// separates malformed serialized transaction input from
+/// [`TidecoinValidationError`], which is the re-exported shared-core
+/// verification error returned once decoding and routing have succeeded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ValidationError {
+    /// Serialized spending transaction bytes could not be decoded.
+    ///
+    /// This indicates malformed caller input before consensus verification even
+    /// starts.
+    MalformedTransaction,
     /// Error returned by the Tidecoin-specific validation path.
+    ///
+    /// This wraps the shared Tidecoin validation engine error once the
+    /// serialized transaction bytes were decoded successfully.
     Tidecoin(TidecoinValidationError),
 }
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::MalformedTransaction => {
+                f.write_str("serialized spending transaction is malformed")
+            }
             Self::Tidecoin(err) => write_err!(f, "tidecoin validation error"; err),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for ValidationError {}
+impl std::error::Error for ValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::MalformedTransaction => None,
+            Self::Tidecoin(err) => Some(err),
+        }
+    }
+}
 
 /// An error during transaction validation.
+///
+/// This is the multi-input transaction-level companion to [`ValidationError`].
+/// It distinguishes missing caller-supplied prevout state from per-input script
+/// verification failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TxVerifyError {
-    /// Error validating the script.
+    /// Error validating one of the transaction inputs.
+    ///
+    /// The wrapped [`ValidationError`] explains whether the failure was
+    /// malformed serialized input or a shared-core validation error.
     ScriptVerification(ValidationError),
     /// Cannot find the spent output.
+    ///
+    /// This indicates the caller did not provide required UTXO context for at
+    /// least one input. It does not by itself say the transaction is
+    /// consensus-invalid.
     UnknownSpentOutput(OutPoint),
 }
 
@@ -262,7 +265,7 @@ impl From<Infallible> for TxVerifyError {
 mod tests {
     use super::{
         verify_script_with_flags, verify_transaction, verify_transaction_with_flags,
-        ScriptPubKeyExt, TransactionExt, TxVerifyError, VERIFY_NONE,
+        ScriptPubKeyExt, TransactionExt, TxVerifyError, ValidationError, VERIFY_NONE,
     };
     use crate::absolute;
     use crate::crypto::pq::{
@@ -275,29 +278,6 @@ mod tests {
     use crate::transaction::{OutPoint, Transaction, TxIn, TxOut, Txid, Version};
     use crate::{Amount, Sequence, TxSighashType, Witness};
     use consensus_core::SighashCache;
-
-    #[cfg(feature = "tidecoin-node-validation")]
-    fn node_validation_available() -> bool {
-        if std::env::var_os("TIDECOIN_NODE_REPO").is_some() {
-            true
-        } else {
-            std::eprintln!(
-                "skipping Tidecoin node-backed public validation test: TIDECOIN_NODE_REPO is not configured"
-            );
-            false
-        }
-    }
-
-    macro_rules! require_node_validation_if_enabled {
-        () => {
-            #[cfg(feature = "tidecoin-node-validation")]
-            {
-                if !node_validation_available() {
-                    return;
-                }
-            }
-        };
-    }
 
     fn tagged_seed(tag: u8, len: usize) -> Vec<u8> {
         (0..len).map(|i| tag ^ (i as u8).wrapping_mul(131)).collect()
@@ -546,8 +526,6 @@ mod tests {
 
     #[test]
     fn verify_script_with_flags_accepts_pq_legacy_base_spend() {
-        require_node_validation_if_enabled!();
-
         let (tx, spent_output) = pq_legacy_p2pkh_spend();
         let serialized_tx = encoding::encode_to_vec(&tx);
 
@@ -562,9 +540,22 @@ mod tests {
     }
 
     #[test]
-    fn verify_script_public_api_accepts_pq_strict_base_spend() {
-        require_node_validation_if_enabled!();
+    fn verify_script_with_flags_errors_on_malformed_transaction_bytes() {
+        let (_tx, spent_output) = pq_legacy_p2pkh_spend();
 
+        let err = verify_script_with_flags(
+            &spent_output.script_pubkey,
+            0,
+            spent_output.amount,
+            &[0xff],
+            VERIFY_NONE,
+        )
+        .unwrap_err();
+        assert_eq!(err, ValidationError::MalformedTransaction);
+    }
+
+    #[test]
+    fn verify_script_public_api_accepts_pq_strict_base_spend() {
         let (tx, spent_output) =
             pq_strict_p2pkh_spend(0x32, OutPoint { txid: Txid::from_byte_array([4; 32]), vout: 0 });
         let serialized_tx = encoding::encode_to_vec(&tx);
@@ -574,8 +565,6 @@ mod tests {
 
     #[test]
     fn verify_transaction_public_api_accepts_pq_legacy_base_spend() {
-        require_node_validation_if_enabled!();
-
         let (tx, spent_output) = pq_legacy_p2pkh_spend();
         let previous_output = tx.inputs[0].previous_output;
 
@@ -595,8 +584,6 @@ mod tests {
 
     #[test]
     fn verify_transaction_public_api_accepts_pq_strict_two_input_spend() {
-        require_node_validation_if_enabled!();
-
         let (tx, spent_outputs) = pq_strict_two_input_p2pkh_spend();
 
         verify_transaction(&tx, |outpoint| {

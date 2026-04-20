@@ -47,11 +47,20 @@ impl Default for ContextualHeaderCheck {
 }
 
 /// Error returned by contextual header validation.
+///
+/// These errors mean the candidate header could not be accepted in the supplied
+/// chain context. They are contextual chain-rule failures or missing-history
+/// failures, not decode errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextualHeaderError<E = Infallible> {
     /// The previous block height cannot be advanced by one.
+    ///
+    /// This indicates the caller-supplied previous height cannot represent the
+    /// next block height.
     HeightOverflow,
     /// The candidate header does not commit to the supplied previous header.
+    ///
+    /// This is a contextual chain-link mismatch.
     PrevBlockHash {
         /// Expected previous block hash.
         expected: BlockHash,
@@ -59,6 +68,9 @@ pub enum ContextualHeaderError<E = Infallible> {
         actual: BlockHash,
     },
     /// The caller could not provide a required historical header.
+    ///
+    /// This is a missing-history / lookup failure in caller-supplied chain
+    /// context.
     HeaderLookup {
         /// Requested block height.
         height: BlockHeight,
@@ -66,6 +78,8 @@ pub enum ContextualHeaderError<E = Infallible> {
         source: E,
     },
     /// The candidate `nBits` does not match the node retarget path.
+    ///
+    /// This is a contextual difficulty-rule failure.
     BadDiffBits {
         /// Expected compact target.
         expected: CompactTarget,
@@ -73,6 +87,8 @@ pub enum ContextualHeaderError<E = Infallible> {
         actual: CompactTarget,
     },
     /// The candidate timestamp is not greater than previous median time past.
+    ///
+    /// This is a contextual chain-rule failure.
     TimeTooOld {
         /// Candidate timestamp.
         block_time: BlockTime,
@@ -80,6 +96,8 @@ pub enum ContextualHeaderError<E = Infallible> {
         previous_mtp: BlockMtp,
     },
     /// The candidate timestamp violates the BIP94 timewarp bound.
+    ///
+    /// This is a contextual chain-rule failure.
     Timewarp {
         /// Candidate timestamp.
         block_time: BlockTime,
@@ -87,6 +105,8 @@ pub enum ContextualHeaderError<E = Infallible> {
         min_time: BlockTime,
     },
     /// The candidate timestamp is too far in the future.
+    ///
+    /// This depends on the caller-supplied current time check.
     TimeTooNew {
         /// Candidate timestamp.
         block_time: BlockTime,
@@ -94,13 +114,20 @@ pub enum ContextualHeaderError<E = Infallible> {
         max_time: BlockTime,
     },
     /// The candidate base version is not accepted at this height.
+    ///
+    /// This is a contextual chain-rule failure.
     BadVersion {
         /// Base version after stripping AuxPoW and embedded chain-id bits.
         base_version: i32,
     },
     /// AuxPoW context validation failed.
+    ///
+    /// This means the header failed AuxPoW-specific contextual checks.
     AuxPow(AuxPowValidationError),
     /// Pure-header proof-of-work validation failed.
+    ///
+    /// This means the header failed proof-of-work validation in the supplied
+    /// context.
     Pow(PowValidationError),
 }
 
@@ -139,22 +166,42 @@ impl<E> fmt::Display for ContextualHeaderError<E> {
 }
 
 /// Error returned by contextual block validation.
+///
+/// These errors mean the candidate block could not be accepted in the supplied
+/// chain context. They are block-level contextual failures layered on top of
+/// context-free block sanity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextualBlockError<E = Infallible> {
     /// Context-free block sanity failed.
+    ///
+    /// This indicates the block is structurally invalid before contextual chain
+    /// rules are applied.
     Sanity(InvalidBlockError),
     /// Contextual header validation failed.
+    ///
+    /// This wraps a header-level contextual failure for the same candidate
+    /// block.
     Header(ContextualHeaderError<E>),
     /// The previous block height cannot be advanced by one.
+    ///
+    /// This indicates the caller-supplied previous height cannot represent the
+    /// next block height.
     HeightOverflow,
     /// A transaction is not final at the candidate height and lock-time cutoff.
+    ///
+    /// This is a contextual chain-rule failure for block inclusion.
     NonFinalTransaction {
         /// Transaction index inside the block.
         index: usize,
     },
     /// Coinbase height extraction failed.
+    ///
+    /// This means the coinbase commitment cannot be interpreted as the expected
+    /// BIP34-style height.
     CoinbaseHeight(Bip34Error),
     /// Coinbase height does not match the candidate block height.
+    ///
+    /// This is a contextual chain-rule failure for the block's claimed height.
     BadCoinbaseHeight {
         /// Expected block height.
         expected: BlockHeight,
@@ -162,6 +209,8 @@ pub enum ContextualBlockError<E = Infallible> {
         actual: u64,
     },
     /// Witness data is present before the node's witness activation height.
+    ///
+    /// This is a contextual activation-height failure.
     UnexpectedWitness {
         /// Transaction index inside the block.
         transaction_index: usize,
@@ -169,8 +218,13 @@ pub enum ContextualBlockError<E = Infallible> {
         input_index: usize,
     },
     /// Witness commitment or reserved value validation failed.
+    ///
+    /// This indicates witness commitment data is inconsistent with the block
+    /// contents.
     InvalidWitnessCommitment(InvalidBlockError),
     /// The witness-inclusive block weight exceeds the node consensus limit.
+    ///
+    /// This is a consensus/contextual block-weight failure.
     WeightLimit,
 }
 

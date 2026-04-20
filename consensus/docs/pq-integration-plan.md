@@ -1,5 +1,8 @@
 # Tidecoin Consensus Architecture Plan
 
+Status: active consensus-crate architecture reference beneath
+[ai-docs/README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
+
 This document tracks the active Tidecoin consensus architecture and the remaining
 Tidecoin-native proof work. Historical upstream-era migration notes belong in
 archived docs and tests; they are not the live implementation target.

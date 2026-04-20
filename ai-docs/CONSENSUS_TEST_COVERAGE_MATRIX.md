@@ -1,5 +1,7 @@
 # Consensus Test Coverage Matrix
 
+Status: active supporting coverage matrix.
+
 This file defines how the archived Bitcoin/Core-diff `consensus/` test suite
 maps onto the Tidecoin-native replacement surface.
 

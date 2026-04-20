@@ -17,7 +17,7 @@ pub mod types;
 pub use consensus_core::ScriptError;
 
 use consensus_core as core_flags;
-use consensus_core::{Interpreter, ScriptFlags, SpendContext, SpentOutputs, TransactionContext};
+use consensus_core::{SpendContext, SpentOutputs};
 use core::fmt;
 use primitives::{Amount, ScriptPubKeyBuf, Transaction, TxOut};
 
@@ -179,22 +179,18 @@ fn perform_verification(
     input_index: usize,
     flags: u32,
 ) -> Result<(), ScriptFailure> {
-    // Keep the public API contract explicit: unknown verification bits are
-    // rejected before transaction decoding/index checks.
-    let flags = ScriptFlags::from_bits(flags).map_err(|err| ScriptFailure {
+    consensus_core::validate_verification_flags(flags).map_err(|err| ScriptFailure {
         error: map_validation_error(&err),
         script_error: ScriptError::Ok,
     })?;
 
     let tx = parse_transaction(spending_transaction)
         .map_err(|err| ScriptFailure { error: err, script_error: ScriptError::Ok })?;
-    let tx_ctx = TransactionContext::new(&tx);
-    tx_ctx.ensure_input_index(input_index).map_err(|err| ScriptFailure {
-        error: map_validation_error(&err),
-        script_error: ScriptError::Ok,
-    })?;
+    if input_index >= tx.inputs.len() {
+        return Err(ScriptFailure { error: Error::ERR_TX_INDEX, script_error: ScriptError::Ok });
+    }
     let spent_outputs = spent_outputs
-        .map(|raw| decode_spent_outputs(tx_ctx.tx().inputs.len(), raw))
+        .map(|raw| decode_spent_outputs(tx.inputs.len(), raw))
         .transpose()
         .map_err(|err| ScriptFailure { error: err, script_error: ScriptError::Ok })?;
     if let Some(set) = spent_outputs.as_ref() {
@@ -209,15 +205,12 @@ fn perform_verification(
     let explicit_amount_known = true;
     let has_amount = explicit_amount_known;
     let spend_context = SpendContext::new(spent_output_script, spent_outputs, amount, has_amount);
-    let mut interpreter =
-        Interpreter::new(&tx_ctx, input_index, spend_context, flags).map_err(|err| {
-            ScriptFailure { error: map_validation_error(&err), script_error: ScriptError::Ok }
-        })?;
-
-    interpreter.verify().map_err(|err| ScriptFailure {
-        error: map_validation_error(&err),
-        script_error: interpreter.last_script_error(),
-    })
+    consensus_core::verify_script_input_detailed(&tx, input_index, spend_context, flags).map_err(
+        |failure| ScriptFailure {
+            error: map_validation_error(&failure.error),
+            script_error: failure.script_error,
+        },
+    )
 }
 
 fn parse_transaction(tx_bytes: &[u8]) -> Result<Transaction, Error> {
@@ -273,7 +266,6 @@ fn map_validation_error(error: &consensus_core::TidecoinValidationError) -> Erro
         consensus_core::TidecoinValidationError::InvalidInputIndex { .. } => Error::ERR_TX_INDEX,
         consensus_core::TidecoinValidationError::InvalidFlags => Error::ERR_INVALID_FLAGS,
         consensus_core::TidecoinValidationError::AmountRequired => Error::ERR_AMOUNT_REQUIRED,
-        consensus_core::TidecoinValidationError::UnsupportedScript => Error::ERR_SCRIPT,
         consensus_core::TidecoinValidationError::MissingSpentOutput(_) => {
             Error::ERR_SPENT_OUTPUTS_REQUIRED
         }
@@ -298,7 +290,7 @@ pub struct Utxo {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub enum Error {
-    /// Default value used by the byte-oriented verification API.
+    /// Generic script verification failure for the byte-oriented verification API.
     ERR_SCRIPT = 0,
     /// An invalid index for `txTo`.
     ERR_TX_INDEX,
@@ -321,7 +313,7 @@ impl fmt::Display for Error {
         use Error::*;
 
         let description = match *self {
-            ERR_SCRIPT => "error value was not set (value still 0)",
+            ERR_SCRIPT => "script verification failed",
             ERR_TX_INDEX => "an invalid index for txTo",
             ERR_TX_SIZE_MISMATCH => "txToLen did not match with the size of txTo",
             ERR_TX_DESERIALIZE => "an error deserializing txTo",
@@ -412,6 +404,11 @@ mod tests {
             .expect_err("invalid flags");
         assert_eq!(failure.error, Error::ERR_INVALID_FLAGS);
         assert_eq!(failure.script_error, ScriptError::Ok);
+    }
+
+    #[test]
+    fn err_script_display_reports_verification_failure() {
+        assert_eq!(Error::ERR_SCRIPT.to_string(), "script verification failed");
     }
 
     #[test]

@@ -1,10 +1,13 @@
 # Consensus Core Extraction Plan
 
+Status: archived completed architecture reference.
+
 This note records the current shared-core architecture and the remaining
 boundary work.
 
-The extraction itself is complete; remaining work is cleanup, narrowing, and
-proof-surface reconciliation.
+The extraction itself is complete. This file is preserved only as historical
+context for the architecture decisions that led to the current shared-core
+boundary.
 
 Priority for the next implementation pass:
 
@@ -21,7 +24,7 @@ Priority for the next implementation pass:
 Current status:
 
 - the first runtime audit map now exists in
-  [CONSENSUS_RUNTIME_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CONSENSUS_RUNTIME_AUDIT.md)
+  [CONSENSUS_RUNTIME_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/CONSENSUS_RUNTIME_AUDIT.md)
 - the large interpreter-boundary refactor is now landed:
   - the mature script engine lives in
     [consensus-core/src/interpreter.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core/src/interpreter.rs)
@@ -69,7 +72,7 @@ The Tidecoin node remains the only external parity reference.
 
 Follow-up audit for the next lowering phase:
 
-- [TIDECOIN_VALIDATION_CORE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/TIDECOIN_VALIDATION_CORE_AUDIT.md)
+- [TIDECOIN_VALIDATION_CORE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/TIDECOIN_VALIDATION_CORE_AUDIT.md)
   records the completed top-level fallback-engine audit and adapter move, and
   now serves as the guide for any narrower follow-up lowering from the
   top-level validation surface
@@ -77,7 +80,7 @@ Follow-up audit for the next lowering phase:
 The Tidecoin node-backed bridge itself must not live inside
 `tidecoin-consensus-core`. That bridge now lives in the separate
 shared parity/test-support layer; see
-[NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_HARNESS_PLAN.md).
+[NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/NODE_PARITY_HARNESS_PLAN.md).
 
 ## Current Reality
 
@@ -307,7 +310,7 @@ Do not move these into `tidecoin-consensus-core`:
 
 That node bridge and harness code now lives in the shared parity support layer
 described in
-[NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_HARNESS_PLAN.md).
+[NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/NODE_PARITY_HARNESS_PLAN.md).
 
 ## Concrete Module Plan
 

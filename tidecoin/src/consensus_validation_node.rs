@@ -34,7 +34,6 @@ pub enum TidecoinValidationError {
     InvalidInputIndex { index: usize, inputs: usize },
     InvalidFlags,
     AmountRequired,
-    UnsupportedScript,
     MissingSpentOutput(OutPoint),
     BridgeFailure(&'static str),
 }
@@ -58,7 +57,6 @@ impl fmt::Display for TidecoinValidationError {
             Self::AmountRequired => {
                 f.write_str("input amount is required if witness verification is used")
             }
-            Self::UnsupportedScript => f.write_str("script requires unsupported validation path"),
             Self::MissingSpentOutput(outpoint) => write!(f, "missing spent output {}", outpoint),
             Self::BridgeFailure(name) => {
                 write!(f, "tidecoin node validation bridge call failed: {}", name)
@@ -81,7 +79,6 @@ impl From<consensus_core::TidecoinValidationError> for TidecoinValidationError {
             }
             consensus_core::TidecoinValidationError::InvalidFlags => Self::InvalidFlags,
             consensus_core::TidecoinValidationError::AmountRequired => Self::AmountRequired,
-            consensus_core::TidecoinValidationError::UnsupportedScript => Self::UnsupportedScript,
             consensus_core::TidecoinValidationError::MissingSpentOutput(outpoint) => {
                 Self::MissingSpentOutput(outpoint)
             }

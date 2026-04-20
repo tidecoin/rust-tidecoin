@@ -43,7 +43,7 @@ impl fmt::Display for WalletOutputType {
 }
 
 impl FromStr for WalletOutputType {
-    type Err = Error;
+    type Err = KeyExpressionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -51,7 +51,7 @@ impl FromStr for WalletOutputType {
             "p2sh-segwit" => Ok(Self::P2shSegwit),
             "bech32" => Ok(Self::Bech32),
             "bech32pq" => Ok(Self::Bech32Pq),
-            _ => Err(Error::UnknownDescriptorWrapper),
+            _ => Err(KeyExpressionError::UnknownDescriptorWrapper),
         }
     }
 }
@@ -96,7 +96,7 @@ impl PqhdKeyExpression {
         account: u32,
         change: u32,
         index: u32,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, KeyExpressionError> {
         validate_change(change)?;
         Ok(Self { seed_id, scheme, account, change, index: KeyIndex::Fixed(index) })
     }
@@ -111,7 +111,7 @@ impl PqhdKeyExpression {
         scheme: PqScheme,
         account: u32,
         change: u32,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, KeyExpressionError> {
         validate_change(change)?;
         Ok(Self { seed_id, scheme, account, change, index: KeyIndex::Wildcard })
     }
@@ -176,12 +176,16 @@ impl PqhdKeyExpression {
     ///
     /// Returns an error if a ranged expression is missing an external index or
     /// if a fixed expression is given one.
-    pub fn leaf_path(&self, external_index: Option<u32>) -> Result<[u32; 6], Error> {
+    pub fn leaf_path(&self, external_index: Option<u32>) -> Result<[u32; 6], KeyExpressionError> {
         let index = match (self.index, external_index) {
             (KeyIndex::Fixed(index), None) => index,
-            (KeyIndex::Fixed(_), Some(_)) => return Err(Error::UnexpectedIndexForFixedExpression),
+            (KeyIndex::Fixed(_), Some(_)) => {
+                return Err(KeyExpressionError::UnexpectedIndexForFixedExpression);
+            }
             (KeyIndex::Wildcard, Some(index)) => index,
-            (KeyIndex::Wildcard, None) => return Err(Error::MissingIndexForRangedExpression),
+            (KeyIndex::Wildcard, None) => {
+                return Err(KeyExpressionError::MissingIndexForRangedExpression);
+            }
         };
 
         Ok(pqhd::make_v1_leaf_path(self.scheme, self.account, self.change, index))
@@ -197,13 +201,13 @@ impl PqhdKeyExpression {
         &self,
         master_seed: &[u8; 32],
         external_index: Option<u32>,
-    ) -> Result<(PqPublicKey, PqSecretKey), Error> {
+    ) -> Result<(PqPublicKey, PqSecretKey), KeyExpressionError> {
         let path = self.leaf_path(external_index)?;
         let master = pqhd::make_master_node(master_seed);
-        let leaf = pqhd::derive_path(&path, &master).ok_or(Error::InvalidLeafPath)?;
+        let leaf = pqhd::derive_path(&path, &master).ok_or(KeyExpressionError::InvalidLeafPath)?;
         let material = pqhd::derive_leaf_material_v1(&leaf.node_secret, &path)
-            .ok_or(Error::InvalidLeafPath)?;
-        pqhd::derive_keypair_v1(&material).map_err(Error::Pq)
+            .ok_or(KeyExpressionError::InvalidLeafPath)?;
+        pqhd::derive_keypair_v1(&material).map_err(KeyExpressionError::Pq)
     }
 
     /// Derives only the public key for this expression.
@@ -215,7 +219,7 @@ impl PqhdKeyExpression {
         &self,
         master_seed: &[u8; 32],
         external_index: Option<u32>,
-    ) -> Result<PqPublicKey, Error> {
+    ) -> Result<PqPublicKey, KeyExpressionError> {
         self.derive_keypair(master_seed, external_index).map(|(pk, _)| pk)
     }
 }
@@ -240,40 +244,41 @@ impl fmt::Display for PqhdKeyExpression {
 }
 
 impl FromStr for PqhdKeyExpression {
-    type Err = Error;
+    type Err = KeyExpressionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = s.split('/');
-        let head = parts.next().ok_or(Error::NotPqhdExpression)?;
+        let head = parts.next().ok_or(KeyExpressionError::NotPqhdExpression)?;
         if !head.starts_with("pqhd(") || !head.ends_with(')') {
-            return Err(Error::NotPqhdExpression);
+            return Err(KeyExpressionError::NotPqhdExpression);
         }
 
         let seed_hex = &head[5..head.len() - 1];
         if seed_hex.len() != 64 {
-            return Err(Error::SeedIdLength(seed_hex.len()));
+            return Err(KeyExpressionError::SeedIdLength(seed_hex.len()));
         }
-        let seed_id = PqhdSeedId::from_str(seed_hex).map_err(|_| Error::InvalidSeedId)?;
+        let seed_id =
+            PqhdSeedId::from_str(seed_hex).map_err(|_| KeyExpressionError::InvalidSeedId)?;
 
         let mut elems = [0_u32; 6];
         let mut elem_count = 0_usize;
         let mut wildcard = false;
         for part in parts {
             if part.starts_with('<') && part.ends_with('>') {
-                return Err(Error::MultipathUnsupported);
+                return Err(KeyExpressionError::MultipathUnsupported);
             }
             if part == "*h" || part == "*'" {
                 wildcard = true;
                 continue;
             }
             if part == "*" {
-                return Err(Error::WildcardMustBeHardened);
+                return Err(KeyExpressionError::WildcardMustBeHardened);
             }
             if wildcard {
-                return Err(Error::WildcardMustBeFinalElement);
+                return Err(KeyExpressionError::WildcardMustBeFinalElement);
             }
             if elem_count >= elems.len() {
-                return Err(Error::PathElementCount(elem_count + 1));
+                return Err(KeyExpressionError::PathElementCount(elem_count + 1));
             }
             elems[elem_count] = parse_hardened_index(part)?;
             elem_count += 1;
@@ -281,21 +286,29 @@ impl FromStr for PqhdKeyExpression {
 
         if wildcard {
             if elem_count != 5 {
-                return Err(Error::WildcardRequiresFiveFixedElements(elem_count));
+                return Err(KeyExpressionError::WildcardRequiresFiveFixedElements(elem_count));
             }
         } else if elem_count != 6 {
-            return Err(Error::FixedRequiresSixElements(elem_count));
+            return Err(KeyExpressionError::FixedRequiresSixElements(elem_count));
         }
 
-        check_eq(elems[0], pqhd::PURPOSE, Error::PurposeMustBe(pqhd::PURPOSE, elems[0]))?;
-        check_eq(elems[1], pqhd::COIN_TYPE, Error::CoinTypeMustBe(pqhd::COIN_TYPE, elems[1]))?;
+        check_eq(
+            elems[0],
+            pqhd::PURPOSE,
+            KeyExpressionError::PurposeMustBe(pqhd::PURPOSE, elems[0]),
+        )?;
+        check_eq(
+            elems[1],
+            pqhd::COIN_TYPE,
+            KeyExpressionError::CoinTypeMustBe(pqhd::COIN_TYPE, elems[1]),
+        )?;
 
         let scheme_u32 = elems[2];
         if scheme_u32 > u32::from(u8::MAX) {
-            return Err(Error::SchemeIdOutOfRange(scheme_u32));
+            return Err(KeyExpressionError::SchemeIdOutOfRange(scheme_u32));
         }
-        let scheme =
-            PqScheme::from_prefix(scheme_u32 as u8).ok_or(Error::UnknownScheme(scheme_u32))?;
+        let scheme = PqScheme::from_prefix(scheme_u32 as u8)
+            .ok_or(KeyExpressionError::UnknownScheme(scheme_u32))?;
 
         let change = elems[4];
         validate_change(change)?;
@@ -356,7 +369,7 @@ impl fmt::Display for PqhdDescriptor {
 }
 
 impl FromStr for PqhdDescriptor {
-    type Err = Error;
+    type Err = KeyExpressionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(inner) = s.strip_prefix("pkh(").and_then(|rest| rest.strip_suffix(')')) {
@@ -371,7 +384,7 @@ impl FromStr for PqhdDescriptor {
         if let Some(inner) = s.strip_prefix("wsh512(pk(").and_then(|rest| rest.strip_suffix("))")) {
             return Ok(Self::new(WalletOutputType::Bech32Pq, inner.parse()?));
         }
-        Err(Error::UnknownDescriptorWrapper)
+        Err(KeyExpressionError::UnknownDescriptorWrapper)
     }
 }
 
@@ -389,19 +402,19 @@ pub fn generate_pqhd_wallet_descriptor(
     internal: bool,
     params: impl AsRef<Params>,
     target_height: u32,
-) -> Result<String, Error> {
+) -> Result<String, KeyExpressionError> {
     let params = params.as_ref();
     if !scheme.is_allowed_at_height(
         target_height,
         params.auxpow_start_height.map(|height| height.to_u32()),
     ) {
-        return Err(Error::SchemeNotAllowedAtHeight { scheme, height: target_height });
+        return Err(KeyExpressionError::SchemeNotAllowedAtHeight { scheme, height: target_height });
     }
 
     if output_type == WalletOutputType::Bech32Pq {
         match params.auxpow_start_height {
             Some(start_height) if target_height >= start_height.to_u32() => {}
-            _ => return Err(Error::Bech32PqNotAllowedAtHeight(target_height)),
+            _ => return Err(KeyExpressionError::Bech32PqNotAllowedAtHeight(target_height)),
         }
     }
 
@@ -416,7 +429,7 @@ pub fn generate_pqhd_wallet_descriptor(
 
 /// Errors produced by `pqhd(...)` parsing, derivation, and descriptor generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error {
+pub enum KeyExpressionError {
     /// The input is not a `pqhd(...)` key expression.
     NotPqhdExpression,
     /// The seed id does not have the required 32-byte hex length.
@@ -470,7 +483,7 @@ pub enum Error {
     UnknownDescriptorWrapper,
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for KeyExpressionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotPqhdExpression => f.write_str("not a pqhd() key expression"),
@@ -535,29 +548,29 @@ impl fmt::Display for Error {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl std::error::Error for KeyExpressionError {}
 
-fn parse_hardened_index(s: &str) -> Result<u32, Error> {
+fn parse_hardened_index(s: &str) -> Result<u32, KeyExpressionError> {
     let digits = if let Some(digits) = s.strip_suffix('h') {
         digits
     } else if let Some(digits) = s.strip_suffix('\'') {
         digits
     } else {
-        return Err(Error::HardenedOnly);
+        return Err(KeyExpressionError::HardenedOnly);
     };
 
-    u32::from_str(digits).map_err(|_| Error::InvalidPathElement)
+    u32::from_str(digits).map_err(|_| KeyExpressionError::InvalidPathElement)
 }
 
-fn validate_change(change: u32) -> Result<(), Error> {
+fn validate_change(change: u32) -> Result<(), KeyExpressionError> {
     if change <= 1 {
         Ok(())
     } else {
-        Err(Error::InvalidChange(change))
+        Err(KeyExpressionError::InvalidChange(change))
     }
 }
 
-fn check_eq(actual: u32, expected: u32, err: Error) -> Result<(), Error> {
+fn check_eq(actual: u32, expected: u32, err: KeyExpressionError) -> Result<(), KeyExpressionError> {
     if actual == expected {
         Ok(())
     } else {
@@ -736,7 +749,7 @@ mod tests {
                 0
             )
             .unwrap_err(),
-            Error::SchemeNotAllowedAtHeight { scheme: PqScheme::MlDsa44, height: 0 }
+            KeyExpressionError::SchemeNotAllowedAtHeight { scheme: PqScheme::MlDsa44, height: 0 }
         );
 
         let p2wsh512 = generate_pqhd_wallet_descriptor(
@@ -763,7 +776,7 @@ mod tests {
                 0
             )
             .unwrap_err(),
-            Error::Bech32PqNotAllowedAtHeight(0)
+            KeyExpressionError::Bech32PqNotAllowedAtHeight(0)
         );
 
         let parsed = p2wsh512.parse::<PqhdDescriptor>().unwrap();

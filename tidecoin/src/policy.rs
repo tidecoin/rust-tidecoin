@@ -129,20 +129,36 @@ pub fn standard_policy_script_flags(
 #[non_exhaustive]
 pub enum StandardTxError {
     /// Transaction version is outside the standard relay range.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     Version,
     /// Transaction weight exceeds the standard relay limit.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     TxSize,
     /// An input scriptSig is too large.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     ScriptSigSize,
     /// An input scriptSig contains non-push opcodes.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     ScriptSigNotPushOnly,
     /// An output scriptPubKey is not a standard Tidecoin form.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     ScriptPubKey,
     /// Total OP_RETURN payload exceeds the standard data-carrier budget.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     DataCarrier,
     /// Bare multisig output is rejected by policy.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     BareMultisig,
     /// Transaction contains too many dust outputs.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     Dust,
 }
 
@@ -180,29 +196,55 @@ impl Default for StandardRelayPrecheckPolicy {
 ///
 /// These errors mirror the node's standard relay-policy reason strings where this stateless helper
 /// overlaps with the node mempool pipeline.
+///
+/// All variants here are policy or caller-context outcomes rather than proof
+/// that the transaction is consensus-invalid.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum StandardRelayPrecheckError {
     /// Context-free transaction sanity failed before policy checks.
+    ///
+    /// This usually indicates malformed or structurally invalid transaction
+    /// data before standard relay policy is applied.
     TransactionSanity(TransactionSanityError),
     /// Coinbase transactions are only valid inside blocks, not as loose relay transactions.
+    ///
+    /// This is a relay/mempool admission rejection.
     Coinbase,
     /// Transaction-local `IsStandardTx` policy failed.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     StandardTx(StandardTxError),
     /// Witness version 1 outputs are not standard before AuxPoW activation.
+    ///
+    /// This is a relay-policy rejection keyed to activation height, not a
+    /// statement that the transaction is otherwise malformed.
     WitnessV1PreAuxpow,
     /// Non-witness serialized transaction size is below the node relay floor.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     TxSizeSmall,
     /// UTXO-aware non-witness input standardness failed.
+    ///
+    /// This indicates caller-supplied prevout context led to a non-standard
+    /// input classification under node relay policy.
     InputsNotStandard,
     /// UTXO-aware witness standardness failed.
+    ///
+    /// This indicates caller-supplied prevout context led to a non-standard
+    /// witness classification under node relay policy.
     WitnessNotStandard,
     /// Standard transaction sigop cost exceeds the node relay limit.
+    ///
+    /// This is a relay-policy rejection, not a consensus failure.
     TooManySigops {
         /// Computed sigop cost.
         cost: usize,
     },
     /// TRUC transaction sigop-adjusted virtual size exceeds the stateless node limit.
+    ///
+    /// This is a relay-policy rejection for TRUC rules, not a consensus
+    /// failure.
     TrucTxSize {
         /// Computed sigop-adjusted virtual size.
         vsize: i64,

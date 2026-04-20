@@ -1,6 +1,12 @@
 # Validation State Machine
 
-This file is the authoritative state tracker for the multi-wave validation and fixing run.
+Status: historical phase log.
+
+This file records the multi-wave validation and fixing run. It is not the active
+state tracker anymore. Use
+[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md) and
+[VALIDATION_FIX_BACKLOG.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/VALIDATION_FIX_BACKLOG.md)
+for current planning.
 
 Current-state notes supersede older phase-local "Remaining open risks" bullets. In particular,
 live validation no longer dispatches to upstream `bitcoinconsensus`, Tidecoin PQ transport parity is

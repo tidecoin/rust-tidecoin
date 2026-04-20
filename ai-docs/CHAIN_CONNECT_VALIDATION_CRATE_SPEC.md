@@ -2,6 +2,9 @@
 
 Status: active design note, not yet implemented.
 
+This document defines future stateful validation work and is subordinate to
+[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
+
 This document defines the boundary for a future Rust crate that validates full
 Tidecoin block connection against chainstate. It exists to keep the current
 protocol crates from growing ad-hoc UTXO/database responsibilities while still

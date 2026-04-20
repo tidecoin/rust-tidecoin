@@ -1,5 +1,7 @@
 # Tidecoin Validation To Core Audit
 
+Status: historical audit record; the adapter move is complete.
+
 This note records the top-level Tidecoin validation audit that followed the
 large `consensus` to `consensus-core` engine refactor, and the resulting
 adapter move that is now landed.

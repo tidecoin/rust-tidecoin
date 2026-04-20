@@ -1,5 +1,8 @@
 # Validation Fix Backlog
 
+Status: active implementation backlog beneath
+[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
+
 This file is updated as issues are validated and moved through the state machine.
 
 ## Open
@@ -414,8 +417,8 @@ introduced, not by duplicating chainstate or mempool logic in `rust-tidecoin`.
   - Tidecoin-native multi-input transaction success path
   - missing/reused spent-output failure path
   - corrupted signature failure path
-  - exact record and remaining broader cleanup candidates are documented in [ai-docs/REMOVED_VALIDATION_TEST_SURFACES.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/REMOVED_VALIDATION_TEST_SURFACES.md)
-- `done` Record the validated Falcon/PQ runtime gap report in `FALCON_PQ_GAP_REPORT.md` and align the tracker with the current node-vs-Rust compatibility status.
+  - exact record and remaining broader cleanup candidates are documented in [ai-docs/archived/REMOVED_VALIDATION_TEST_SURFACES.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/REMOVED_VALIDATION_TEST_SURFACES.md)
+- `done` Record the validated Falcon/PQ runtime gap report in [ai-docs/archived/FALCON_PQ_GAP_REPORT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/FALCON_PQ_GAP_REPORT.md) and align the tracker with the current node-vs-Rust compatibility status.
 - `done` Implement the first PQHD parity slice: node-mirrored PQHD v1 KDF/path validation in `tidecoin/src/pqhd.rs`, with regression coverage for roundtrip/combine/malformed cases. PSBT PQHD helper work was part of the earlier migration history and is not a current live module.
 - `done` Implement PQ public-key derivation and Falcon legacy-mode signing/verification parity in `tidecoin/src/crypto/pq.rs` using a small node-compatible PQClean bridge, with regression coverage across all five schemes.
 - `done` Implement deterministic PQHD key generation and PQ secret-key codec parity in `tidecoin/src/pqhd.rs` and `tidecoin/src/crypto/pq.rs`, with exact node hash vectors and prefixed/raw-secret roundtrip coverage.

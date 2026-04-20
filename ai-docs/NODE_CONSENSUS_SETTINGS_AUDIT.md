@@ -1,6 +1,10 @@
 # Tidecoin Node Consensus and Settings Audit
 
-Status: active audit, 2026-04-12.
+Status: active protocol reference, 2026-04-12.
+
+This is a technical reference beneath
+[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md), not a
+separate source of planning authority.
 
 This document compares the current Rust workspace against the local Tidecoin
 node checkout at `/home/yaroslav/dev/tidecoin/tidecoin`. The node is the
@@ -335,18 +339,25 @@ function at finalization so there is one sanity source of truth.
 
 ## Block Validation Audit
 
-Rust `Block::validate()` in `primitives` currently delegates to
-`check_block_sanity(...)`, which checks:
+Rust currently separates context-free block sanity from witness/full-weight
+validation:
+
+- `check_block_sanity(...)` mirrors the context-free node `CheckBlock` surface.
+- `check_block_witness_and_weight(...)` checks witness commitment and full
+  witness-inclusive block weight.
+- `tidecoin::block_validation::contextual_check_block(...)` composes the
+  context-free sanity check with contextual header/block checks and then applies
+  the witness/full-weight rules at the node-aligned contextual layer.
+
+`check_block_sanity(...)` checks:
 
 - block has transactions
 - first transaction is coinbase
 - no later transaction is coinbase
 - transaction merkle root matches header
 - every transaction passes `check_transaction_sanity(...)`
-- stripped block size and full block weight respect Tidecoin
-  `MAX_BLOCK_WEIGHT`
+- stripped block size respects Tidecoin `MAX_BLOCK_WEIGHT`
 - legacy signature operation cost respects `MAX_BLOCK_SIGOPS_COST`
-- witness commitment matches witness data when witness data exists
 
 Header PoW and AuxPoW context remain separate because they require selected
 mining-hash and chain-height context. Exact node reject-reason strings are not
@@ -368,6 +379,8 @@ Implemented non-UTXO contextual block parity:
 - final transaction checks at height/time
 - BIP34 coinbase height enforcement at active height
 - witness malleation validation using active Segwit deployment state
+- witness commitment validation when Segwit is active
+- full witness-inclusive block weight validation
 - focused node-bridge parity tests for finality, BIP34 coinbase height, and
   pre-activation witness rejection
 

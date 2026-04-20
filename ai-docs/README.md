@@ -5,6 +5,22 @@ repository.
 
 If another development note disagrees with this file, this file wins.
 
+## Agent Read Order
+
+Read only this set first:
+
+1. This file.
+2. [VALIDATION_FIX_BACKLOG.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/VALIDATION_FIX_BACKLOG.md)
+3. One task-specific doc:
+   - protocol/parity: [NODE_CONSENSUS_SETTINGS_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_CONSENSUS_SETTINGS_AUDIT.md),
+     [PROTOCOL_NODE_PARITY_READINESS.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/PROTOCOL_NODE_PARITY_READINESS.md),
+     [NODE_PARITY_PROOF_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_PROOF_MATRIX.md)
+   - wallet/API ergonomics: [WALLET_API_ROADMAP.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/WALLET_API_ROADMAP.md)
+   - API surface cleanup: [API_STABILIZATION_SURFACE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/API_STABILIZATION_SURFACE_AUDIT.md)
+
+Open supporting refs only if the task needs them. Ignore `ai-docs/archived/`
+unless an active doc explicitly sends you there.
+
 ## Current Situation
 
 The repository has moved well past the original "port from rust-bitcoin" phase.
@@ -14,9 +30,12 @@ the Tidecoin node.
 The main open problem is now coverage and boundary maintenance, not the original
 extraction:
 
-- the top-level [`tidecoin`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate owns public validation orchestration, key/signing ergonomics, and node-backed adapter entry points
+- the top-level [`tidecoin`](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin) crate owns public validation orchestration and key/signing ergonomics
 - the standalone [`consensus/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus) crate is now a Tidecoin-native byte-oriented wrapper over the shared engine in [`consensus-core/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core)
 - the shared Tidecoin consensus core owns the interpreter, typed transaction context, sighash, PQ verification facade, and witness execution planning
+- the shared Tidecoin consensus core now also owns the reusable typed
+  verification facade used by both the top-level `tidecoin` crate and the
+  byte-oriented `consensus` crate
 - the canonical Tidecoin script representation/parsing/building layer now lives in
   [`primitives/src/script/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/primitives/src/script)
   and is consumed by both [`consensus-core/`](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus-core)
@@ -29,9 +48,11 @@ extraction:
   is now only a public reexport layer, not a second opcode implementation
 - the top-level pure-Rust fallback in
   [tidecoin/src/consensus_validation_tidecoin.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation_tidecoin.rs)
-  is now a thin adapter over `consensus-core`, so the remaining work is no
-  longer interpreter duplication but wrapper/orchestration cleanup and any
-  still-unlowered shared validation helpers
+  is now a thin adapter over `consensus-core`
+- the public
+  [tidecoin/src/consensus_validation.rs](/home/yaroslav/dev/tidecoin/rust-tidecoin/tidecoin/src/consensus_validation.rs)
+  facade now always uses the pure-Rust shared engine; the node bridge remains
+  available only for explicit parity tests and dev-only adapters
 - the historical reader/writer codec compatibility layer has been retired;
   the `tidecoin::consensus` codec namespace has been removed rather than
   preserved as a reexport layer, while canonical type codecs live with their
@@ -48,15 +69,19 @@ extraction:
   difficulty transition envelopes now follow the node's active semantics with
   focused tests
 
-That is the primary workstream now.
+For consensus/protocol development, that is the primary workstream now.
 
 Priority rule for the next phase:
 
-- first fill chain-rule coverage gaps against the Tidecoin node, especially
-  node-generated AuxPoW fixtures, target-check APIs, and deeper historical
-  difficulty-vector coverage
-- then reconcile the archived proof-class matrix against the active
-  Tidecoin-native tests so the historical files can be deleted deliberately
+- for consensus/protocol work, first fill chain-rule coverage gaps against the
+  Tidecoin node, especially node-generated AuxPoW fixtures, target-check APIs,
+  and deeper historical difficulty-vector coverage
+- for wallet-facing crate development, use
+  [`WALLET_API_ROADMAP.md`](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/WALLET_API_ROADMAP.md)
+  and build on the existing key, address, script, weight, fee, and validation
+  primitives instead of duplicating them
+- reconcile the archived proof-class matrix against the active Tidecoin-native
+  tests before deleting historical consensus files
 - keep auditing new wrapper code for real duplicate validation/protocol logic,
   but do not re-open completed `consensus-core` extraction decisions
 
@@ -81,8 +106,10 @@ Current status note:
 - the live `consensus` crate no longer depends on upstream `bitcoin::*` or `bitcoinconsensus`
 - active fixture parity is Tidecoin-node-based
 - the live interpreter/typed tx engine now lives in `consensus-core`, not in `consensus/src/`
+- the shared typed verification facade now also lives in `consensus-core`, so
+  both public validation adapters execute the same engine pipeline
 - the completed top-level validation audit and adapter refactor are captured in
-  [TIDECOIN_VALIDATION_CORE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/TIDECOIN_VALIDATION_CORE_AUDIT.md)
+  [TIDECOIN_VALIDATION_CORE_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/TIDECOIN_VALIDATION_CORE_AUDIT.md)
 - the current node-vs-Rust consensus/settings gap audit is captured in
   [NODE_CONSENSUS_SETTINGS_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_CONSENSUS_SETTINGS_AUDIT.md)
 - the current definition of protocol-crate node parity, and the boundary between
@@ -92,6 +119,20 @@ Current status note:
   and fuzz targets is captured in
   [NODE_PARITY_PROOF_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_PROOF_MATRIX.md)
 - archived Bitcoin/Core-era materials remain only as historical reference
+
+Current API cleanup note:
+
+- the main remaining public-surface rough edge is hidden-but-public network
+  conversion traits leaking through constructor signatures in
+  `tidecoin/src/crypto/key.rs` and `tidecoin/src/address/mod.rs`
+- `consensus-core` still exports more low-level engine internals than the
+  current internal-use posture strictly needs, but this is not an immediate
+  correctness problem
+- product validation now cleanly distinguishes malformed serialized
+  transactions from engine-level verification failures; `UnsupportedScript` has
+  been removed from the live shared-core contract
+- remaining validation-error work is documentation quality and boundary
+  clarity, not another structural refactor
 
 ## Master Status
 
@@ -643,46 +684,51 @@ Checklist:
 
 These files are supporting references, not co-equal sources of truth.
 
-### Architecture
-
-- [ai-docs/CONSENSUS_CORE_EXTRACTION_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CONSENSUS_CORE_EXTRACTION_PLAN.md)
-  - Concrete extraction map: crate boundary, ownership, migration order, and lowering blockers.
-
-- [ai-docs/CONSENSUS_RUNTIME_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CONSENSUS_RUNTIME_AUDIT.md)
-  - Concrete `delete / rewrite / replace-via-core` map for the imported `consensus/` runtime against the Tidecoin node.
-
-- [ai-docs/NODE_PARITY_HARNESS_PLAN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_HARNESS_PLAN.md)
-  - Detailed plan for the shared Tidecoin node-backed parity/test-support harness.
-
-- [ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md)
-  - Archived-suite to Tidecoin-native replacement matrix, used to preserve the
-    original proof depth of the imported consensus test surface.
-
-- [consensus/docs/pq-integration-plan.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/docs/pq-integration-plan.md)
-  - Current architecture and integration checklist for the Tidecoin consensus crates.
-
-### Status And Backlog Detail
-
-- [ai-docs/VALIDATION_STATE_MACHINE.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/VALIDATION_STATE_MACHINE.md)
-  - Detailed historical state tracker.
+### Active Planning
 
 - [ai-docs/VALIDATION_FIX_BACKLOG.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/VALIDATION_FIX_BACKLOG.md)
-  - Detailed backlog beneath this master plan.
+  - Active implementation backlog beneath this master plan.
 
-- [ai-docs/REMOVED_VALIDATION_TEST_SURFACES.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/REMOVED_VALIDATION_TEST_SURFACES.md)
-  - Exact public validation surfaces that disappeared when the Bitcoin-only validation tests were removed, plus the required Tidecoin-native replacements.
+- [ai-docs/WALLET_API_ROADMAP.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/WALLET_API_ROADMAP.md)
+  - Active roadmap for wallet-facing crate APIs: transaction building, signing
+    ergonomics, fee/change handling, and mobile/wallet integration gaps.
 
-### Reference Reports
+### Active Protocol References
 
-- [ai-docs/PORTING_GAP_ANALYSIS.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/PORTING_GAP_ANALYSIS.md)
-  - Original library-scope gap report.
-  - Useful background, but narrower than the current repository architecture problem.
+- [ai-docs/NODE_CONSENSUS_SETTINGS_AUDIT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_CONSENSUS_SETTINGS_AUDIT.md)
+  - Current node-vs-Rust consensus/settings audit and chain-rule coverage map.
 
-- [ai-docs/FALCON_PQ_GAP_REPORT.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/FALCON_PQ_GAP_REPORT.md)
-  - PQ/Falcon runtime parity reference.
+- [ai-docs/PROTOCOL_NODE_PARITY_READINESS.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/PROTOCOL_NODE_PARITY_READINESS.md)
+  - Defines the current protocol-library parity claim and the boundary before
+    future UTXO/mempool crates.
+
+- [ai-docs/NODE_PARITY_PROOF_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/NODE_PARITY_PROOF_MATRIX.md)
+  - Maps node validation surfaces to active Rust tests, fuzz targets, and
+    generated provenance corpora.
+
+- [ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md)
+  - Active design note for the future UTXO-backed chain-validation crate.
+
+### Optional Supporting Refs
+
+- [ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CONSENSUS_TEST_COVERAGE_MATRIX.md)
+  - Open only when reconciling archived proof classes against active tests.
+
+- [ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md)
+  - Open only for future UTXO-backed chain-validation work.
 
 - [ai-docs/rust-tidecoin-vs-mobile-native-comparison.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/rust-tidecoin-vs-mobile-native-comparison.md)
-  - Product/API comparison note.
+  - Open only for wallet/mobile compatibility work.
+
+- [consensus/docs/pq-integration-plan.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/consensus/docs/pq-integration-plan.md)
+  - Open only for lower-level consensus crate integration work.
+
+Everything else under [ai-docs/archived/](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived)
+is historical evidence, not an active checklist.
+
+- [ai-docs/rust-tidecoin-vs-mobile-native-comparison.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/rust-tidecoin-vs-mobile-native-comparison.md)
+  - Wallet/mobile comparison reference. Use `WALLET_API_ROADMAP.md` for the
+    active wallet/API backlog.
 
 ### Archived
 
@@ -697,6 +743,9 @@ These files are supporting references, not co-equal sources of truth.
 When deciding what to do next:
 
 1. Use this file first.
-2. Use `pq-integration-plan.md` for current consensus architecture detail.
-3. Use `VALIDATION_FIX_BACKLOG.md` for deeper checklists.
-4. Treat everything older as supporting evidence unless it has been explicitly updated.
+2. Use `VALIDATION_FIX_BACKLOG.md` for active protocol/validation tasks.
+3. Use `WALLET_API_ROADMAP.md` for wallet-facing API and transaction-builder
+   tasks.
+4. Use `pq-integration-plan.md` for current consensus architecture detail.
+5. Treat historical docs as supporting evidence unless this file explicitly
+   reactivates them.
