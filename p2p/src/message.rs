@@ -295,7 +295,7 @@ impl V1PayloadFramePlan {
 /// A v1 message header used to describe the incoming payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct V1MessageHeader {
-    /// The network magic, a unique 4 byte sequence.
+    /// The network magic, a 4-byte wire-level network discriminator.
     pub magic: Magic,
     /// The "command" used to describe the payload.
     pub command: CommandString,

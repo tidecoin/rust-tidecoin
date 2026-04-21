@@ -10,6 +10,10 @@ This document compares the current Rust workspace against the local Tidecoin
 node checkout at `/home/yaroslav/dev/tidecoin/tidecoin`. The node is the
 acceptance standard for consensus-sensitive behavior.
 
+Current node reference commit:
+
+- `fe36ef8dde80f730f02fd1e64c80432d06b1c436`
+
 ## Scope
 
 Audited Rust surfaces:
@@ -118,7 +122,7 @@ These are the current node values observed in
 | `nPowAveragingWindow` | `17` | `17` | `17` | Exposed as `pow_averaging_window`. |
 | `nPowMaxAdjustDown` | `32` | `32` | `0` | Exposed as `pow_max_adjust_down`. |
 | `nPowMaxAdjustUp` | `16` | `16` | `0` | Exposed as `pow_max_adjust_up`. |
-| P2P message start | `ec fa ce a5` | `ba ce 3f da` | `ba ce 3f da` | Implemented in `p2p`; not consensus params. |
+| P2P message start | `ec fa ce a5` | `ba ce 3f da` | `ba dc fe 10` | Implemented in `p2p`; not consensus params. |
 | Default P2P port | `8755` | `18755` | `18778` | Implemented in `p2p`; not consensus params. |
 | Bech32 HRP | `tbc` | `ttbc` | `rtbc` | Implemented in address/network-facing APIs. |
 
@@ -189,8 +193,8 @@ usage, but it is not full node settings parity.
 
 The P2P/network constants are mostly in good shape:
 
-- P2P magic values match the node: mainnet `ec fa ce a5`, testnet/regtest
-  `ba ce 3f da`.
+- P2P magic values match the node: mainnet `ec fa ce a5`, testnet
+  `ba ce 3f da`, regtest `ba dc fe 10`.
 - Default P2P ports match the node: mainnet `8755`, testnet `18755`,
   regtest `18778`.
 - Base58 prefixes and Bech32/PQ HRPs are implemented in the address layer and

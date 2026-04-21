@@ -10,6 +10,10 @@ that exist today. The scope is protocol-library parity: stateless or
 caller-context validation that can be owned by `rust-tidecoin` without a UTXO
 database or mempool.
 
+Current node reference commit for this active matrix:
+
+- `fe36ef8dde80f730f02fd1e64c80432d06b1c436`
+
 Full node acceptance parity is intentionally out of scope here. `ConnectBlock`,
 `CheckTxInputs`, BIP30, coinbase maturity, UTXO-backed sequence locks, fee and
 subsidy connect checks, `MemPoolAccept`, package topology, RBF/conflicts, and
@@ -19,6 +23,7 @@ ephemeral dust packages belong to future stateful crates.
 
 | Node surface | Rust owner | Proof artifact |
 | --- | --- | --- |
+| P2P message-start constants | `tidecoin_p2p_messages::Magic` / `NetworkExt` | `p2p/tests/tidecoin_node_magic_parity.rs` |
 | Mandatory script flags | `tidecoin::policy::MANDATORY_SCRIPT_VERIFY_FLAGS` | `tidecoin/src/policy.rs::standard_policy_script_flags_match_node_auxpow_activation` |
 | Standard script flags before AuxPoW | `tidecoin::policy::STANDARD_NOT_MANDATORY_VERIFY_FLAGS` | same activation test |
 | Post-AuxPoW PQ flags | `tidecoin::policy::standard_policy_script_flags` | same activation test proves `PQ_STRICT`, `WITNESS_V1_512`, and `SHA512` are height-gated |
@@ -89,6 +94,30 @@ synthetic, functional, and chain-derived data do not blur together:
 | Real-chain fixtures | testnet AuxPoW, header, retarget-window fixtures | Proves header/PoW/contextual behavior on chain-derived data without claiming UTXO validation. |
 | Randomized node-diff cases | `tidecoin_random_consistency` | Continuously compares generated interpreter cases against the checked-out node. |
 | Fuzz targets | `fuzz/fuzz_targets/**` | Exercises stateless library-owned surfaces for crashes/invariant violations. |
+
+Rule:
+
+- If the checked-out Tidecoin node advances in a consensus-sensitive way, update
+  the node-backed corpus metadata and refresh any active docs that pin the node
+  commit.
+- Regenerate the two pinned provenance artifacts with these commands:
+  ```bash
+  python3 tidecoin/contrib/generate_node_policy_provenance_corpus.py \
+    --node-repo /path/to/tidecoin
+
+  mkdir -p /tmp/tidecoin_script_assets
+  TIDECOIN_NODE_REPO=/path/to/tidecoin \
+  TIDECOIN_SCRIPT_ASSETS_WRITE_GENERATED_JSON=/tmp/tidecoin_script_assets/generated.json \
+  cargo test -p consensus --test tidecoin_script_assets_generated \
+    tidecoin_generated_script_assets_monotonicity -- --nocapture
+
+  python3 consensus/scripts/generate_tidecoin_script_assets_generated_metadata.py \
+    --json /tmp/tidecoin_script_assets/generated.json \
+    --tx-valid /path/to/tidecoin/src/test/data/tx_valid_pq.json \
+    --tx-invalid /path/to/tidecoin/src/test/data/tx_invalid_pq.json \
+    --node-repo /path/to/tidecoin \
+    --output consensus/tests/data/tidecoin_script_assets_generated_metadata.json
+  ```
 
 ## Feature And No-Std Matrix
 

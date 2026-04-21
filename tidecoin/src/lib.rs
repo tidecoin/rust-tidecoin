@@ -132,9 +132,9 @@ pub mod network;
 pub mod p2p {
     //! Re-exports of peer-to-peer networking primitives.
     //!
-    //! This exposes the node message magic bytes and related network helpers
-    //! through the top-level `tidecoin` crate, so downstream users do not need
-    //! to depend on the internal `tidecoin-p2p-messages` crate directly.
+    //! Use [`Network`] or [`Params`] as the primary high-level network identity
+    //! in application code. The items re-exported here describe exact wire-level
+    //! P2P defaults, including message magic bytes.
 
     #[doc(inline)]
     pub use p2p_messages::{Magic, NetworkExt};

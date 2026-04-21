@@ -441,7 +441,7 @@ impl Magic {
     /// Tidecoin testnet network magic bytes.
     pub const TESTNET: Self = Self([0xBA, 0xCE, 0x3F, 0xDA]);
     /// Tidecoin regtest network magic bytes.
-    pub const REGTEST: Self = Self([0xBA, 0xCE, 0x3F, 0xDA]);
+    pub const REGTEST: Self = Self([0xBA, 0xDC, 0xFE, 0x10]);
 
     /// Constructs a new network magic from bytes.
     pub const fn from_bytes(bytes: [u8; 4]) -> Self {
@@ -465,14 +465,12 @@ impl FromStr for Magic {
     }
 }
 
-impl TryFrom<Network> for Magic {
-    type Error = UnknownNetworkError;
-
-    fn try_from(network: Network) -> Result<Self, Self::Error> {
+impl From<Network> for Magic {
+    fn from(network: Network) -> Self {
         match network {
-            Network::Tidecoin => Ok(Self::TIDECOIN),
-            Network::Testnet => Ok(Self::TESTNET),
-            Network::Regtest => Ok(Self::REGTEST),
+            Network::Tidecoin => Self::TIDECOIN,
+            Network::Testnet => Self::TESTNET,
+            Network::Regtest => Self::REGTEST,
         }
     }
 }
@@ -483,8 +481,8 @@ impl TryFrom<Magic> for Network {
     fn try_from(magic: Magic) -> Result<Self, Self::Error> {
         match magic {
             Magic::TIDECOIN => Ok(Self::Tidecoin),
-            // TESTNET and REGTEST share the same magic bytes; default to Testnet.
             Magic::TESTNET => Ok(Self::Testnet),
+            Magic::REGTEST => Ok(Self::Regtest),
             _ => Err(UnknownMagicError(magic)),
         }
     }
@@ -677,24 +675,6 @@ impl std::error::Error for UnknownMagicError {
     }
 }
 
-/// Error in creating a Magic from a Network.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct UnknownNetworkError(Network);
-
-impl fmt::Display for UnknownNetworkError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "unknown network {}", self.0)
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for UnknownNetworkError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for ProtocolVersion {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
@@ -727,23 +707,34 @@ mod tests {
     #[test]
     fn serialize_deserialize() {
         assert_eq!(encode_to_vec(&Magic::TIDECOIN), &[0xec, 0xfa, 0xce, 0xa5]);
-        let magic: Magic = Network::Tidecoin.try_into().unwrap();
+        let magic = Magic::from(Network::Tidecoin);
         assert_eq!(encode_to_vec(&magic), &[0xec, 0xfa, 0xce, 0xa5]);
         assert_eq!(encode_to_vec(&Magic::TESTNET), &[0xba, 0xce, 0x3f, 0xda]);
-        let magic: Magic = Network::Testnet.try_into().unwrap();
+        let magic = Magic::from(Network::Testnet);
         assert_eq!(encode_to_vec(&magic), &[0xba, 0xce, 0x3f, 0xda]);
-        assert_eq!(encode_to_vec(&Magic::REGTEST), &[0xba, 0xce, 0x3f, 0xda]);
-        let magic: Magic = Network::Regtest.try_into().unwrap();
-        assert_eq!(encode_to_vec(&magic), &[0xba, 0xce, 0x3f, 0xda]);
+        assert_eq!(encode_to_vec(&Magic::REGTEST), &[0xba, 0xdc, 0xfe, 0x10]);
+        let magic = Magic::from(Network::Regtest);
+        assert_eq!(encode_to_vec(&magic), &[0xba, 0xdc, 0xfe, 0x10]);
 
         assert_eq!(
             decode_from_slice::<Magic>(&[0xec, 0xfa, 0xce, 0xa5]).ok(),
-            Network::Tidecoin.try_into().ok()
+            Some(Magic::from(Network::Tidecoin))
         );
         assert_eq!(
             decode_from_slice::<Magic>(&[0xba, 0xce, 0x3f, 0xda]).ok(),
-            Network::Testnet.try_into().ok()
+            Some(Magic::from(Network::Testnet))
         );
+        assert_eq!(
+            decode_from_slice::<Magic>(&[0xba, 0xdc, 0xfe, 0x10]).ok(),
+            Some(Magic::from(Network::Regtest))
+        );
+    }
+
+    #[test]
+    fn network_magic_roundtrip_is_exact() {
+        assert_eq!(Network::try_from(Magic::TIDECOIN), Ok(Network::Tidecoin));
+        assert_eq!(Network::try_from(Magic::TESTNET), Ok(Network::Testnet));
+        assert_eq!(Network::try_from(Magic::REGTEST), Ok(Network::Regtest));
     }
 
     #[test]
@@ -793,8 +784,11 @@ mod tests {
 
     #[test]
     fn magic_from_str() {
-        let known_network_magic_strs =
-            [("ecfacea5", Network::Tidecoin), ("bace3fda", Network::Testnet)];
+        let known_network_magic_strs = [
+            ("ecfacea5", Network::Tidecoin),
+            ("bace3fda", Network::Testnet),
+            ("badcfe10", Network::Regtest),
+        ];
 
         for (magic_str, network) in &known_network_magic_strs {
             let magic: Magic = magic_str.parse::<Magic>().unwrap();
