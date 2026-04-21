@@ -5,9 +5,8 @@ use tidecoin_p2p_messages::Magic;
 
 #[test]
 fn tidecoin_node_chainparams_message_start_matches_rust_magic_constants() {
-    let node_repo = match env::var("TIDECOIN_NODE_REPO") {
-        Ok(path) => path,
-        Err(_) => return,
+    let Ok(node_repo) = env::var("TIDECOIN_NODE_REPO") else {
+        return;
     };
 
     let chainparams = fs::read_to_string(Path::new(&node_repo).join("src/kernel/chainparams.cpp"))
