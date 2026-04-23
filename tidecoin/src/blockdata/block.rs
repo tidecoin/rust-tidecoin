@@ -12,7 +12,9 @@ use core::fmt;
 
 use crate::merkle_tree::{TxMerkleNode, WitnessMerkleNode};
 use crate::network::Params;
-use crate::pow::{self, MiningHashError, PowTargetError, PowValidationError};
+#[cfg(feature = "pow")]
+use crate::pow;
+use crate::pow::{MiningHashError, PowTargetError, PowValidationError};
 use crate::prelude::Vec;
 use crate::script::ScriptIntError;
 use crate::transaction::{Coinbase, Transaction};
@@ -61,14 +63,22 @@ internal_macros::define_extension_trait! {
         }
 
         /// Checks that the proof-of-work for the block is valid, returning the mining hash.
+        ///
+        /// Requires the `pow` feature.
         fn validate_pow(
             &self,
             params: impl AsRef<Params>,
             height: BlockHeight,
             required_target: Target,
         ) -> Result<BlockHash, ValidationError> {
-            pow::validate_pow_at_height_against_target(self, params, height, required_target)
-                .map_err(Into::into)
+            #[cfg(feature = "pow")]
+            return pow::validate_pow_at_height_against_target(self, params, height, required_target)
+                .map_err(Into::into);
+            #[cfg(not(feature = "pow"))]
+            {
+                let _ = (params, height, required_target);
+                panic!("validate_pow requires the `pow` feature")
+            }
         }
 
         /// Returns the total work of the block.

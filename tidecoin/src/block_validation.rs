@@ -381,6 +381,7 @@ where
 
     check_base_version(params, height, header.version)?;
 
+    #[cfg(feature = "pow")]
     if options.check_proof {
         pow::validate_auxpow_context(header, params, Some(height))
             .map_err(ContextualHeaderError::AuxPow)?;

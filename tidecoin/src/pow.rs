@@ -8,11 +8,14 @@
 use core::ops::{Add, Div, Mul, Not, Rem, Shl, Shr, Sub};
 use core::{cmp, fmt};
 
+#[cfg(feature = "pow")]
 use hashes::{sha256d, HashEngine as _};
 use internals::{impl_to_hex_from_lower_hex, write_err};
 use units::parse_int::{self, ParseIntError, PrefixedHexError, UnprefixedHexError};
 
-use crate::block::{AuxPow, BlockHash, BlockHeight, BlockHeightInterval, BlockMtp, Header};
+#[cfg(feature = "pow")]
+use crate::block::AuxPow;
+use crate::block::{BlockHash, BlockHeight, BlockHeightInterval, BlockMtp, Header};
 use crate::internal_macros;
 use crate::network::Params;
 
@@ -50,6 +53,7 @@ pub fn pow_hash_algorithm_at_height(
 ///
 /// This mirrors the node's `CPureBlockHeader::GetScryptPoWHash()`, which runs
 /// scrypt-1024-1-1-256 with the pure header bytes as both password and salt.
+#[cfg(feature = "pow")]
 pub fn scrypt_pow_hash(header: &Header) -> BlockHash {
     let header_bytes = header.pure_header_bytes();
     let mut out = [0u8; 32];
@@ -63,6 +67,7 @@ pub fn scrypt_pow_hash(header: &Header) -> BlockHash {
 ///
 /// This mirrors the node's `CPureBlockHeader::GetPoWHash()`, which runs
 /// yespower 1.0 with `N = 2048`, `r = 8`, and no personalization.
+#[cfg(feature = "pow")]
 pub fn yespower_pow_hash(header: &Header) -> Result<BlockHash, MiningHashError> {
     rust_yespower::tidecoin_hash(&header.pure_header_bytes())
         .map(BlockHash::from_byte_array)
@@ -70,6 +75,7 @@ pub fn yespower_pow_hash(header: &Header) -> Result<BlockHash, MiningHashError> 
 }
 
 /// Computes the Tidecoin mining hash selected by consensus for `height`.
+#[cfg(feature = "pow")]
 pub fn mining_hash_for_height(
     header: &Header,
     params: impl AsRef<Params>,
@@ -86,6 +92,7 @@ pub fn mining_hash_for_height(
 /// This mirrors the node's height-aware proof check for pure headers: it applies
 /// Tidecoin node target rejection semantics, selects the height-dependent mining
 /// hash algorithm, and verifies that the selected hash meets the header target.
+#[cfg(feature = "pow")]
 pub fn validate_pow_at_height(
     header: &Header,
     params: impl AsRef<Params>,
@@ -100,6 +107,7 @@ pub fn validate_pow_at_height(
 ///
 /// Use this when the caller has already computed the contextual
 /// difficulty-schedule target for the header.
+#[cfg(feature = "pow")]
 pub fn validate_pow_at_height_against_target(
     header: &Header,
     params: impl AsRef<Params>,
@@ -119,6 +127,7 @@ pub fn validate_pow_at_height_against_target(
 /// This mirrors the node's `CheckProofOfWorkAny(...)` path used when header height is not known:
 /// the claimed compact target is still validated under Tidecoin target rules, but either yespower
 /// or scrypt may satisfy the target.
+#[cfg(feature = "pow")]
 pub fn validate_pow_any(
     header: &Header,
     params: impl AsRef<Params>,
@@ -138,6 +147,7 @@ pub fn validate_pow_any(
     }
 }
 
+#[cfg(feature = "pow")]
 fn validate_pow_hash_at_height(
     header: &Header,
     params: &Params,
@@ -161,6 +171,7 @@ fn validate_pow_hash_at_height(
 /// header's `nBits`. It intentionally does not validate the child header's
 /// own pure-header PoW when AuxPoW is absent; call [`validate_pow_at_height`]
 /// for that path.
+#[cfg(feature = "pow")]
 pub fn validate_auxpow_context(
     header: &Header,
     params: impl AsRef<Params>,
@@ -209,6 +220,7 @@ pub fn validate_auxpow_context(
     Ok(())
 }
 
+#[cfg(feature = "pow")]
 fn validate_auxpow_commitment(
     header: &Header,
     auxpow: &AuxPow,
@@ -285,6 +297,7 @@ fn validate_auxpow_commitment(
     Ok(())
 }
 
+#[cfg(feature = "pow")]
 fn check_auxpow_merkle_branch(
     mut hash: BlockHash,
     merkle_branch: &[BlockHash],
@@ -306,6 +319,7 @@ fn check_auxpow_merkle_branch(
     hash
 }
 
+#[cfg(feature = "pow")]
 fn combine_auxpow_merkle_hashes(left: BlockHash, right: BlockHash) -> BlockHash {
     let mut engine = sha256d::Hash::engine();
     engine.input(left.as_byte_array());
@@ -313,6 +327,7 @@ fn combine_auxpow_merkle_hashes(left: BlockHash, right: BlockHash) -> BlockHash 
     BlockHash::from_byte_array(sha256d::Hash::from_engine(engine).to_byte_array())
 }
 
+#[cfg(feature = "pow")]
 fn expected_auxpow_chain_index(nonce: u32, chain_id: i32, height: usize) -> i32 {
     let modulus = 1u64 << height;
     let mut rand = u64::from(nonce);
@@ -323,6 +338,7 @@ fn expected_auxpow_chain_index(nonce: u32, chain_id: i32, height: usize) -> i32 
     (rand % modulus) as i32
 }
 
+#[cfg(feature = "pow")]
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|window| window == needle)
 }

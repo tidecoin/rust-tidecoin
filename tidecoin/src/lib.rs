@@ -129,6 +129,7 @@ pub(crate) mod crypto;
 pub mod key_expression;
 pub mod merkle_tree;
 pub mod network;
+#[cfg(feature = "p2p")]
 pub mod p2p {
     //! Re-exports of peer-to-peer networking primitives.
     //!
