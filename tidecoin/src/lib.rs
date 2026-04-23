@@ -13,7 +13,9 @@
 //! # Cargo features
 //!
 //! * `arbitrary` (dependency) - arbitrary type implementations for testing.
-//! * `default` - enables `std` and `rand`.
+//! * `default` - enables `std`, `rand`, `p2p`, and `pow`.
+//! * `p2p` - enables peer-to-peer wire constants and helpers under [`crate::p2p`].
+//! * `pow` - enables mining-hash and proof-validation APIs under [`crate::pow`].
 //! * `rand` - enables OS-random convenience APIs for PQ key generation, signing, and KEM
 //!   encapsulation. Without this feature callers can still use deterministic APIs or provide their
 //!   own RNG.
@@ -114,6 +116,8 @@ pub mod ext {
         transaction::{TxInExt, TxOutExt, TransactionExt as TransactionWeightExt},
         witness::WitnessExt,
     };
+    #[cfg(feature = "pow")]
+    pub use crate::pow::HeaderPowExt;
     pub use crate::consensus_validation::{
         ScriptPubKeyExt as ConsensusScriptPubKeyValidationExt,
         TransactionExt as ConsensusTransactionValidationExt,
@@ -130,6 +134,7 @@ pub mod key_expression;
 pub mod merkle_tree;
 pub mod network;
 #[cfg(feature = "p2p")]
+#[cfg_attr(docsrs, doc(cfg(feature = "p2p")))]
 pub mod p2p {
     //! Re-exports of peer-to-peer networking primitives.
     //!

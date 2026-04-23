@@ -18,14 +18,14 @@ Use this file only when the task is specifically about public API cleanup.
 
 ### Feature-gated capability cleanup
 
-`p2p` and `pow` now need a stricter capability-boundary cleanup pass.
+The `p2p` / `pow` capability-boundary cleanup is implemented in the library
+surface.
 
-The active design and implementation plan lives in
-[FEATURE_GATING_API_REDESIGN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/FEATURE_GATING_API_REDESIGN.md).
+Historical implementation detail lives in
+[archived/FEATURE_GATING_API_REDESIGN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/FEATURE_GATING_API_REDESIGN.md).
 
-This is now a higher-priority public-surface issue than the older rough edges
-below because it affects feature-dependent API truthfulness and validation
-semantics.
+The remaining active follow-up is CI matrix enforcement in
+[CI_FEATURE_MATRIX_INTEGRATION.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CI_FEATURE_MATRIX_INTEGRATION.md).
 
 ### Hidden public network-conversion traits
 
@@ -58,7 +58,7 @@ the crate as a third-party semver-facing public dependency.
 If API cleanup work is chosen, do it in this order:
 
 1. finish the `pow` / `p2p` feature-gating cleanup in
-   [FEATURE_GATING_API_REDESIGN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/FEATURE_GATING_API_REDESIGN.md)
+   [CI_FEATURE_MATRIX_INTEGRATION.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/CI_FEATURE_MATRIX_INTEGRATION.md)
 2. remove hidden network-conversion traits from public constructor signatures
 3. keep docs/examples pointing normal downstream code at `tidecoin::*`
 4. leave broad `consensus-core` export narrowing for later unless external API

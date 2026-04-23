@@ -148,6 +148,23 @@ pub fn validate_pow_any(
 }
 
 #[cfg(feature = "pow")]
+internal_macros::define_extension_trait! {
+    /// Proof-validation functionality for the [`Header`] type.
+    #[cfg_attr(docsrs, doc(cfg(feature = "pow")))]
+    pub trait HeaderPowExt impl for Header {
+        /// Checks that the proof-of-work for the block is valid, returning the mining hash.
+        fn validate_pow(
+            &self,
+            params: impl AsRef<Params>,
+            height: BlockHeight,
+            required_target: Target,
+        ) -> Result<BlockHash, PowValidationError> {
+            validate_pow_at_height_against_target(self, params, height, required_target)
+        }
+    }
+}
+
+#[cfg(feature = "pow")]
 fn validate_pow_hash_at_height(
     header: &Header,
     params: &Params,
@@ -1418,6 +1435,8 @@ internal_macros::define_extension_trait! {
 mod sealed {
     pub trait Sealed {}
     impl Sealed for super::CompactTarget {}
+    #[cfg(feature = "pow")]
+    impl Sealed for super::Header {}
 }
 
 impl From<CompactTarget> for Target {
@@ -2167,8 +2186,13 @@ mod tests {
     #[cfg(feature = "std")]
     use crate::pow::test_utils::u128_to_work;
     use crate::pow::test_utils::{u32_to_target, u64_to_target};
-    use crate::prelude::{Box, ToString, Vec};
-    use crate::{absolute, BlockTime};
+    #[cfg(any(feature = "pow", feature = "std"))]
+    use crate::prelude::Vec;
+    #[cfg(feature = "pow")]
+    use crate::prelude::{Box, ToString};
+    #[cfg(feature = "pow")]
+    use crate::absolute;
+    use crate::BlockTime;
     #[cfg(feature = "tidecoin-node-validation")]
     use internals::hex::DisplayHex as _;
 
@@ -3260,6 +3284,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "pow")]
     fn pow_vector_header() -> Header {
         Header::from_str(
             "0000002009f42768de3cfb4e58fc56368c1477f87f60e248d7130df3fb8acd7f\
@@ -3269,6 +3294,7 @@ mod tests {
         .expect("valid pure header hex")
     }
 
+    #[cfg(feature = "pow")]
     fn script_push(data: &[u8]) -> Vec<u8> {
         assert!(data.len() <= 75);
         let mut script = Vec::with_capacity(data.len() + 1);
@@ -3277,6 +3303,7 @@ mod tests {
         script
     }
 
+    #[cfg(feature = "pow")]
     fn auxpow_coinbase_script(
         include_header: bool,
         root: [u8; 32],
@@ -3297,6 +3324,7 @@ mod tests {
         script
     }
 
+    #[cfg(feature = "pow")]
     fn auxpow_coinbase_tx(script_sig: Vec<u8>) -> crate::transaction::Transaction {
         crate::transaction::Transaction {
             version: crate::transaction::Version::ONE,
@@ -3309,6 +3337,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "pow")]
     fn valid_auxpow_header() -> Header {
         let mut header =
             test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
@@ -3351,12 +3380,12 @@ mod tests {
         header
     }
 
-    #[cfg(feature = "tidecoin-node-validation")]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn header_consensus_hex(header: &Header) -> crate::prelude::String {
         encoding::encode_to_vec(header).to_lower_hex_string()
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "pow", feature = "std"))]
     fn auxpow_fixture_cases() -> Vec<serde_json::Value> {
         let data = include_str!("../tests/data/auxpow_headers.json");
         let value: serde_json::Value =
@@ -3364,7 +3393,7 @@ mod tests {
         value["cases"].as_array().expect("auxpow fixture cases").clone()
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "pow", feature = "std"))]
     fn real_testnet_header_cases() -> Vec<serde_json::Value> {
         let data = include_str!("../tests/data/testnet_real_headers.json");
         let value: serde_json::Value =
@@ -3415,7 +3444,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "pow", feature = "std"))]
     fn expected_auxpow_error(expected: &str) -> Option<AuxPowValidationError> {
         match expected {
             "valid" => None,
@@ -3444,7 +3473,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "pow", feature = "std"))]
     fn node_generated_auxpow_fixtures_match_rust_validator() {
         for case in auxpow_fixture_cases() {
             let name = case["name"].as_str().expect("fixture name");
@@ -3475,7 +3504,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "tidecoin-node-validation")]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn node_generated_auxpow_fixtures_match_tidecoin_node_bridge() {
         let harness = match node_parity::TidecoinNodeHarness::from_env() {
             Ok(harness) => harness,
@@ -3502,7 +3531,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "pow", feature = "std"))]
     fn real_testnet_headers_match_rust_pow_validator() {
         for case in real_testnet_header_cases() {
             let name = case["name"].as_str().expect("fixture name");
@@ -3633,7 +3662,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "tidecoin-node-validation")]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn real_testnet_headers_match_tidecoin_node_bridge() {
         let harness = match node_parity::TidecoinNodeHarness::from_env() {
             Ok(harness) => harness,
@@ -3656,6 +3685,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_accepts_valid_post_activation_header() {
         let header = valid_auxpow_header();
 
@@ -3666,6 +3696,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_missing_payload() {
         let mut header = valid_auxpow_header();
         header.auxpow = None;
@@ -3677,6 +3708,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_unexpected_payload() {
         let mut header = valid_auxpow_header();
         header.version = header.version.with_auxpow(false);
@@ -3688,6 +3720,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_pre_activation_auxpow() {
         let header = valid_auxpow_header();
 
@@ -3698,6 +3731,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_strict_chain_id_mismatch() {
         let mut header = valid_auxpow_header();
         header.version = crate::block::Version::with_base_version(2, 7).with_auxpow(true);
@@ -3709,6 +3743,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_chain_id_without_auxpow_flag() {
         let mut header =
             test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
@@ -3721,6 +3756,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_parent_with_own_chain_id() {
         let mut header = valid_auxpow_header();
         let auxpow = header.auxpow.as_mut().expect("auxpow");
@@ -3734,6 +3770,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_missing_merged_mining_header() {
         let mut header = valid_auxpow_header();
         let child_hash = header.block_hash();
@@ -3756,6 +3793,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_wrong_chain_index() {
         let mut header = valid_auxpow_header();
         let child_hash = header.block_hash();
@@ -3779,6 +3817,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_auxpow_context_rejects_parent_pow_failure() {
         let mut header = valid_auxpow_header();
         let target = derive_target(header.bits, Params::REGTEST).expect("valid target");
@@ -4216,6 +4255,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn scrypt_pow_hash_matches_scrypt_1024_1_1_256_vector() {
         let header = pow_vector_header();
         let expected = crate::hex::decode_to_array::<32>(
@@ -4227,6 +4267,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn yespower_pow_hash_matches_tidecoin_vector() {
         let header = pow_vector_header();
         let expected = crate::hex::decode_to_array::<32>(
@@ -4242,6 +4283,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_pow_at_height_uses_yespower_before_auxpow_activation() {
         let header = pow_vector_header();
         let expected = yespower_pow_hash(&header).expect("yespower hash");
@@ -4254,6 +4296,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_pow_at_height_uses_scrypt_after_auxpow_activation() {
         let mut header =
             test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
@@ -4272,6 +4315,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_pow_at_height_against_target_rejects_bad_target() {
         let header = pow_vector_header();
 
@@ -4287,6 +4331,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_pow_at_height_rejects_invalid_compact_target() {
         let mut header = pow_vector_header();
         header.bits = CompactTarget::from_consensus(0);
@@ -4302,6 +4347,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_pow_at_height_rejects_insufficient_work() {
         let mut header = pow_vector_header();
         header.bits = CompactTarget::from_consensus(0x0101_0000);
@@ -4327,7 +4373,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "tidecoin-node-validation")]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn scrypt_pow_hash_matches_tidecoin_node_bridge() {
         let harness = match node_parity::TidecoinNodeHarness::from_env() {
             Ok(harness) => harness,
@@ -4362,7 +4408,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "tidecoin-node-validation")]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn header_pow_validation_matches_tidecoin_node_bridge() {
         let harness = match node_parity::TidecoinNodeHarness::from_env() {
             Ok(harness) => harness,
@@ -4457,7 +4503,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "tidecoin-node-validation")]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn yespower_pow_hash_matches_tidecoin_node_bridge_vector() {
         let harness = match node_parity::TidecoinNodeHarness::from_env() {
             Ok(harness) => harness,

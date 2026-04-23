@@ -19,8 +19,8 @@ That is now a real gap because:
 Examples already observed:
 
 - `cargo check -p tidecoin --lib --no-default-features` passes
-- `cargo test -p tidecoin --lib --no-run --no-default-features` currently fails
-  because proof-only tests still compile unconditionally
+- `cargo test -p tidecoin --lib --no-run --no-default-features` now passes
+  locally after the feature-gating cleanup, but is not yet enforced in CI
 
 Without a feature matrix, this class of regression is easy to reintroduce.
 
@@ -195,7 +195,7 @@ When implementing the CI workflow later:
 
 ## Relationship To Other Docs
 
-- API redesign details live in
-  [FEATURE_GATING_API_REDESIGN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/FEATURE_GATING_API_REDESIGN.md).
+- Historical API redesign details live in
+  [archived/FEATURE_GATING_API_REDESIGN.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/archived/FEATURE_GATING_API_REDESIGN.md).
 - This file is intentionally CI-focused so it can be implemented later without
   reopening the broader architecture discussion.

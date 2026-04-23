@@ -120,6 +120,8 @@ pub enum ContextualHeaderError<E = Infallible> {
         /// Base version after stripping AuxPoW and embedded chain-id bits.
         base_version: i32,
     },
+    /// Proof validation was requested, but this build does not include `pow`.
+    PowUnavailable,
     /// AuxPoW context validation failed.
     ///
     /// This means the header failed AuxPoW-specific contextual checks.
@@ -159,6 +161,7 @@ impl<E> fmt::Display for ContextualHeaderError<E> {
             Self::BadVersion { base_version } => {
                 write!(f, "rejected block base version {base_version}")
             }
+            Self::PowUnavailable => f.write_str("proof validation requires the `pow` feature"),
             Self::AuxPow(err) => write!(f, "auxpow validation failed: {err}"),
             Self::Pow(err) => write!(f, "proof-of-work validation failed: {err}"),
         }
@@ -279,7 +282,14 @@ where
             Self::HeaderLookup { source, .. } => Some(source),
             Self::AuxPow(err) => Some(err),
             Self::Pow(err) => Some(err),
-            _ => None,
+            Self::HeightOverflow
+            | Self::PrevBlockHash { .. }
+            | Self::BadDiffBits { .. }
+            | Self::TimeTooOld { .. }
+            | Self::Timewarp { .. }
+            | Self::TimeTooNew { .. }
+            | Self::BadVersion { .. }
+            | Self::PowUnavailable => None,
         }
     }
 }
@@ -381,13 +391,19 @@ where
 
     check_base_version(params, height, header.version)?;
 
-    #[cfg(feature = "pow")]
     if options.check_proof {
-        pow::validate_auxpow_context(header, params, Some(height))
-            .map_err(ContextualHeaderError::AuxPow)?;
-        if !header.version.is_auxpow() {
-            pow::validate_pow_at_height(header, params, height)
-                .map_err(ContextualHeaderError::Pow)?;
+        #[cfg(feature = "pow")]
+        {
+            pow::validate_auxpow_context(header, params, Some(height))
+                .map_err(ContextualHeaderError::AuxPow)?;
+            if !header.version.is_auxpow() {
+                pow::validate_pow_at_height(header, params, height)
+                    .map_err(ContextualHeaderError::Pow)?;
+            }
+        }
+        #[cfg(not(feature = "pow"))]
+        {
+            return Err(ContextualHeaderError::PowUnavailable);
         }
     }
 
@@ -770,6 +786,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn real_testnet_contextual_header_accepts_activation_boundary() {
         let headers = headers_from_window("activation");
         let previous_height = BlockHeight::from_u32(999);
@@ -787,6 +804,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn real_testnet_contextual_header_accepts_auxpow_header() {
         let headers = headers_from_window("first_auxpow");
         let previous_height = BlockHeight::from_u32(1100);
@@ -804,6 +822,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn real_testnet_contextual_header_windows_validate_contiguously() {
         for window in retarget_windows() {
             let name = window["name"].as_str().expect("retarget window name");
@@ -923,6 +942,26 @@ mod tests {
         .expect_err("time equal to previous MTP should fail");
 
         assert!(matches!(err, ContextualHeaderError::TimeTooOld { .. }));
+    }
+
+    #[test]
+    #[cfg(not(feature = "pow"))]
+    fn contextual_header_reports_pow_unavailable_when_requested() {
+        let headers = headers_from_window("activation");
+        let previous_height = BlockHeight::from_u32(999);
+        let previous = header_at(&headers, previous_height);
+        let candidate = header_at(&headers, BlockHeight::from_u32(1000));
+
+        let err = contextual_check_block_header(
+            Params::TESTNET,
+            &previous,
+            previous_height,
+            &candidate,
+            |height| -> Result<Header, Infallible> { Ok(header_at(&headers, height)) },
+        )
+        .expect_err("proof requests should fail explicitly without the `pow` feature");
+
+        assert!(matches!(err, ContextualHeaderError::PowUnavailable));
     }
 
     #[test]

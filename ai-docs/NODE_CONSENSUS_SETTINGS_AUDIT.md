@@ -69,7 +69,7 @@ The most important current facts:
   from the published `rust-yespower` crate with default features disabled.
   Real testnet header and retarget-window fixtures now cover the AuxPoW
   activation area; broader historical chain walks remain open.
-- `HeaderExt::validate_pow(params, height, required_target)` is now
+- `pow::HeaderPowExt::validate_pow(params, height, required_target)` is now
   params/height-aware for the pure-header path and no longer falls back to
   `block_hash()`. It is not the right API for AuxPoW context validation.
 
@@ -83,7 +83,7 @@ The most important current facts:
 | Exposed consensus params | `tidecoin/src/network/params.rs` | `consensus/params.h`, `kernel/chainparams.cpp` | Deliberately scoped. PoW/AuxPoW retarget fields plus buried activation heights required by current contextual validation are exposed. Full-node fields like BIP34 hash, versionbits deployments, minimum chain work, and assume-valid are intentionally not modeled in `tidecoin::Params` until Rust owns the corresponding chain-connect/header-sync layer. The stale `bip16_time` and partial versionbits threshold/window fields were removed from active params. |
 | Subsidy schedule | `tidecoin::subsidy::block_subsidy` in `tidecoin/src/blockdata/subsidy.rs` | `validation.cpp::GetBlockSubsidy`, `nSubsidyHalvingInterval` | Implemented. Rust tests now mirror the node's transition-boundary and fixed-height total-emission tests, and the node-parity bridge walks every representable transition boundary for mainnet, testnet, and regtest. Coinbase reward-claim validation remains `ConnectBlock` scope because it requires UTXO-derived fees. |
 | Target/work integer math | `tidecoin/src/pow.rs` | `pow.cpp`, `arith_uint256` | Mostly implemented for library-level header validation. Node-style `derive_target(...)`, height-aware proof checks, heightless `validate_pow_any(...)`, and transition bounds exist; remaining work is broader node-vector coverage. |
-| Header PoW validation | `tidecoin/src/blockdata/block.rs::HeaderExt::validate_pow`, `tidecoin::pow::validate_pow_any`, and `tidecoin::pow::validate_auxpow_context` | `CheckProofOfWork`, `CheckProofOfWorkAny`, `CheckBlockHeader`, `CheckAuxPowContext`, `HasValidProofOfWork` | Partially implemented. Rust derives target from `nBits`, takes params and height when available, uses selected yespower/scrypt mining hashes for pure headers, exposes the heightless node path, and validates AuxPoW context rules with synthetic, node-generated, node-bridge, and real testnet header fixtures. |
+| Header PoW validation | `tidecoin::pow::HeaderPowExt::validate_pow`, `tidecoin::pow::validate_pow_any`, and `tidecoin::pow::validate_auxpow_context` | `CheckProofOfWork`, `CheckProofOfWorkAny`, `CheckBlockHeader`, `CheckAuxPowContext`, `HasValidProofOfWork` | Partially implemented. Rust derives target from `nBits`, takes params and height when available, uses selected yespower/scrypt mining hashes for pure headers, exposes the heightless node path, and validates AuxPoW context rules with synthetic, node-generated, node-bridge, and real testnet header fixtures. |
 | Difficulty retargeting | `tidecoin/src/pow.rs::next_target_after` and `tidecoin/src/pow.rs::permitted_difficulty_transition` | `GetNextWorkRequired*`, `CalculateNextWorkRequired*`, `PermittedDifficultyTransition` | Partially implemented. The old/new switch, post-AuxPoW averaging-window path, node legacy overflow-guarded scaling, first mainnet historical retarget, permitted transition envelope, and active-chain RPC testnet genesis-to-activation, activation, first-AuxPoW, early post-AuxPoW, and later AuxPoW retarget windows through height 16120 exist; broader historical chains remain missing. |
 | AuxPoW validation | Wire structs in `primitives`; context validator in `tidecoin::pow` | `CheckAuxPowContext`, `CAuxPow::check`, `HasValidProofOfWork` | Partially implemented. Synthetic and node-generated fixtures cover flag/payload consistency, activation, strict chain ID, merge-mining commitment shape, deterministic chain index, parent scrypt PoW, and real testnet AuxPoW headers. Invalid historical real-chain edge cases remain open if discovered. |
 | Context-free transaction sanity | `primitives::transaction::check_transaction_sanity`; decoder calls the same function | `CheckTransaction` | Implemented for library-scope context-free sanity: empty input/output rejection, stripped-weight limit, money range, duplicate inputs, null-prevout rules, and coinbase scriptSig length 2..=106. Node-backed edge tests exist. |
@@ -229,7 +229,7 @@ Remaining caveat:
 | `UseScryptPoW(params, height)` switches at AuxPoW activation. | Implemented as `pow_hash_algorithm_at_height(...)`. | Keep covered by activation-boundary tests. |
 | `GetPoWHashForHeight(block, params, height)` selects yespower before AuxPoW and scrypt at/after AuxPoW. | Implemented as `mining_hash_for_height(...)`; both branches have node-bridge coverage. | Add broader height/window vectors. |
 | `CheckProofOfWork(hash, nBits, params)` derives and validates target from `nBits` and `powLimit`. | Target derivation exists as `derive_target(...)`; pure-header validation uses it. | Add direct hash+bits helper only if a public low-level API is needed. |
-| `CheckProofOfWork(block, params, height)` validates selected mining hash against `nBits`. | Implemented for pure headers as `validate_pow_at_height(header, params, height)`, with node-bridge pass/fail coverage for yespower and scrypt. `validate_pow_at_height_against_target(...)` and `HeaderExt::validate_pow(...)` add the separate contextual expected-target check. | Keep contextual AuxPoW validation separate. |
+| `CheckProofOfWork(block, params, height)` validates selected mining hash against `nBits`. | Implemented for pure headers as `validate_pow_at_height(header, params, height)`, with node-bridge pass/fail coverage for yespower and scrypt. `validate_pow_at_height_against_target(...)` and `pow::HeaderPowExt::validate_pow(...)` add the separate contextual expected-target check. | Keep contextual AuxPoW validation separate. |
 | `CheckProofOfWorkAny(block, params)` accepts either yespower or scrypt for anti-DoS/header-sync contexts without height. | Implemented as `validate_pow_any(...)`, with node-bridge pass/fail coverage for yespower and scrypt through the header PoW bridge. | Keep separate from height-known consensus validation. |
 | `CheckAuxPowContext(...)` validates AuxPoW flag/payload, activation, chain ID, merkle commitment, and parent scrypt PoW. | Implemented as `validate_auxpow_context(...)` in `tidecoin::pow` for the pure-header context path, with node-bridge header PoW coverage, a node-generated fixture matrix, and real testnet AuxPoW headers. | Add any remaining historical edge fixtures if discovered. Mainnet currently has no AuxPoW activation height. The current bridge deliberately avoids linking full `validation.cpp` but mirrors `HasValidProofOfWork` header behavior. |
 | `GetNextWorkRequired(...)` switches old/new difficulty rules by AuxPoW activation height. | Implemented in `next_target_after(...)`. | Add more node-vector coverage. |
@@ -448,8 +448,8 @@ That spec defines the intended layer split:
    pure-header `CheckProofOfWork(block, params, height)` equivalent: it derives
    the target from header `nBits`, selects yespower or scrypt by height, and
    checks the selected hash against the header target.
-2. Keep `HeaderExt::validate_pow(params, height, required_target)` scoped as a
-   pure-header helper. It is not an AuxPoW context validator.
+2. Keep `pow::HeaderPowExt::validate_pow(params, height, required_target)`
+   scoped as a pure-header helper. It is not an AuxPoW context validator.
 3. Keep AuxPoW context validation in the chain/Pow layer, not in `primitives`.
 4. Add broader node-vector coverage around `GetNextWorkRequired(...)`,
    `PermittedDifficultyTransition(...)`, and node-generated AuxPoW fixtures.
@@ -494,7 +494,7 @@ This is the current code-facing backlog implied by the audit.
   pure-header PoW validation without requiring a caller-supplied expected
   target; node-bridge tests assert that the returned yespower/scrypt hash
   matches the node oracle.
-- `HeaderExt::validate_pow(params, height, required_target)` is now
+- `pow::HeaderPowExt::validate_pow(params, height, required_target)` is now
   params/height-aware and no longer uses `block_hash()` for mining proof checks.
   It delegates to `validate_pow_at_height_against_target(...)` for callers that
   have also computed the contextual difficulty target. Do not route AuxPoW

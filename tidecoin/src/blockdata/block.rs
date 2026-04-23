@@ -12,9 +12,6 @@ use core::fmt;
 
 use crate::merkle_tree::{TxMerkleNode, WitnessMerkleNode};
 use crate::network::Params;
-#[cfg(feature = "pow")]
-use crate::pow;
-use crate::pow::{MiningHashError, PowTargetError, PowValidationError};
 use crate::prelude::Vec;
 use crate::script::ScriptIntError;
 use crate::transaction::{Coinbase, Transaction};
@@ -60,25 +57,6 @@ internal_macros::define_extension_trait! {
         /// Computes the popular "difficulty" measure for mining and returns a float value of f64.
         fn difficulty_float(&self, params: impl AsRef<Params>) -> f64 {
             self.target().difficulty_float(params)
-        }
-
-        /// Checks that the proof-of-work for the block is valid, returning the mining hash.
-        ///
-        /// Requires the `pow` feature.
-        fn validate_pow(
-            &self,
-            params: impl AsRef<Params>,
-            height: BlockHeight,
-            required_target: Target,
-        ) -> Result<BlockHash, ValidationError> {
-            #[cfg(feature = "pow")]
-            return pow::validate_pow_at_height_against_target(self, params, height, required_target)
-                .map_err(Into::into);
-            #[cfg(not(feature = "pow"))]
-            {
-                let _ = (params, height, required_target);
-                panic!("validate_pow requires the `pow` feature")
-            }
         }
 
         /// Returns the total work of the block.
@@ -265,59 +243,6 @@ fn to_bip34_error(err: primitives::script::Error) -> Bip34Error {
     }
 }
 
-/// A block validation error.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ValidationError {
-    /// The header hash is not below the target.
-    BadProofOfWork,
-    /// The `target` field of a block header did not match the expected difficulty.
-    BadTarget,
-    /// The compact target was invalid under Tidecoin node consensus rules.
-    InvalidTarget(PowTargetError),
-    /// The selected mining hash algorithm is not available locally.
-    MiningHash(MiningHashError),
-}
-
-impl From<Infallible> for ValidationError {
-    fn from(never: Infallible) -> Self {
-        match never {}
-    }
-}
-
-impl From<PowValidationError> for ValidationError {
-    fn from(err: PowValidationError) -> Self {
-        match err {
-            PowValidationError::BadProofOfWork => Self::BadProofOfWork,
-            PowValidationError::BadTarget => Self::BadTarget,
-            PowValidationError::InvalidTarget(err) => Self::InvalidTarget(err),
-            PowValidationError::MiningHash(err) => Self::MiningHash(err),
-        }
-    }
-}
-
-impl fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::BadProofOfWork => f.write_str("block target correct but not attained"),
-            Self::BadTarget => f.write_str("block target incorrect"),
-            Self::InvalidTarget(err) => write!(f, "invalid compact proof-of-work target: {err}"),
-            Self::MiningHash(err) => write!(f, "failed to compute mining hash: {err}"),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for ValidationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::BadProofOfWork | Self::BadTarget => None,
-            Self::InvalidTarget(err) => Some(err),
-            Self::MiningHash(err) => Some(err),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use alloc::string::ToString;
@@ -328,10 +253,13 @@ mod tests {
 
     use super::*;
     use crate::pow::test_utils::u128_to_work;
+    #[cfg(feature = "pow")]
+    use crate::pow::{self, HeaderPowExt as _};
     use crate::script::{ScriptPubKeyBuf, ScriptSigBuf};
     use crate::transaction::{OutPoint, Transaction, TxIn, TxOut, Txid};
     use crate::{block, Amount, CompactTarget, Network, Sequence, Witness, Wtxid};
 
+    #[cfg(feature = "pow")]
     fn synthetic_segwit_block() -> Block<Checked> {
         const RESERVED_VALUE: [u8; 32] = [0; 32];
 
@@ -535,6 +463,7 @@ mod tests {
 
     // Check that a witness block round-trips correctly under Tidecoin's difficulty parameters.
     #[test]
+    #[cfg(feature = "pow")]
     fn segwit_block() {
         let segwit_block = encoding::encode_to_vec(&synthetic_segwit_block());
 
@@ -683,6 +612,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pow")]
     fn validate_pow() {
         let mut some_header = Header {
             version: Version::TWO,
@@ -704,7 +634,7 @@ mod tests {
 
         // test with zero target
         match some_header.validate_pow(Params::REGTEST, BlockHeight::from_u32(0), Target::ZERO) {
-            Err(ValidationError::BadTarget) => (),
+            Err(pow::PowValidationError::BadTarget) => (),
             _ => panic!("unexpected result from validate_pow"),
         }
 
@@ -712,7 +642,7 @@ mod tests {
         invalid_header.bits = CompactTarget::from_consensus(0x0101_0000);
         let hard_target = pow::derive_target(invalid_header.bits, Params::REGTEST).unwrap();
         match invalid_header.validate_pow(Params::REGTEST, BlockHeight::from_u32(0), hard_target) {
-            Err(ValidationError::BadProofOfWork) => (),
+            Err(pow::PowValidationError::BadProofOfWork) => (),
             _ => panic!("unexpected result from validate_pow"),
         }
     }
