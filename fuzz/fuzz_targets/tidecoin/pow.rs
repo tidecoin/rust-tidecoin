@@ -5,7 +5,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 use tidecoin::block::{Header, HeaderExt as _};
 use tidecoin::network::NetworkExt as _;
-use tidecoin::pow;
+use tidecoin::pow::{self, HeaderPowExt as _};
 use tidecoin::{BlockHeight, BlockHeightInterval, BlockTime, CompactTarget, Network};
 
 #[cfg(not(fuzzing))]
