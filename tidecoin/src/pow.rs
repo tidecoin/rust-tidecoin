@@ -2183,6 +2183,8 @@ mod tests {
     use core::str::FromStr;
 
     use super::*;
+    #[cfg(feature = "pow")]
+    use crate::absolute;
     #[cfg(feature = "std")]
     use crate::pow::test_utils::u128_to_work;
     use crate::pow::test_utils::{u32_to_target, u64_to_target};
@@ -2190,8 +2192,6 @@ mod tests {
     use crate::prelude::Vec;
     #[cfg(feature = "pow")]
     use crate::prelude::{Box, ToString};
-    #[cfg(feature = "pow")]
-    use crate::absolute;
     use crate::BlockTime;
     #[cfg(feature = "tidecoin-node-validation")]
     use internals::hex::DisplayHex as _;

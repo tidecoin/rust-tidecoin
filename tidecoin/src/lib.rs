@@ -116,12 +116,12 @@ pub mod ext {
         transaction::{TxInExt, TxOutExt, TransactionExt as TransactionWeightExt},
         witness::WitnessExt,
     };
-    #[cfg(feature = "pow")]
-    pub use crate::pow::HeaderPowExt;
     pub use crate::consensus_validation::{
         ScriptPubKeyExt as ConsensusScriptPubKeyValidationExt,
         TransactionExt as ConsensusTransactionValidationExt,
     };
+    #[cfg(feature = "pow")]
+    pub use crate::pow::HeaderPowExt;
 }
 pub mod address;
 pub mod block_validation;

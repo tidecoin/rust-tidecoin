@@ -26,7 +26,7 @@ p2p = ["dep:p2p_messages"]
 pow = ["dep:scrypt", "dep:rust-yespower"]
 
 [dependencies]
-base58 = { package = "base58ck", path = "../base58", version = "0.4.0", default-features = false, features = ["alloc"] }
+base58 = { package = "tidecoin-base58ck", path = "../base58", version = "0.4.0", default-features = false, features = ["alloc"] }
 bech32 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core", version = "0.1.0", default-features = false, features = ["hex"] }
 hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.20.0", default-features = false, features = ["alloc", "hex"] }
@@ -39,8 +39,8 @@ p2p_messages = { package = "tidecoin-p2p-messages", path = "../p2p", version = "
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc", "hex"] }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false, features = ["alloc"] }
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity", version = "0.1.0", optional = true }
-tide-fn-dsa-kgen = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "30e5695f4c5718b1625d8f4227bed1ff0e872692", default-features = false }
-tide-fn-dsa-sign = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "30e5695f4c5718b1625d8f4227bed1ff0e872692", default-features = false }
+tide-fn-dsa-kgen = { version = "0.4.0", default-features = false }
+tide-fn-dsa-sign = { version = "0.4.0", default-features = false }
 rand_core = { version = "0.6", default-features = false }
 scrypt = { version = "0.11", default-features = false, optional = true }
 rust-yespower = { version = "0.2.0", default-features = false, optional = true }

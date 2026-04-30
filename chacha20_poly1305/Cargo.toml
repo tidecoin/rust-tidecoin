@@ -1,5 +1,5 @@
 [package]
-name = "chacha20-poly1305"
+name = "tidecoin-chacha20-poly1305"
 version = "0.1.2"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
