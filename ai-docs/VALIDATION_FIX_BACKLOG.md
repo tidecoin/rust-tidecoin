@@ -29,8 +29,8 @@ owns the implementation order and gates; the
 
 - Required node CI and current provenance are implemented; local workspace,
   product parity and feature gates are recorded in phase 4 of the migration plan.
-  Verify the hosted workflow after the changes are pushed. Branch protection
-  must be checked separately; naming a job required does not configure it.
+  Hosted verification is in progress. Branch protection was inspected: `v2`
+  is unprotected; naming a job required does not configure enforcement.
 - The verifier uses pinned Git revision `522f179ae3fdbcf180854f17a41de520013e9ec6`.
   Registry publication is deferred and only blocks dependent crates.io releases.
 - Preserve the documented oracle limits. Phase 5 PSBT/descriptor interoperability

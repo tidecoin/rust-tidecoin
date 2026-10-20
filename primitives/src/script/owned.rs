@@ -34,7 +34,8 @@ use crate::prelude::{Box, Vec};
 /// Scripts are consensus encoded with a length prefix and as a result of this in some places in the
 /// ecosystem one will encounter hex strings that include the prefix while in other places the
 /// prefix is excluded. To support parsing and formatting scripts as hex we provide a bunch of
-/// different APIs and trait implementations. Please see [`examples/script.rs`] for a thorough
+/// different APIs and trait implementations. Please see the
+/// [script example](https://github.com/tidecoin/rust-tidecoin/blob/v2/tidecoin/examples/script.rs) for a thorough
 /// example of all the APIs.
 ///
 /// [deref coercions]: https://doc.rust-lang.org/std/ops/trait.Deref.html#more-on-deref-coercion

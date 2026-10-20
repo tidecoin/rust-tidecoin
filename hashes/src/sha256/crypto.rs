@@ -31,7 +31,7 @@ use crate::sha256d;
 #[cfg(all(feature = "cpufeatures", target_arch = "aarch64"))]
 // cpufeatures crate internally uses `u8::max_value()` which will be deprecated.
 // See: https://docs.rs/cpufeatures/0.2.17/src/cpufeatures/lib.rs.html#161
-#[allow(deprecated_in_future)]
+#[allow(deprecated, deprecated_in_future)]
 mod cpuid_sha256_aarch64 {
     cpufeatures::new!(inner, "sha2");
     pub fn get() -> bool {
@@ -41,7 +41,7 @@ mod cpuid_sha256_aarch64 {
 #[cfg(all(feature = "cpufeatures", any(target_arch = "x86", target_arch = "x86_64")))]
 // cpufeatures crate internally uses `u8::max_value()` which will be deprecated.
 // See: https://docs.rs/cpufeatures/0.2.17/src/cpufeatures/lib.rs.html#161
-#[allow(deprecated_in_future)]
+#[allow(deprecated, deprecated_in_future)]
 mod cpuid_sha256_x86 {
     cpufeatures::new!(inner, "sha", "sse2", "ssse3", "sse4.1");
     pub fn get() -> bool {

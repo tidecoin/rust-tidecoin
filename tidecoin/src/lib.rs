@@ -138,7 +138,7 @@ pub mod network;
 pub mod p2p {
     //! Re-exports of peer-to-peer networking primitives.
     //!
-    //! Use [`Network`] or [`Params`] as the primary high-level network identity
+    //! Use [`Network`](crate::Network) or [`Params`](crate::network::Params) as the primary high-level network identity
     //! in application code. The items re-exported here describe exact wire-level
     //! P2P defaults, including message magic bytes.
 

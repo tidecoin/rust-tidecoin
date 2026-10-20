@@ -68,8 +68,8 @@ acceptance and Rust PSBT interoperability remain outside that claim.
 CI targets `v2`/`main` and pull requests. Its `Required rc2 node parity` job
 checks out `node-parity/NODE_REVISION`, fails on unavailable/mismatched oracle
 configuration, and runs workspace tests, product node parity, Clippy and feature
-checks. The workflow is configured; a hosted run and branch-protection status
-have not been verified. See [node compatibility](docs/supported-versions.md) and
+checks. Hosted verification is in progress; `v2` currently has no branch
+protection or enforced status checks. See [node compatibility](docs/supported-versions.md) and
 the [migration evidence](ai-docs/RC2_MIGRATION_PLAN.md).
 
 Pure-Rust validation is checked against the real Tidecoin node. Consensus-sensitive changes should

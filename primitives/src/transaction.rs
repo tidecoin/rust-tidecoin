@@ -1995,7 +1995,7 @@ mod tests {
     #[cfg(feature = "std")]
     use std::error::Error as _;
 
-    use encoding::{Decodable as _, Decoder as _, Encoder as _};
+    use encoding::{Decodable as _, Encoder as _};
     #[cfg(feature = "hex")]
     use internals::hex_lit as hex;
 

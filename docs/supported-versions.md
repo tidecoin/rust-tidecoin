@@ -9,8 +9,8 @@ The local `v2` migration passes the protocol-library checkpoint against node
 incompatible reviewed Rust baseline `9e9b74581b765ad53ad902e3c7c10ea78817d0a7`;
 it is not a published Rust release. The [proof matrix](../ai-docs/NODE_PARITY_PROOF_MATRIX.md)
 bounds the claim, and the [migration plan](../ai-docs/RC2_MIGRATION_PLAN.md)
-records validation and remaining oracle limits. Hosted CI has not yet run for
-these local changes. Full-node acceptance and PSBT interoperability are not claimed.
+records validation and remaining oracle limits. Hosted verification is in
+progress for the pushed `v2` checkpoint. Full-node acceptance and PSBT interoperability are not claimed.
 
 ### API migration
 

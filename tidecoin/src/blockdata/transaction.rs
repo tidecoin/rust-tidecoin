@@ -59,7 +59,7 @@ const TX_IN_BASE_WEIGHT: Weight =
 internal_macros::define_extension_trait! {
     /// Extension functionality for the [`TxIn`] type.
     pub trait TxInExt impl for TxIn {
-        /// Returns true if this input enables the [`absolute::LockTime`] (aka `nLockTime`) of its
+        /// Returns true if this input enables the [`absolute::LockTime`](crate::absolute::LockTime) (aka `nLockTime`) of its
         /// [`Transaction`].
         ///
         /// `nLockTime` is enabled if *any* input enables it. See [`Transaction::is_lock_time_enabled`]

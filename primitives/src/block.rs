@@ -2029,7 +2029,7 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     use encoding::Decodable as _;
-    use encoding::{Decoder as _, Encodable as _, Encoder as _};
+    use encoding::Decoder as _;
     #[cfg(all(feature = "serde", feature = "hex", feature = "alloc"))]
     use serde::{Deserialize, Serialize};
 

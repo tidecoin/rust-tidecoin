@@ -600,7 +600,23 @@ new style/unused-import warnings in existing code; this is not a warning-free
 lint claim. The removed Clippy lint `from_iter_instead_of_collect` was deleted
 from workspace configuration. Logs: `/tmp/rc2-direct-{workspace,product}.log`,
 `/tmp/rc2-stable-{workspace,product,clippy,format}.log` and
-`/tmp/rc2-stable-matrix.json`. Hosted execution remains pending the push.
+`/tmp/rc2-stable-matrix.json`. The checkpoint was pushed to `v2` as
+`163e20db122dd1883ffe638718c49647797769b7`.
+
+The [first hosted run](https://github.com/tidecoin/rust-tidecoin/actions/runs/39493025017)
+passed stable formatting, policy, ASan and 32-bit tests. It exposed inherited
+maintainer jobs expecting the absent `Cargo-recent.lock`, an unnecessary
+unauthenticated fetch after checkout, and a missing explicit `hex` feature in
+the new oracle client's hash dependency. Follow-up fixes generate a runner-local
+lockfile, use the pinned wrapper's `--lock-file existing` option, reuse already
+fetched branch refs, and declare the dependency feature. Strict local stable
+builds and API docs pass after fixing duplicate test imports, broken doc links
+and the existing cpufeatures deprecation annotation. The pinned nightly all-feature
+Clippy pass preserves opcode-arm structure with narrowly scoped style exceptions.
+
+Branch protection was inspected: `v2` is unprotected and has no enforced status
+checks. The job name does not configure this setting. Hosted node parity and the
+corrected workflow are still being verified; no all-CI-green claim is made yet.
 
 ## Phase 5 — PSBT and wallet product layer
 

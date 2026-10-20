@@ -1147,7 +1147,6 @@ mod tests {
     use core::str::FromStr;
 
     use bech32::primitives::gf32::Fe32;
-    use bech32::primitives::iter::{ByteIterExt as _, Fe32IterExt as _};
     use bech32::Bech32m;
     use hashes::sha512;
 

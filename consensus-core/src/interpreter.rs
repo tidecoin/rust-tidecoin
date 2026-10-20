@@ -622,6 +622,8 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         result
     }
 
+    // Keep each opcode's operation together, matching the original interpreter.
+    #[allow(clippy::collapsible_match)]
     fn execute_opcode(
         &mut self,
         stack: &mut ScriptStack,
@@ -1019,6 +1021,8 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         Ok(())
     }
 
+    // Keep control-flow mutation inside the matching opcode arm.
+    #[allow(clippy::collapsible_match)]
     fn handle_control_flow(
         &mut self,
         stack: &mut ScriptStack,
