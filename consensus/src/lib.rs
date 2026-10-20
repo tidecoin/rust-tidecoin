@@ -335,6 +335,8 @@ mod tests {
     use super::*;
     use crate::Utxo;
     #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+    #[cfg(not(feature = "std"))]
     use alloc::vec;
     use encoding::encode_to_vec;
     use hashes::{hash160, sha256, sha512};

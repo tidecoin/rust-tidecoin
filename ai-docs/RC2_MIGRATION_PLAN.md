@@ -618,6 +618,12 @@ Branch protection was inspected: `v2` is unprotected and has no enforced status
 checks. The job name does not configure this setting. Hosted node parity and the
 corrected workflow are still being verified; no all-CI-green claim is made yet.
 
+The second hosted run also passed Kani code generation after the explicit hash
+feature fix. Its isolated no-std tests exposed a missing test-only `ToString`
+import; docs.rs exposed the missing `doc_cfg` declaration. Both were repaired.
+All 15 crates subsequently passed isolated no-default-feature Clippy locally,
+and the docs.rs build passed. These fixes do not change runtime consensus rules.
+
 ## Phase 5 — PSBT and wallet product layer
 
 Addresses R13. Design may proceed during earlier phases; shipping signing

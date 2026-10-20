@@ -39,7 +39,7 @@
 
 #![no_std]
 // Experimental features we need.
-#![cfg_attr(docsrs, feature(doc_notable_trait))]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_notable_trait))]
 // Coding conventions.
 #![warn(missing_docs)]
 #![warn(deprecated_in_future)]
