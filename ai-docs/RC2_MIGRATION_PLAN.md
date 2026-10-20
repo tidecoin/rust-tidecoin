@@ -365,11 +365,9 @@ from `30e5695f4c5718b1625d8f4227bed1ff0e872692` in the isolated
 checkout's 39 formatting-only changes were preserved. Both verifier defects
 originated in the fork's earlier `cd909421` Falcon compatibility additions.
 
-The commit is available on the public release branch. crates.io publication
-remains deferred because the available account lacks crate ownership; it is
-not required for Git-based development, CI or downstream use. Before publishing
-the dependent Rust crates to crates.io, publish the fixed verifier there and
-replace the Git dependency with an appropriate registry version requirement.
+At this checkpoint the commit was available on the public release branch and
+registry publication was deferred pending suitable credentials. The registry
+publication follow-up below supersedes that dependency delivery status.
 
 The synthetic vectors and their independent Python generator live in
 [tests/data](../consensus/tests/data/generate_rc2_falcon512_legacy_boundary.py).
@@ -681,3 +679,48 @@ signatureless finals and cleanup eligibility. Use the node's
 - Keep full chainstate, cluster mempool, RPC broadcasting and node database
   migration outside this plan.
 - Record implementation commits with the repository-required assistance trailer.
+
+## Dependency audit follow-up (2026-10-20)
+
+Hosted duplicate-dependency auditing found both registry and Git copies of
+`tide-fn-dsa-comm`. The kgen, sign and comm Rust/C/header/build-script files at
+Git revision `522f179ae3fdbcf180854f17a41de520013e9ec6` are byte-identical to
+their registry 0.4.0 counterparts. The initial local cleanup aligned them to
+the verifier Git revision. Registry publication below supersedes that approach:
+all Falcon dependencies now use crates.io, resolving one shared comm crate
+without replacing the reviewed signing/key-generation algorithms.
+
+ML-KEM and FIPS204/scrypt require different RustCrypto API generations. Their
+transitive hash/RNG support crates cannot be unified by this workspace without
+changing those upstream implementations. Package-local duplicate allowances
+name those crates with comments; derive-macro syn versions and fuzz target/build
+support dependencies are included where needed. The audit remains active for
+other duplicate dependencies. Revisit the allowances when upgrading those
+upstream libraries; they are not a reason to change consensus cryptography.
+
+## Falcon registry publication (2026-10-21)
+
+Published [tide-fn-dsa-vrfy 0.4.1](https://crates.io/crates/tide-fn-dsa-vrfy/0.4.1)
+from the prepared release revision `522f179ae3fdbcf180854f17a41de520013e9ec6`.
+The downloaded registry archive identifies that revision and its source,
+fixture, manifests, README and lockfile match the verified package. Registry
+archive SHA-256: `e8a19f70a6185d9d7acd1ab9a212064a38afc51d9ad5806293d618f9099bafaf`.
+Both normal and `no_avx2` builds passed four verifier tests and one documentation
+test each; `cargo publish --dry-run` verified the registry dependency build.
+
+`consensus-core` now requires registry verifier version `0.4.1` or a compatible
+patch. Product signing/key-generation stay on their existing registry `0.4.0`
+requirements. This removes the temporary Git source and duplicate common crate.
+Only the prepared verifier fix was published; the rust-tidecoin workspace release
+and phase-5 PSBT interoperability remain separate work.
+
+Consumer validation with the downloaded registry release: **356 product unit/
+integration tests passed**, including the original-node validation subprocess
+suite; **15 documentation tests passed**, with one pre-existing compact-filter
+example ignored. All **8 rc2 rule comparisons passed**, including legacy Falcon
+length and padding cases against the pinned node. No-default-feature checks for
+consensus-core, consensus and tidecoin (including pow) passed. Stable formatting
+and the exact CI-pinned rbmt lint/dependency audit passed locally. Cargo's
+resolved graph contains one registry `tide-fn-dsa-comm` 0.4.0. Logs:
+`/tmp/rc2-registry-falcon-product.log`, `/tmp/rc2-registry-falcon-rules.log`,
+`/tmp/rc2-registry-nostd.log`, `/tmp/rc2-registry-lint.log`.

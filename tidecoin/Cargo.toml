@@ -90,3 +90,9 @@ exact_features = [
 
 [package.metadata.rbmt.prerelease]
 enabled = true
+
+[package.metadata.rbmt.lint]
+# ML-KEM uses the newer RustCrypto API family; FIPS204/scrypt use the older one.
+# Keep their reviewed implementations; these transitive APIs cannot be unified locally.
+# Derive macros also use different syn majors.
+allowed_duplicates = ["block-buffer", "cpufeatures", "crypto-common", "digest", "keccak", "rand_core", "sha3", "syn"]

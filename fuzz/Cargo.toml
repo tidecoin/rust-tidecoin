@@ -272,3 +272,8 @@ path = "fuzz_targets/units/standard_checks.rs"
 test = false
 doc = false
 bench = false
+
+[package.metadata.rbmt.lint]
+# Inherits the product crypto API families and derive macros listed in tidecoin.
+# Fuzz infrastructure also brings different getrandom APIs and target/build libc copies.
+allowed_duplicates = ["block-buffer", "cpufeatures", "crypto-common", "digest", "getrandom", "keccak", "libc", "rand_core", "sha3", "syn"]

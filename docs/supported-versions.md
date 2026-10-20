@@ -50,8 +50,9 @@ Dependency versions are tracked in the workspace manifests. Lockfiles are local 
 artifacts for this library workspace; prefer committed `version` or pinned `git` dependencies for
 reproducibility, and do not commit local developer overrides as external path dependencies.
 
-The Falcon verifier is currently fetched from public Git revision
-`522f179ae3fdbcf180854f17a41de520013e9ec6`, pinned in
-`consensus-core/Cargo.toml`. No crates.io publishing credential or local checkout
-is needed to build it. Publishing dependent crates to crates.io requires a
-later registry release of the fixed verifier and a manifest update.
+The Falcon verifier uses the published `tide-fn-dsa-vrfy` 0.4.1 release (minimum
+version), containing the rc2 verification fixes from source revision
+`522f179ae3fdbcf180854f17a41de520013e9ec6`. Signing and key generation use their
+existing registry 0.4.0 releases; all three share the registry common crate.
+No Git dependency, publishing credential or local Falcon checkout is needed.
+This dependency publication does not publish the rust-tidecoin workspace itself.

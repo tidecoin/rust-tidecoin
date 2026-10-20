@@ -24,7 +24,7 @@ internals = { package = "tidecoin-internals", path = "../internals", version = "
 io = { package = "tidecoin-io", path = "../io", version = "0.5.0", default-features = false, features = ["hashes"] }
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
-tide-fn-dsa-vrfy = { git = "https://github.com/tidecoin/tide-fn-dsa", rev = "522f179ae3fdbcf180854f17a41de520013e9ec6", default-features = false }
+tide-fn-dsa-vrfy = { version = "0.4.1", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "deny", check-cfg = ['cfg(fuzzing)', 'cfg(kani)'] }
@@ -32,3 +32,7 @@ unexpected_cfgs = { level = "deny", check-cfg = ['cfg(fuzzing)', 'cfg(kani)'] }
 [lints.clippy]
 redundant_clone = "warn"
 use_self = "warn"
+
+[package.metadata.rbmt.lint]
+# Derive macros in serde and zeroize use different syn major versions.
+allowed_duplicates = ["syn"]
