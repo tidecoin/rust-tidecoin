@@ -157,10 +157,9 @@ mod tests {
     #[test]
     #[cfg(feature = "tidecoin-node-validation")]
     fn subsidy_schedule_matches_tidecoin_node_bridge() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed subsidy test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };

@@ -28,10 +28,10 @@ use crate::transaction::{OutPoint, Transaction, TxOut};
 pub use consensus_core::{
     ScriptError, TidecoinValidationError, VERIFY_ALL_TIDECOIN, VERIFY_CHECKLOCKTIMEVERIFY,
     VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK, VERIFY_CONST_SCRIPTCODE,
-    VERIFY_DISCOURAGE_UPGRADABLE_NOPS, VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
-    VERIFY_MINIMALDATA, VERIFY_MINIMALIF, VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL,
-    VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS,
-    VERIFY_WITNESS_V1_512,
+    VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
+    VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
+    VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
 };
 #[path = "consensus_validation_tidecoin.rs"]
 mod consensus_validation_impl;
@@ -40,7 +40,10 @@ use self::consensus_validation_impl as tidecoin;
 #[path = "consensus_validation_node.rs"]
 mod consensus_validation_node;
 
-/// Verifies spend of an input script.
+/// Verifies spend of an input script with only the current output's context.
+///
+/// Active witness-v1 non-ANYONECANPAY signatures require all spent outputs;
+/// use [`verify_script_with_spent_outputs`] or [`verify_transaction`] for those spends.
 pub fn verify_script(
     script: &ScriptPubKey,
     index: usize,
@@ -50,7 +53,10 @@ pub fn verify_script(
     verify_script_with_flags(script, index, amount, spending_tx, VERIFY_ALL_TIDECOIN)
 }
 
-/// Verifies spend of an input script.
+/// Verifies spend of an input script with only the current output's context.
+///
+/// Active witness-v1 non-ANYONECANPAY signatures require all spent outputs;
+/// use [`verify_script_with_spent_outputs`] or [`verify_transaction`] for those spends.
 pub fn verify_script_with_flags<F: Into<u32>>(
     script: &ScriptPubKey,
     index: usize,
@@ -62,6 +68,34 @@ pub fn verify_script_with_flags<F: Into<u32>>(
     let tx: Transaction = encoding::decode_from_slice(spending_tx)
         .map_err(|_| ValidationError::MalformedTransaction)?;
     tidecoin::verify_script_input(script, index, amount, &tx, flags)
+        .map_err(ValidationError::Tidecoin)
+}
+
+/// Verifies one input with complete spent outputs in transaction input order.
+///
+/// Each output must correspond to that input's actual outpoint. The current
+/// output is taken from this set, avoiding a second amount/script source.
+pub fn verify_script_with_spent_outputs<F: Into<u32>>(
+    index: usize,
+    spending_tx: &[u8],
+    spent_outputs: Vec<TxOut>,
+    flags: F,
+) -> Result<(), ValidationError> {
+    let tx: Transaction = encoding::decode_from_slice(spending_tx)
+        .map_err(|_| ValidationError::MalformedTransaction)?;
+    consensus_core::TransactionContext::new(&tx)
+        .ensure_input_index(index)
+        .map_err(ValidationError::Tidecoin)?;
+    let outputs = consensus_core::SpentOutputs::from_txouts(spent_outputs);
+    outputs.validate(&tx).map_err(|err| ValidationError::Tidecoin(err.into()))?;
+    let current = outputs.txouts()[index].clone();
+    let spend = consensus_core::SpendContext::new(
+        current.script_pubkey.as_bytes(),
+        Some(outputs),
+        current.amount.to_sat(),
+        true,
+    );
+    consensus_core::verify_script_input(&tx, index, spend, flags.into())
         .map_err(ValidationError::Tidecoin)
 }
 
@@ -83,7 +117,6 @@ where
     S: FnMut(&OutPoint) -> Option<TxOut>,
     F: Into<u32>,
 {
-    let serialized_tx = encoding::encode_to_vec(tx);
     let flags = flags.into();
     let mut spent_outputs = Vec::with_capacity(tx.inputs.len());
     for input in &tx.inputs {
@@ -92,16 +125,16 @@ where
         spent_outputs.push(output);
     }
 
-    for (idx, output) in spent_outputs.iter().enumerate() {
-        verify_script_with_flags(
-            &output.script_pubkey,
-            idx,
-            output.amount,
-            serialized_tx.as_slice(),
-            flags,
-        )?;
-    }
-    Ok(())
+    // The old serialized path enforced these checks during decoding. Preserve
+    // that gate without encoding and decoding the transaction for every input.
+    crate::transaction::check_transaction_sanity(tx)
+        .map_err(|_| TxVerifyError::ScriptVerification(ValidationError::MalformedTransaction))?;
+    consensus_core::verify_transaction_inputs(
+        tx,
+        consensus_core::SpentOutputs::from_txouts(spent_outputs),
+        flags,
+    )
+    .map_err(|err| TxVerifyError::ScriptVerification(ValidationError::Tidecoin(err)))
 }
 
 define_extension_trait! {
@@ -626,6 +659,39 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(err, TxVerifyError::UnknownSpentOutput(reused_prevout));
+    }
+
+    #[test]
+    fn verify_transaction_preserves_context_free_sanity_gate() {
+        let input = TxIn {
+            previous_output: OutPoint { txid: Txid::from_byte_array([42; 32]), vout: 0 },
+            script_sig: ScriptSigBuf::new(),
+            sequence: Sequence::MAX,
+            witness: Witness::new(),
+        };
+        let output = TxOut {
+            amount: Amount::ONE_SAT,
+            script_pubkey: ScriptPubKeyBuf::from_bytes(vec![0x51]),
+        };
+        let valid = Transaction {
+            version: Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            inputs: vec![input.clone()],
+            outputs: vec![output.clone()],
+        };
+        verify_transaction_with_flags(&valid, |_| Some(output.clone()), VERIFY_NONE).unwrap();
+        let mut invalid = valid.clone();
+        invalid.outputs.clear();
+        let mut duplicate = valid.clone();
+        duplicate.inputs.push(input);
+        let mut empty = valid;
+        empty.inputs.clear();
+        for tx in [invalid, duplicate, empty] {
+            assert_eq!(
+                verify_transaction_with_flags(&tx, |_| Some(output.clone()), VERIFY_NONE),
+                Err(TxVerifyError::ScriptVerification(ValidationError::MalformedTransaction))
+            );
+        }
     }
 
     #[test]

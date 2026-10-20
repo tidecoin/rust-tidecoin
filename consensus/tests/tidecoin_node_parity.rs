@@ -130,12 +130,23 @@ fn tidecoin_node_tx_valid_pq_fixture_roundtrip() {
                 panic!("tx_valid_pq[{index}] missing prevout {:?}", input.previous_output)
             });
             harness
-                .verify_tx_input_hex(
+                .verify_tx_input_with_spent_outputs(
                     tx_hex,
                     input_index,
                     &spent.script_pubkey,
                     spent.amount_sat,
                     flags,
+                    &tx.inputs
+                        .iter()
+                        .map(|input| {
+                            let out =
+                                prevouts.get(&input.previous_output).expect("previous output");
+                            node_parity::SpentOutput {
+                                amount: out.amount_sat,
+                                script_pubkey: &out.script_pubkey,
+                            }
+                        })
+                        .collect::<Vec<_>>(),
                 )
                 .unwrap_or_else(|e| panic!("tx_valid_pq[{index}] input {input_index} failed: {e}"));
         }
@@ -177,12 +188,23 @@ fn tidecoin_node_tx_invalid_pq_fixture_roundtrip() {
                 panic!("tx_invalid_pq[{index}] missing prevout {:?}", input.previous_output)
             });
             if harness
-                .verify_tx_input_hex(
+                .verify_tx_input_with_spent_outputs(
                     tx_hex,
                     input_index,
                     &spent.script_pubkey,
                     spent.amount_sat,
                     flags,
+                    &tx.inputs
+                        .iter()
+                        .map(|input| {
+                            let out =
+                                prevouts.get(&input.previous_output).expect("previous output");
+                            node_parity::SpentOutput {
+                                amount: out.amount_sat,
+                                script_pubkey: &out.script_pubkey,
+                            }
+                        })
+                        .collect::<Vec<_>>(),
                 )
                 .is_err()
             {

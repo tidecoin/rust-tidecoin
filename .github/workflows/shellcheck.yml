@@ -2,7 +2,8 @@ name: Shellcheck
 on:
   pull_request:
     branches:
-      - master
+      - v2
+      - main
 permissions: {}
 jobs:
   shellcheck:

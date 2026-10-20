@@ -1,6 +1,6 @@
 # Protocol Node Parity Readiness
 
-Status: active protocol scope document.
+Status: local rc2 protocol-library checkpoint validated; hosted CI pending.
 
 This document is subordinate to
 [README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
@@ -14,8 +14,13 @@ The detailed proof inventory is maintained in
 
 ## Current Claim
 
-The current crates may claim **protocol-library parity** with the Tidecoin node
-for the surfaces they own:
+The local migration passes the bounded rc2 checkpoint against
+`7d653be5d24e73b49d101578afb33d8d7a889c1d`. The
+[migration plan](RC2_MIGRATION_PLAN.md#phase-4-implementation-evidence-2026-10-20)
+records commands, results and exclusions. Required node CI is configured;
+its hosted execution and branch protection have not been verified.
+
+The validated protocol-library scope is:
 
 - consensus script execution for explicit flags
 - Tidecoin PQ, witness-v1-512, and `OP_SHA512` interpreter behavior
@@ -31,6 +36,10 @@ They must not claim full node acceptance parity yet. Full node acceptance still
 requires UTXO and mempool state.
 
 ## Policy Matrix
+
+The cases below were revalidated against rc2. They cover the named stateless
+helpers, not full functional-test behavior or descriptor/PSBT interoperability.
+The proof matrix adds the rc2 activation, hashing and signature-boundary suites.
 
 | Node surface | Rust owner | Proof status | Notes |
 | --- | --- | --- | --- |
@@ -88,9 +97,12 @@ represented." It is not "the Rust library fuzzes full node acceptance."
 
 Current protocol crates can be treated as ready for a checkpoint when:
 
+- phases 1–4 of the rc2 migration plan pass with exact node provenance
 - `cargo test --workspace --all-targets` passes
 - `cargo clippy --workspace --all-targets` passes
 - node-backed tests pass with `TIDECOIN_NODE_REPO=~/dev/tidecoin/tidecoin`
+- product tests also pass with `--features tidecoin-node-validation`; required
+  node jobs fail rather than silently skip when the oracle is unavailable
 - `cargo test -p tidecoin-fuzz --all-targets` passes
 - active docs point to this scope document instead of implying full node
   `ConnectBlock` or mempool acceptance parity

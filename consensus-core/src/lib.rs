@@ -39,7 +39,7 @@ pub use self::error::{ScriptError, TidecoinValidationError};
 #[doc(inline)]
 pub use self::flags::{
     VERIFY_ALL_TIDECOIN, VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
-    VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
     VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
     VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
     VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
@@ -51,14 +51,16 @@ pub use self::pq::{PqError, PqPublicKey, PqSignature};
 #[doc(inline)]
 pub use self::sighash::{
     InputsIndexError, LegacySighash, NonStandardSighashTypeError, SegwitV0Sighash, Sighash512,
-    SighashCache, SighashTypeParseError, TxSighashType,
+    SighashCache, SighashTypeParseError, TxSighashType, WitnessV1SighashError,
 };
 #[doc(inline)]
-pub use self::tx::{PrecomputedTransactionData, SpentOutputs, TransactionContext};
+pub use self::tx::{
+    PrecomputedTransactionData, SpentOutputs, SpentOutputsError, TransactionContext,
+};
 #[doc(inline)]
 pub use self::verify::{
     validate_verification_flags, verify_script_input, verify_script_input_detailed,
-    VerificationFailure,
+    verify_transaction_inputs, VerificationFailure,
 };
 #[doc(inline)]
 pub use self::witness::{

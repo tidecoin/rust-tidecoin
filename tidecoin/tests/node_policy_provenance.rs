@@ -19,6 +19,8 @@ const CORPUS: &str = include_str!("data/node_policy_provenance_corpus.json");
 
 #[test]
 fn node_policy_provenance_corpus_matches_rust_stateless_policy() {
+    #[cfg(feature = "tidecoin-node-validation")]
+    let _ = node_parity::TidecoinNodeHarness::optional_from_env();
     let corpus: Value = serde_json::from_str(CORPUS).expect("node policy provenance corpus JSON");
     assert_eq!(u64_field(&corpus, "schema_version"), 1);
     assert_eq!(
@@ -28,6 +30,13 @@ fn node_policy_provenance_corpus_matches_rust_stateless_policy() {
 
     if let Ok(node_repo) = env::var("TIDECOIN_NODE_REPO") {
         assert_node_sources_match_corpus(Path::new(&node_repo), &corpus);
+    } else {
+        assert_ne!(
+            env::var("TIDECOIN_NODE_PARITY_REQUIRED").as_deref(),
+            Ok("1"),
+            "required node provenance validation needs TIDECOIN_NODE_REPO"
+        );
+        eprintln!("SKIP node provenance source check: running recorded corpus only");
     }
 
     assert_constants_match(&corpus["constants"]);

@@ -267,13 +267,21 @@ pub trait TransactionExt: sealed::Sealed {
     /// Counts the total number of sigops.
     ///
     /// This value is for the script forms recognized by Tidecoin's transaction
-    /// and witness rules.
+    /// and witness rules, including active v1-512. For historical/candidate rules
+    /// use [`Self::total_sigop_cost_with_flags`].
     ///
     /// The `spent` parameter is a closure/function that looks up the output being spent by each input
     /// It takes in an [`OutPoint`] and returns a [`TxOut`]. If you can't provide this, a placeholder of
     /// `|_| None` can be used. Without access to the previous [`TxOut`], any sigops in a redeemScript (P2SH)
     /// as well as any SegWit sigops will not be counted for that input.
     fn total_sigop_cost<S>(&self, spent: S) -> usize
+    where
+        S: FnMut(&OutPoint) -> Option<TxOut>;
+
+    /// Counts sigop cost under explicit candidate verification flags.
+    /// Unlike [`Self::total_sigop_cost`], this can represent preactivation rules.
+    /// Missing previous outputs contribute no P2SH/witness count.
+    fn total_sigop_cost_with_flags<S>(&self, spent: S, flags: u32) -> usize
     where
         S: FnMut(&OutPoint) -> Option<TxOut>;
 
@@ -327,15 +335,28 @@ impl TransactionExt for Transaction {
         TxOutToScriptPubkeyLengthIter { inner: self.outputs.iter() }
     }
 
-    fn total_sigop_cost<S>(&self, mut spent: S) -> usize
+    fn total_sigop_cost<S>(&self, spent: S) -> usize
+    where
+        S: FnMut(&OutPoint) -> Option<TxOut>,
+    {
+        self.total_sigop_cost_with_flags(spent, consensus_core::VERIFY_ALL_TIDECOIN)
+    }
+
+    fn total_sigop_cost_with_flags<S>(&self, mut spent: S, flags: u32) -> usize
     where
         S: FnMut(&OutPoint) -> Option<TxOut>,
     {
         let mut cost = self.count_p2pk_p2pkh_sigops().saturating_mul(4);
-
-        // coinbase tx is correctly handled because `spent` will always returns None.
-        cost = cost.saturating_add(self.count_p2sh_sigops(&mut spent).saturating_mul(4));
-        cost.saturating_add(self.count_witness_sigops(spent))
+        if self.is_coinbase() {
+            return cost;
+        }
+        if flags & consensus_core::VERIFY_P2SH != 0 {
+            cost = cost.saturating_add(self.count_p2sh_sigops(&mut spent).saturating_mul(4));
+        }
+        if flags & consensus_core::VERIFY_WITNESS != 0 {
+            cost = cost.saturating_add(self.count_witness_sigops(spent, flags));
+        }
+        cost
     }
 
     #[inline]
@@ -381,7 +402,7 @@ trait TransactionExtPriv {
         S: FnMut(&OutPoint) -> Option<TxOut>;
 
     /// Includes wrapped SegWit and returns 0 for unsupported witness-v1 forms.
-    fn count_witness_sigops<S>(&self, spent: S) -> usize
+    fn count_witness_sigops<S>(&self, spent: S, flags: u32) -> usize
     where
         S: FnMut(&OutPoint) -> Option<TxOut>;
 }
@@ -407,7 +428,7 @@ impl TransactionExtPriv for Transaction {
     {
         fn count_sigops(prevout: &TxOut, input: &TxIn) -> usize {
             let mut count: usize = 0;
-            if prevout.script_pubkey.is_p2sh() {
+            if prevout.script_pubkey.is_p2sh() && input.script_sig.is_push_only() {
                 if let Some(redeem) = input.script_sig.last_pushdata() {
                     count = count
                         .saturating_add(RedeemScript::from_bytes(redeem.as_bytes()).count_sigops());
@@ -426,14 +447,20 @@ impl TransactionExtPriv for Transaction {
     }
 
     /// Includes wrapped SegWit and returns 0 for unsupported witness-v1 forms.
-    fn count_witness_sigops<S>(&self, mut spent: S) -> usize
+    fn count_witness_sigops<S>(&self, mut spent: S, flags: u32) -> usize
     where
         S: FnMut(&OutPoint) -> Option<TxOut>,
     {
         fn count_sigops_with_witness_program(
             witness: &Witness,
             witness_program: &ScriptPubKey,
+            flags: u32,
         ) -> usize {
+            if consensus_core::WitnessProgram::parse_for_flags(witness_program.as_bytes(), flags)
+                .is_none()
+            {
+                return 0;
+            }
             if witness_program.is_p2wpkh() {
                 1
             } else if witness_program.is_p2wsh() || witness_program.is_p2wsh512() {
@@ -444,13 +471,16 @@ impl TransactionExtPriv for Transaction {
             }
         }
 
-        fn count_sigops(prevout: TxOut, input: &TxIn) -> usize {
+        fn count_sigops(prevout: TxOut, input: &TxIn, flags: u32) -> usize {
             let script_sig = &input.script_sig;
             let witness = &input.witness;
 
             let witness_program = if prevout.script_pubkey.is_witness_program() {
                 &prevout.script_pubkey
-            } else if prevout.script_pubkey.is_p2sh() && script_sig.is_push_only() {
+            } else if flags & consensus_core::VERIFY_P2SH != 0
+                && prevout.script_pubkey.is_p2sh()
+                && script_sig.is_push_only()
+            {
                 // If prevout is P2SH and scriptSig is push only
                 // then we wrap the last push (redeemScript) in a Script; we use a ScriptPubKey to keep our types
                 // consistent although strictly speaking it should
@@ -465,13 +495,13 @@ impl TransactionExtPriv for Transaction {
             };
 
             // This will return 0 if the redeemScript wasn't a witness program
-            count_sigops_with_witness_program(witness, witness_program)
+            count_sigops_with_witness_program(witness, witness_program, flags)
         }
 
         let mut count: usize = 0;
         for input in &self.inputs {
             if let Some(prevout) = spent(&input.previous_output) {
-                count = count.saturating_add(count_sigops(prevout, input));
+                count = count.saturating_add(count_sigops(prevout, input, flags));
             }
         }
         count

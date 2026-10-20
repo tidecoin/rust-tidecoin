@@ -9,11 +9,11 @@ use std::vec::Vec;
 use core::{cell::RefCell, mem};
 
 use crate::{
-    PqPublicKey, PqSignature, PrecomputedTransactionData, ScriptError, SegwitV0Sighash, Sighash512,
-    SighashCache, SpentOutputs, TidecoinValidationError, TransactionContext, TxSighashType,
-    WitnessExecutionPlan, WitnessProgram, WitnessSigVersion, WitnessSigops,
+    PqPublicKey, PqSignature, ScriptError, SegwitV0Sighash, Sighash512, SighashCache, SpentOutputs,
+    TidecoinValidationError, TransactionContext, TxSighashType, WitnessExecutionPlan,
+    WitnessProgram, WitnessSigVersion, WitnessSigops, WitnessV1SighashError,
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
-    VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
     VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
     VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
     VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
@@ -53,7 +53,8 @@ const SUPPORTED_FLAGS: u32 = VERIFY_P2SH
     | VERIFY_PQ_STRICT
     | VERIFY_WITNESS_V1_512
     | VERIFY_SHA512
-    | VERIFY_CONST_SCRIPTCODE;
+    | VERIFY_CONST_SCRIPTCODE
+    | VERIFY_DEFINED_HASHTYPE;
 
 const MAX_STACK_SIZE: usize = 1000;
 const MAX_SCRIPT_SIZE: usize = 65_536;
@@ -193,7 +194,7 @@ impl ScriptStack {
 pub struct SpendContext<'script> {
     /// Serialized script pubkey being spent.
     pub script_pubkey: &'script [u8],
-    /// Typed prevout set used for witness-aware sighash and flag handling.
+    /// Complete previous outputs in input order, or `None` when unavailable.
     pub spent_outputs: Option<SpentOutputs>,
     /// Amount of the spent output in satoshis.
     pub amount: u64,
@@ -219,9 +220,7 @@ pub struct Interpreter<'tx, 'script> {
     amount: u64,
     has_amount: bool,
     spent_output_script: &'script [u8],
-    spent_outputs: Option<SpentOutputs>,
     tx_ctx: &'tx TransactionContext<'tx>,
-    precomputed: Option<PrecomputedTransactionData>,
     input_index: usize,
     script_code_cache: Option<ScriptCodeCache>,
     sighash_cache: RefCell<SighashCache<&'tx Transaction>>,
@@ -238,22 +237,37 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
     pub fn new(
         tx_ctx: &'tx TransactionContext<'tx>,
         input_index: usize,
-        spend: SpendContext<'script>,
+        mut spend: SpendContext<'script>,
         flags: ScriptFlags,
     ) -> Result<Self, TidecoinValidationError> {
-        let SpendContext { script_pubkey, spent_outputs, amount, has_amount } = spend;
+        let cache = match spend.spent_outputs.take() {
+            Some(outputs) => SighashCache::new_with_spent_outputs(tx_ctx.tx(), outputs)?,
+            None => SighashCache::new(tx_ctx.tx()),
+        };
+        Self::with_cache(tx_ctx, input_index, spend, flags, cache)
+    }
 
+    pub(crate) fn with_cache(
+        tx_ctx: &'tx TransactionContext<'tx>,
+        input_index: usize,
+        spend: SpendContext<'script>,
+        flags: ScriptFlags,
+        sighash_cache: SighashCache<&'tx Transaction>,
+    ) -> Result<Self, TidecoinValidationError> {
+        tx_ctx.ensure_input_index(input_index)?;
+        let SpendContext { script_pubkey, amount, has_amount, .. } = spend;
+        if let Some(outputs) = sighash_cache.spent_outputs() {
+            outputs.validate_current(input_index, amount, script_pubkey)?;
+        }
         Ok(Self {
             flags,
             amount,
             has_amount,
             spent_output_script: script_pubkey,
-            spent_outputs,
             tx_ctx,
-            precomputed: None,
             input_index,
             script_code_cache: None,
-            sighash_cache: RefCell::new(SighashCache::new(tx_ctx.tx())),
+            sighash_cache: RefCell::new(sighash_cache),
             stack: ScriptStack::new(),
             exec_stack: Vec::new(),
             last_error: ScriptError::Ok,
@@ -261,6 +275,10 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             sigops: 0,
             had_witness: false,
         })
+    }
+
+    pub(crate) fn into_sighash_cache(self) -> SighashCache<&'tx Transaction> {
+        self.sighash_cache.into_inner()
     }
 
     /// Executes script verification for the configured input.
@@ -291,7 +309,9 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             return Err(self.fail(ScriptError::EvalFalse));
         }
         if witness_enabled {
-            if let Some(witness_program) = WitnessProgram::parse(self.spent_output_script) {
+            if let Some(witness_program) =
+                WitnessProgram::parse_for_flags(self.spent_output_script, self.flags.bits())
+            {
                 self.had_witness = true;
                 if !txin.script_sig.is_empty() {
                     return Err(self.fail(ScriptError::WitnessMalleated));
@@ -327,7 +347,9 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             }
 
             if witness_enabled {
-                if let Some(witness_program) = WitnessProgram::parse(&redeem_script) {
+                if let Some(witness_program) =
+                    WitnessProgram::parse_for_flags(&redeem_script, self.flags.bits())
+                {
                     self.had_witness = true;
                     let expected = single_push_script(&redeem_script)
                         .map_err(|_| self.fail(ScriptError::SigPushOnly))?;
@@ -1139,6 +1161,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         let sig = self.map_failure(stack.pop_bytes(), ScriptError::InvalidStackOperation)?;
         let script_code =
             self.build_signature_script_code(script, code_separator, sigversion, &[&sig])?;
+        self.check_signature_hash_type(&sig, sigversion)?;
         let result =
             self.verify_signature_against_code(&sig, &pubkey, script_code.as_script(), sigversion)?;
         if !result && self.flags.bits() & VERIFY_NULLFAIL != 0 && !sig.is_empty() {
@@ -1186,13 +1209,17 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             sigs.push(sig);
         }
 
-        let signatures = sigs.iter().map(Vec::as_slice).collect::<Vec<_>>();
-        let script_code =
-            self.build_signature_script_code(script, code_separator, sigversion, &signatures)?;
-        let dummy = self.map_failure(stack.pop_bytes(), ScriptError::InvalidStackOperation)?;
-        if self.flags.bits() & VERIFY_NULLDUMMY != 0 && !dummy.is_empty() {
-            return Err(self.fail(ScriptError::SigNullDummy));
+        let mut script_code = self.build_script_code(script, code_separator, sigversion)?;
+        for signature in &sigs {
+            // Match node order: validate each argument before its FindAndDelete,
+            // including signatures the matching loop will never reach.
+            self.check_signature_hash_type(signature, sigversion)?;
+            if sigversion == SigVersion::Base {
+                script_code =
+                    self.apply_legacy_find_and_delete(script_code.as_script(), &[signature])?;
+            }
         }
+        let dummy = self.map_failure(stack.pop_bytes(), ScriptError::InvalidStackOperation)?;
 
         let mut success = true;
         let mut sig_index = 0usize;
@@ -1230,6 +1257,9 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             success = false;
         }
 
+        if self.flags.bits() & VERIFY_NULLDUMMY != 0 && !dummy.is_empty() {
+            return Err(self.fail(ScriptError::SigNullDummy));
+        }
         self.push_bool_element(stack, success)
     }
 
@@ -1431,6 +1461,22 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         Ok(())
     }
 
+    fn check_signature_hash_type(
+        &mut self,
+        sig: &[u8],
+        version: SigVersion,
+    ) -> Result<(), TidecoinValidationError> {
+        if let Some(hash_type) = sig.last() {
+            if (version == SigVersion::WitnessV1_512
+                || self.flags.bits() & VERIFY_DEFINED_HASHTYPE != 0)
+                && TxSighashType::from_standard(*hash_type as u32).is_err()
+            {
+                return Err(self.fail(ScriptError::SigHashType));
+            }
+        }
+        Ok(())
+    }
+
     fn verify_signature_against_code(
         &mut self,
         sig_with_hash_type: &[u8],
@@ -1456,8 +1502,13 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         script_code: &RawScript,
         sigversion: SigVersion,
     ) -> Result<bool, TidecoinValidationError> {
+        if self.flags.bits() & VERIFY_PQ_STRICT == 0
+            && pubkey.scheme() != crate::PqScheme::Falcon512
+        {
+            return Ok(false);
+        }
         let (sig_bytes, hash_type) = split_signature_hash_type(sig_with_hash_type);
-        if sig_bytes.is_empty() || (sigversion == SigVersion::WitnessV1_512 && hash_type == 0) {
+        if sig_bytes.is_empty() {
             return Ok(false);
         }
         let sig = PqSignature::from_slice(sig_bytes);
@@ -1476,7 +1527,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                 if self.flags.bits() & VERIFY_PQ_STRICT != 0 {
                     sig.verify_msg32(&msg, pubkey).is_ok()
                 } else {
-                    sig.verify_msg32_allow_legacy(&msg, pubkey).is_ok()
+                    sig.verify_msg32_legacy(&msg, pubkey).is_ok()
                 }
             }
             SigVersion::WitnessV0 => {
@@ -1485,16 +1536,18 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                 if self.flags.bits() & VERIFY_PQ_STRICT != 0 {
                     sig.verify_msg32(&msg, pubkey).is_ok()
                 } else {
-                    sig.verify_msg32_allow_legacy(&msg, pubkey).is_ok()
+                    sig.verify_msg32_legacy(&msg, pubkey).is_ok()
                 }
             }
             SigVersion::WitnessV1_512 => {
-                let sighash = self.witness_v1_512_signature_hash(script_code, hash_type as u32)?;
-                if self.flags.bits() & VERIFY_PQ_STRICT != 0 {
-                    sig.verify_msg64(sighash.as_byte_array(), pubkey).is_ok()
-                } else {
-                    sig.verify_msg64_allow_legacy(sighash.as_byte_array(), pubkey).is_ok()
-                }
+                let Some(sighash) =
+                    self.witness_v1_512_signature_hash(script_code, hash_type as u32)?
+                else {
+                    // Node CheckSig treats an unavailable digest as a failed signature,
+                    // allowing the script (e.g. CHECKSIG NOT) to handle that boolean.
+                    return Ok(false);
+                };
+                sig.verify_msg64(sighash.as_byte_array(), pubkey).is_ok()
             }
         };
         Ok(verified)
@@ -1536,16 +1589,14 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         script_code: &RawScript,
         raw_sighash_type: u32,
     ) -> Result<SegwitV0Sighash, TidecoinValidationError> {
-        let _ = self.ensure_precomputed();
-        let sighash_type = TxSighashType::from_consensus(raw_sighash_type);
         self.sighash_cache
             .borrow_mut()
-            .p2wsh_signature_hash(
+            .p2wsh_signature_hash_raw(
                 self.input_index,
                 script_code.as_bytes(),
                 Amount::from_sat(self.amount)
                     .map_err(|_| TidecoinValidationError::AmountRequired)?,
-                sighash_type,
+                raw_sighash_type,
             )
             .map_err(|_| script_unknown())
     }
@@ -1554,27 +1605,27 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         &mut self,
         script_code: &RawScript,
         raw_sighash_type: u32,
-    ) -> Result<Sighash512, TidecoinValidationError> {
-        let _ = self.ensure_precomputed();
+    ) -> Result<Option<Sighash512>, TidecoinValidationError> {
         let sighash_type = TxSighashType::from_consensus(raw_sighash_type);
-        self.sighash_cache
-            .borrow_mut()
-            .p2wsh512_signature_hash(
-                self.input_index,
-                script_code.as_bytes(),
-                Amount::from_sat(self.amount)
-                    .map_err(|_| TidecoinValidationError::AmountRequired)?,
-                sighash_type,
-            )
-            .map_err(|_| script_unknown())
-    }
-
-    fn ensure_precomputed(&mut self) -> &PrecomputedTransactionData {
-        if self.precomputed.is_none() {
-            self.precomputed =
-                Some(self.tx_ctx.build_precomputed(self.spent_outputs.as_ref(), false));
+        match self.sighash_cache.borrow_mut().p2wsh512_signature_hash(
+            self.input_index,
+            script_code.as_bytes(),
+            Amount::from_sat(self.amount).map_err(|_| TidecoinValidationError::AmountRequired)?,
+            sighash_type,
+        ) {
+            Ok(hash) => Ok(Some(hash)),
+            Err(
+                WitnessV1SighashError::SingleMissingOutput
+                | WitnessV1SighashError::SpentOutputsRequired,
+            ) => Ok(None),
+            Err(WitnessV1SighashError::SpentOutputs(err)) => Err(err.into()),
+            Err(WitnessV1SighashError::InputIndex(err)) => {
+                Err(TidecoinValidationError::InvalidInputIndex {
+                    index: err.index,
+                    inputs: err.length,
+                })
+            }
         }
-        self.precomputed.as_ref().expect("precomputed data initialized")
     }
 }
 
@@ -2208,7 +2259,7 @@ mod tests {
     }
 
     #[test]
-    fn precomputed_is_lazy_for_no_signature_paths() {
+    fn no_signature_path_needs_no_spent_output_context() {
         let spent_script = Builder::new().push_opcode(all::OP_PUSHNUM_1).into_script();
         let tx = Transaction {
             version: TransactionVersion::TWO,
@@ -2230,10 +2281,6 @@ mod tests {
         let mut interpreter = Interpreter::new(&tx_ctx, 0, spend_context, flags).expect("new");
 
         interpreter.verify().expect("op_true spend should validate");
-        assert!(
-            interpreter.precomputed.is_none(),
-            "precomputed data should not be built when no signature opcodes execute"
-        );
     }
 
     #[test]

@@ -1,18 +1,32 @@
 # Node Parity Proof Matrix
 
-Status: active protocol reference and checkpoint matrix.
+Status: rc2 protocol-library evidence refreshed on 2026-10-20.
 
-This matrix is subordinate to
-[README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md).
+This matrix is subordinate to [README.md](README.md). It maps stateless and
+caller-context Rust validation to evidence against C++ node
+`7d653be5d24e73b49d101578afb33d8d7a889c1d` (`v1.0.0rc2`). The
+[phase-4 record](RC2_MIGRATION_PLAN.md#phase-4-implementation-evidence-2026-10-20)
+owns commands, results and CI status. Passing these cases is a bounded
+compatibility checkpoint, not proof of every possible input.
 
-This matrix maps Tidecoin node validation surfaces to the Rust proof artifacts
-that exist today. The scope is protocol-library parity: stateless or
-caller-context validation that can be owned by `rust-tidecoin` without a UTXO
-database or mempool.
+## rc2-specific evidence
 
-Current node reference commit for this active matrix:
+| Surface | Evidence | Oracle boundary |
+| --- | --- | --- |
+| V1 SHA-512 commitments, six modes, ordered spent outputs, missing context, SINGLE boundaries and cache invalidation | `consensus/tests/tidecoin_rc2_context.rs`, `tidecoin/tests/rc2_spent_output_context.rs` | Original `SignatureHash512` and interpreter; independent digest vector in `tidecoin_rc2_oracle.rs`. |
+| Activation, native/wrapped v1, ordinary preactivation scripts, independent flags, scheme eligibility | `consensus/tests/tidecoin_rc2_rules.rs` | Original C++ interpreter and PQ routines. |
+| All 256 legacy/v0 hash bytes, defined v1 modes, error ordering, NULLFAIL and multisig | same rules suite and context suite | Original C++ interpreter; preserves historical legacy/v0 semantics. |
+| Legacy Falcon length and strict/legacy padding profiles | `legacy_falcon_size_and_v1_strictness_match_node_boundaries`, `falcon_padding_profiles_match_node_and_script_activation` | Original node legacy and PQClean verifiers; synthetic boundary fixture has its own generator. |
+| Flag-aware witness sigops | `sigop_cost_uses_candidate_flags_and_matches_node_count_witness_sigops` | Original `CountWitnessSigOps`. |
+| Header activation, versions, chain ID, timestamps, retargets and replaceable proof classification | `tidecoin/tests/rc2_original_validation.rs`, existing block/PoW tests | Original `ContextualCheckBlockHeader` and `CheckBlockHeader`; unmodified node defaults checked separately. |
+| Regtest genesis and yespower/scrypt | rc2 oracle/product tests and `tidecoin::pow` tests | Original `pow.cpp` and node crypto, with isolated yespower symbols. |
+| Required oracle availability and identity | `node-parity/tests/configuration.rs` | Missing/invalid runtime configuration, a different checkout, absent executable and stale executable identities must fail. |
 
-- `fe36ef8dde80f730f02fd1e64c80432d06b1c436`
+Block/context/subsidy comparisons now call the unmodified original `validation.cpp`
+through a standalone executable. The [follow-up record](RC2_MIGRATION_PLAN.md#original-node-validation-follow-up-2026-10-20)
+owns build commands, boundary coverage and caller-context limits.
+Caller-supplied spent outputs are checked for shape and current-input consistency;
+the library cannot authenticate their actual outpoint association without UTXO state.
 
 Full node acceptance parity is intentionally out of scope here. `ConnectBlock`,
 `CheckTxInputs`, BIP30, coinbase maturity, UTXO-backed sequence locks, fee and
@@ -80,6 +94,24 @@ ephemeral dust packages belong to future stateful crates.
 | `coins_view.cpp`, `coinscache_sim.cpp`, `utxo_total_supply.cpp` | future `tidecoin-chain-validation` crate | intentionally out of current scope |
 | package/mempool fuzz targets | future mempool-policy crate | intentionally out of current scope |
 
+## Provenance refresh
+
+Compared with April node `fe36ef8dde80f730f02fd1e64c80432d06b1c436`,
+`script_tests_pq.json` grows from 177 to 181 entries. The node updates v1
+ALL/NONE/SINGLE and wrapped signatures for spent-output commitments, retains
+old signatures as rejection cases, and changes preactivation/hash-type errors.
+The current hash is pinned in `tidecoin_fixture_hashes.rs`; the node corpus and
+Rust differential tests verify the changed expectations.
+
+The regenerated monotonicity corpus is still 30 cases with identical canonical
+hash. Both source transaction corpora are unchanged. The policy corpus is still
+33 cases with unchanged constants and case hash. Six source-file hashes change:
+policy header/implementation, descriptor implementation/tests, ephemeral dust
+and TRUC functional tests. Reviewed changes include cluster/reorg behavior and
+PQHD/wsh512 descriptor fixes; these hashes do not claim that the Rust stateless
+cases cover those new stateful/descriptor features. PSBT/descriptor work remains
+phase 5. Existing real-chain fixtures retain their historical provenance.
+
 ## Provenance Partitions
 
 The active proof corpus is intentionally partitioned by source so generated,
@@ -100,7 +132,9 @@ Rule:
 - If the checked-out Tidecoin node advances in a consensus-sensitive way, update
   the node-backed corpus metadata and refresh any active docs that pin the node
   commit.
-- Regenerate the two pinned provenance artifacts with these commands:
+- Regenerate the two pinned provenance artifacts with these commands. The export
+  occurs before the metadata assertion: a stale-metadata failure during export
+  is expected, but the full test must pass after regeneration:
   ```bash
   python3 tidecoin/contrib/generate_node_policy_provenance_corpus.py \
     --node-repo /path/to/tidecoin
@@ -132,7 +166,7 @@ Rule:
 | `cargo check -p tidecoin-p2p-messages --no-default-features --features serde` | must pass | P2P alloc-only serde surface stays independent of `std`. |
 | `cargo check -p tidecoin-p2p-messages --features serde` | must pass | P2P default feature plus serde combination stays clean. |
 | `cargo check -p tidecoin --no-default-features` | must pass | High-level facade must not expose OS-RNG or node harness requirements without features. |
-| Node-backed tests | gated by `TIDECOIN_NODE_REPO` and explicit features where applicable | Node parity helpers must not become mandatory runtime dependencies. |
+| Node-backed tests | required CI sets `TIDECOIN_NODE_REPO` and `TIDECOIN_NODE_PARITY_REQUIRED=1`, plus the product feature | Node parity helpers must not become mandatory runtime dependencies. |
 
 ## Public API Scope
 
@@ -151,9 +185,14 @@ Current APIs should describe the validation surface they actually own:
 
 ## Checkpoint Gate
 
+Build the standalone original-node oracle and export
+`TIDECOIN_NODE_VALIDATION_ORACLE` as shown in the follow-up record above.
 The protocol-library parity checkpoint requires:
 
-- `TIDECOIN_NODE_REPO=/home/yaroslav/dev/tidecoin/tidecoin cargo test --workspace --all-targets`
+- `TIDECOIN_NODE_PARITY_REQUIRED=1 TIDECOIN_NODE_REPO=/home/yaroslav/dev/tidecoin/tidecoin cargo test --workspace --all-targets`
+- `TIDECOIN_NODE_PARITY_REQUIRED=1 TIDECOIN_NODE_REPO=/home/yaroslav/dev/tidecoin/tidecoin cargo test -p tidecoin --lib --tests --features tidecoin-node-validation`
+- the node checkout matches the migration target; required parity jobs do not
+  silently skip, and phases 1–4 have recorded passing evidence
 - no-std/feature checks from the feature matrix above
 - `cargo test -p tidecoin-fuzz --all-targets`
 - `cargo clippy --workspace --all-targets`

@@ -1,22 +1,41 @@
 // SPDX-License-Identifier: CC0-1.0
 
 use std::ffi::CString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::{NodeParityError, ScriptError};
 use crate::ffi::{
-    tidecoin_node_block_subsidy, tidecoin_node_check_block, tidecoin_node_check_contextual_block,
-    tidecoin_node_check_transaction, tidecoin_node_has_valid_header_pow,
-    tidecoin_node_mlkem512_decaps, tidecoin_node_mlkem512_encaps_deterministic,
-    tidecoin_node_mlkem512_keypair_from_coins, tidecoin_node_parse_script_asm,
-    tidecoin_node_permitted_difficulty_transition, tidecoin_node_pq_compute_public_key,
-    tidecoin_node_pq_keygen_from_seed, tidecoin_node_pq_p2sh_p2wpkh_input_vsize,
-    tidecoin_node_pq_p2wpkh_input_vsize, tidecoin_node_pq_sign_message,
-    tidecoin_node_pq_verify_message, tidecoin_node_pqhd_keygen_from_stream_key,
-    tidecoin_node_scrypt_pow_hash, tidecoin_node_verify_script_case, tidecoin_node_verify_tx_input,
+    tidecoin_node_check_transaction, tidecoin_node_mlkem512_decaps,
+    tidecoin_node_mlkem512_encaps_deterministic, tidecoin_node_mlkem512_keypair_from_coins,
+    tidecoin_node_parse_script_asm, tidecoin_node_permitted_difficulty_transition,
+    tidecoin_node_pq_compute_public_key, tidecoin_node_pq_keygen_from_seed,
+    tidecoin_node_pq_p2sh_p2wpkh_input_vsize, tidecoin_node_pq_p2wpkh_input_vsize,
+    tidecoin_node_pq_sign_message, tidecoin_node_pq_verify_message,
+    tidecoin_node_pqhd_keygen_from_stream_key, tidecoin_node_scrypt_pow_hash,
+    tidecoin_node_verify_script_case, tidecoin_node_verify_tx_input,
     tidecoin_node_yespower_pow_hash,
 };
 use crate::fixtures::TIDECOIN_NODE_REPO_ENV;
+
+/// A previous output, in transaction input order (including the current input).
+#[derive(Debug, Clone, Copy)]
+pub struct SpentOutput<'a> {
+    /// Value in satoshis.
+    pub amount: i64,
+    /// Locking script of the output being spent.
+    pub script_pubkey: &'a [u8],
+}
+
+fn native_outputs(outputs: &[SpentOutput<'_>]) -> Vec<crate::ffi::NodeSpentOutput> {
+    outputs
+        .iter()
+        .map(|out| crate::ffi::NodeSpentOutput {
+            amount: out.amount,
+            script: out.script_pubkey.as_ptr(),
+            script_len: out.script_pubkey.len(),
+        })
+        .collect()
+}
 
 /// Shared byte-oriented handle for Tidecoin node-backed parity calls.
 #[derive(Debug, Clone)]
@@ -25,6 +44,21 @@ pub struct TidecoinNodeHarness {
 }
 
 impl TidecoinNodeHarness {
+    /// Optional local test entrypoint. Only an unconfigured, non-required run skips.
+    /// Invalid configuration (including a stub build) fails loudly.
+    pub fn optional_from_env() -> Option<Self> {
+        let required = match std::env::var("TIDECOIN_NODE_PARITY_REQUIRED").as_deref() {
+            Ok("1") => true,
+            Err(std::env::VarError::NotPresent) | Ok("0") => false,
+            _ => panic!("TIDECOIN_NODE_PARITY_REQUIRED must be 0 or 1"),
+        } || env!("TIDECOIN_NODE_PARITY_BUILT_REQUIRED") == "1";
+        if !required && std::env::var_os(TIDECOIN_NODE_REPO_ENV).is_none() {
+            eprintln!("SKIP node parity: TIDECOIN_NODE_REPO is not configured");
+            return None;
+        }
+        Some(Self::from_env().expect("configured/required node parity must be available"))
+    }
+
     /// Creates the harness from the configured `TIDECOIN_NODE_REPO`.
     pub fn from_env() -> Result<Self, NodeParityError> {
         let node_repo = std::env::var_os(TIDECOIN_NODE_REPO_ENV)
@@ -40,17 +74,85 @@ impl TidecoinNodeHarness {
                 "configured TIDECOIN_NODE_REPO is not a Tidecoin node checkout",
             ));
         }
+        let built_repo = env!("TIDECOIN_NODE_PARITY_BUILT_REPO");
+        if built_repo.is_empty() {
+            return Err(NodeParityError::Environment(
+                "node bridge was built as a stub; rebuild with TIDECOIN_NODE_REPO",
+            ));
+        }
+        let node_repo = node_repo
+            .canonicalize()
+            .map_err(|_| NodeParityError::Environment("cannot resolve node checkout"))?;
+        if node_repo != Path::new(built_repo) {
+            return Err(NodeParityError::Environment(
+                "runtime node checkout differs from compiled bridge",
+            ));
+        }
+        // Validate once per process, before any oracle call. Test subprocesses exercise failures.
+        static SOURCE_CHECK: std::sync::OnceLock<Result<(), NodeParityError>> =
+            std::sync::OnceLock::new();
+        SOURCE_CHECK
+            .get_or_init(|| {
+                let output = std::process::Command::new("git")
+                    .args(["rev-parse", "HEAD"])
+                    .current_dir(&node_repo)
+                    .output()
+                    .map_err(|_| NodeParityError::Environment("cannot read node revision"))?;
+                if !output.status.success()
+                    || String::from_utf8_lossy(&output.stdout).trim()
+                        != env!("TIDECOIN_NODE_PARITY_BUILT_REVISION")
+                {
+                    return Err(NodeParityError::Environment(
+                        "node revision differs from compiled bridge",
+                    ));
+                }
+                let status = std::process::Command::new("git")
+                    .args(["status", "--porcelain", "--untracked-files=normal", "--", "src"])
+                    .current_dir(&node_repo)
+                    .output()
+                    .map_err(|_| {
+                        NodeParityError::Environment("cannot inspect node source changes")
+                    })?;
+                if !status.status.success() || !status.stdout.is_empty() {
+                    return Err(NodeParityError::Environment(
+                        "node source tree must be clean for parity evidence",
+                    ));
+                }
+                Ok(())
+            })
+            .clone()?;
         Ok(Self { node_repo })
     }
 
     /// Returns a short human-readable label for diagnostics.
     pub fn backend_label(&self) -> String {
-        format!("tidecoin-node:{}", self.node_repo.display())
+        format!(
+            "tidecoin-node:{}@{}",
+            self.node_repo.display(),
+            env!("TIDECOIN_NODE_PARITY_BUILT_REVISION")
+        )
     }
 
     /// Returns the configured Tidecoin node checkout path.
     pub fn node_repo(&self) -> &std::path::Path {
         &self.node_repo
+    }
+
+    /// Calls node `UseScryptPoW`, including regtest's fixed genesis exception.
+    /// Network IDs are mainnet=0, testnet=1, regtest=2; `i32::MAX` disables activation.
+    pub fn uses_scrypt_pow(
+        &self,
+        network: i32,
+        height: i32,
+        activation_height: i32,
+    ) -> Result<bool, NodeParityError> {
+        match unsafe {
+            crate::ffi::tidecoin_node_uses_scrypt_pow(network, height, activation_height)
+        } {
+            1 => Ok(true),
+            0 => Ok(false),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_uses_scrypt_pow")),
+        }
     }
 
     /// Runs Tidecoin node `CheckTransaction` on a serialized transaction hex string.
@@ -98,31 +200,20 @@ impl TidecoinNodeHarness {
         }
     }
 
-    /// Runs node-equivalent header PoW validation, including AuxPoW context.
+    /// Runs header proof validation, including the AuxPoW proof checks.
+    /// Does not run `ContextualCheckBlockHeader` (versions, timestamps, expected difficulty).
     pub fn has_valid_header_pow_hex(
         &self,
         header_hex: &str,
         network: i32,
         height: Option<i32>,
     ) -> Result<(), NodeParityError> {
-        let header_hex =
-            CString::new(header_hex).map_err(|_| NodeParityError::InvalidCString("header hex"))?;
-        let rc = unsafe {
-            tidecoin_node_has_valid_header_pow(
-                header_hex.as_ptr(),
-                network,
-                i32::from(height.is_some()),
-                height.unwrap_or_default(),
-            )
-        };
-        match rc {
-            1 => Ok(()),
-            0 => Err(NodeParityError::BridgeFailure("invalid header proof of work")),
-            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_has_valid_header_pow")),
-        }
+        crate::validation::verdict(crate::validation::one(serde_json::json!({
+            "op": "proof", "header": header_hex, "network": network, "height": height,
+        })))
     }
 
-    /// Runs node-equivalent context-free block sanity validation.
+    /// Runs original-node context-free block sanity validation.
     pub fn check_block_hex(
         &self,
         block_hex: &str,
@@ -130,24 +221,13 @@ impl TidecoinNodeHarness {
         check_pow: bool,
         check_merkle_root: bool,
     ) -> Result<(), NodeParityError> {
-        let block_hex =
-            CString::new(block_hex).map_err(|_| NodeParityError::InvalidCString("block hex"))?;
-        let rc = unsafe {
-            tidecoin_node_check_block(
-                block_hex.as_ptr(),
-                network,
-                i32::from(check_pow),
-                i32::from(check_merkle_root),
-            )
-        };
-        match rc {
-            1 => Ok(()),
-            0 => Err(NodeParityError::BridgeFailure("invalid block")),
-            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_block")),
-        }
+        crate::validation::verdict(crate::validation::one(serde_json::json!({
+            "op": "block", "block": block_hex, "network": network,
+            "check_pow": check_pow, "check_merkle": check_merkle_root,
+        })))
     }
 
-    /// Runs node-equivalent UTXO-independent contextual block validation.
+    /// Runs original-node UTXO-independent contextual block validation.
     pub fn check_contextual_block_hex(
         &self,
         block_hex: &str,
@@ -157,23 +237,11 @@ impl TidecoinNodeHarness {
         enforce_bip34_height: bool,
         expect_witness_commitment: bool,
     ) -> Result<(), NodeParityError> {
-        let block_hex =
-            CString::new(block_hex).map_err(|_| NodeParityError::InvalidCString("block hex"))?;
-        let rc = unsafe {
-            tidecoin_node_check_contextual_block(
-                block_hex.as_ptr(),
-                network,
-                height,
-                lock_time_cutoff,
-                i32::from(enforce_bip34_height),
-                i32::from(expect_witness_commitment),
-            )
-        };
-        match rc {
-            1 => Ok(()),
-            0 => Err(NodeParityError::BridgeFailure("invalid contextual block")),
-            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_check_contextual_block")),
-        }
+        crate::validation::verdict(crate::validation::one(serde_json::json!({
+            "op": "contextual_block_flags", "block": block_hex, "network": network,
+            "height": height, "cutoff": lock_time_cutoff,
+            "enforce_bip34": enforce_bip34_height, "expect_witness": expect_witness_commitment,
+        })))
     }
 
     /// Runs node-equivalent permitted difficulty transition validation.
@@ -198,10 +266,10 @@ impl TidecoinNodeHarness {
 
     /// Returns the node block subsidy in satoshis for the selected network and height.
     pub fn block_subsidy(&self, network: i32, height: i32) -> Result<u64, NodeParityError> {
-        match unsafe { tidecoin_node_block_subsidy(network, height) } {
-            subsidy if subsidy >= 0 => Ok(subsidy as u64),
-            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_block_subsidy")),
-        }
+        let value = crate::validation::one(serde_json::json!({
+            "op": "subsidy", "network": network, "height": height,
+        }));
+        Ok(value["subsidy"].as_u64().expect("node subsidy must be nonnegative"))
     }
 
     /// Returns Tidecoin node `pq::VSizeP2WPKHInput` for the provided serialized PQ lengths.
@@ -228,7 +296,9 @@ impl TidecoinNodeHarness {
         }
     }
 
-    /// Verifies a single transaction input using raw serialized transaction hex.
+    /// Verifies without foreign spent-output data.
+    ///
+    /// Use `verify_tx_input_with_spent_outputs` for rc2 non-ANYONECANPAY witness-v1.
     pub fn verify_tx_input_hex(
         &self,
         tx_hex: &str,
@@ -237,7 +307,29 @@ impl TidecoinNodeHarness {
         amount_sat: i64,
         flags: u32,
     ) -> Result<(), NodeParityError> {
+        self.verify_tx_input_with_spent_outputs(
+            tx_hex,
+            input_index,
+            prev_script,
+            amount_sat,
+            flags,
+            &[],
+        )
+    }
+
+    /// Verifies with all previous outputs in input order. Empty means unavailable;
+    /// a nonempty partial list is a bridge error, never a node consensus verdict.
+    pub fn verify_tx_input_with_spent_outputs(
+        &self,
+        tx_hex: &str,
+        input_index: usize,
+        prev_script: &[u8],
+        amount_sat: i64,
+        flags: u32,
+        spent_outputs: &[SpentOutput<'_>],
+    ) -> Result<(), NodeParityError> {
         let tx_hex = CString::new(tx_hex).map_err(|_| NodeParityError::InvalidCString("tx hex"))?;
+        let outputs = native_outputs(spent_outputs);
         let mut script_error = 0;
         let rc = unsafe {
             tidecoin_node_verify_tx_input(
@@ -247,6 +339,8 @@ impl TidecoinNodeHarness {
                 prev_script.len(),
                 amount_sat,
                 flags,
+                outputs.as_ptr(),
+                outputs.len(),
                 &mut script_error,
             )
         };
@@ -254,6 +348,64 @@ impl TidecoinNodeHarness {
             1 => Ok(()),
             0 => Err(NodeParityError::Script(Self::script_error_or_unknown(script_error))),
             _ => Err(NodeParityError::BridgeFailure("tidecoin_node_verify_tx_input")),
+        }
+    }
+
+    /// Calls the original node CountWitnessSigOps, with explicit candidate flags.
+    pub fn count_witness_sigops(
+        &self,
+        tx_hex: &str,
+        index: usize,
+        prev_script: &[u8],
+        flags: u32,
+    ) -> Result<usize, NodeParityError> {
+        let tx = CString::new(tx_hex).map_err(|_| NodeParityError::InvalidCString("tx hex"))?;
+        let result = unsafe {
+            crate::ffi::tidecoin_node_count_witness_sigops(
+                tx.as_ptr(),
+                index,
+                prev_script.as_ptr(),
+                prev_script.len(),
+                flags,
+            )
+        };
+        usize::try_from(result).map_err(|_| NodeParityError::BridgeFailure("CountWitnessSigOps"))
+    }
+
+    /// Calls node `SignatureHash512`, forcing precomputation as its signing callers do.
+    ///
+    /// `None` is the node's failure to produce a digest (missing non-ANYONECANPAY
+    /// spent outputs or SINGLE without a matching output). Bytes are in hash
+    /// serialization order, the reverse of node `uint512::GetHex`.
+    pub fn signature_hash_512(
+        &self,
+        tx_hex: &str,
+        input_index: usize,
+        script_code: &[u8],
+        amount_sat: i64,
+        hash_type: i32,
+        spent_outputs: &[SpentOutput<'_>],
+    ) -> Result<Option<[u8; 64]>, NodeParityError> {
+        let tx_hex = CString::new(tx_hex).map_err(|_| NodeParityError::InvalidCString("tx hex"))?;
+        let outputs = native_outputs(spent_outputs);
+        let mut hash = [0; 64];
+        let rc = unsafe {
+            crate::ffi::tidecoin_node_signature_hash_512(
+                tx_hex.as_ptr(),
+                input_index,
+                script_code.as_ptr(),
+                script_code.len(),
+                amount_sat,
+                hash_type,
+                outputs.as_ptr(),
+                outputs.len(),
+                hash.as_mut_ptr(),
+            )
+        };
+        match rc {
+            1 => Ok(Some(hash)),
+            0 => Ok(None),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_signature_hash_512")),
         }
     }
 

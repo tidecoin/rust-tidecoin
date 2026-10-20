@@ -120,11 +120,19 @@ pub enum ContextualHeaderError<E = Infallible> {
         /// Base version after stripping AuxPoW and embedded chain-id bits.
         base_version: i32,
     },
+    /// Complete signed version is below the preactivation witness-era minimum.
+    PreActivationVersion {
+        /// Complete signed header version.
+        version: i32,
+    },
+    /// Postactivation ordinary header sets bits reserved for an AuxPoW chain ID.
+    ChainIdWithoutAuxPowFlag,
     /// Proof validation was requested, but this build does not include `pow`.
     PowUnavailable,
     /// AuxPoW context validation failed.
     ///
-    /// This means the header failed AuxPoW-specific contextual checks.
+    /// Inspect `is_replaceable_proof()` on the inner error before treating this
+    /// as permanent header invalidity; many failures concern only the attached proof.
     AuxPow(AuxPowValidationError),
     /// Pure-header proof-of-work validation failed.
     ///
@@ -161,6 +169,10 @@ impl<E> fmt::Display for ContextualHeaderError<E> {
             Self::BadVersion { base_version } => {
                 write!(f, "rejected block base version {base_version}")
             }
+            Self::PreActivationVersion { version } => {
+                write!(f, "rejected preactivation signed version {version:#x}")
+            }
+            Self::ChainIdWithoutAuxPowFlag => f.write_str("chain id set without auxpow flag"),
             Self::PowUnavailable => f.write_str("proof validation requires the `pow` feature"),
             Self::AuxPow(err) => write!(f, "auxpow validation failed: {err}"),
             Self::Pow(err) => write!(f, "proof-of-work validation failed: {err}"),
@@ -289,6 +301,8 @@ where
             | Self::Timewarp { .. }
             | Self::TimeTooNew { .. }
             | Self::BadVersion { .. }
+            | Self::PreActivationVersion { .. }
+            | Self::ChainIdWithoutAuxPowFlag
             | Self::PowUnavailable => None,
         }
     }
@@ -524,16 +538,31 @@ fn check_base_version<E>(
     height: BlockHeight,
     version: Version,
 ) -> Result<(), ContextualHeaderError<E>> {
+    let post_auxpow = pow::uses_post_auxpow_pow_rules(params, height);
+    if !post_auxpow && height >= params.segwit_height && version.to_consensus() < 0x2000_0000 {
+        return Err(ContextualHeaderError::PreActivationVersion {
+            version: version.to_consensus(),
+        });
+    }
     let base_version = version.base_version();
     if (base_version < 2 && height >= params.bip34_height)
         || (base_version < 3 && height >= params.bip66_height)
         || (base_version < 4 && height >= params.bip65_height)
-        || (pow::uses_post_auxpow_pow_rules(params, height)
-            && !Version::is_valid_base_version(base_version))
     {
         return Err(ContextualHeaderError::BadVersion { base_version });
     }
 
+    if post_auxpow {
+        if params.strict_auxpow_chain_id
+            && !version.is_auxpow()
+            && version.to_consensus() & Version::MASK_AUXPOW_CHAINID_SHIFTED != 0
+        {
+            return Err(ContextualHeaderError::ChainIdWithoutAuxPowFlag);
+        }
+        if !Version::is_valid_base_version(base_version) {
+            return Err(ContextualHeaderError::BadVersion { base_version });
+        }
+    }
     Ok(())
 }
 
@@ -762,13 +791,7 @@ mod tests {
 
     #[cfg(feature = "tidecoin-node-validation")]
     fn node_harness_available() -> bool {
-        match TidecoinNodeHarness::from_env() {
-            Ok(_) => true,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed block validation test: {err}");
-                false
-            }
-        }
+        TidecoinNodeHarness::optional_from_env().is_some()
     }
 
     #[cfg(feature = "tidecoin-node-validation")]
@@ -1242,5 +1265,77 @@ mod tests {
 
         assert!(!node_valid, "node should reject pre-activation witness");
         assert!(!rust_valid, "Rust should reject pre-activation witness");
+    }
+    #[test]
+    fn rc2_header_versions_use_complete_signed_version_before_activation() {
+        // Source: validation.cpp::ContextualCheckBlockHeader, including rule order.
+        let mut params = Params::TESTNET;
+        params.auxpow_start_height = Some(BlockHeight::from_u32(1000));
+        // Original node feature_header_version_activation.py cases, plus the
+        // signed/base-version boundaries from ContextualCheckBlockHeader.
+        let cases = [
+            (4, false, None),
+            (0x0008_0004, false, Some(ContextualHeaderError::ChainIdWithoutAuxPowFlag)),
+            (
+                0x1fe0_0004,
+                false,
+                Some(ContextualHeaderError::BadVersion { base_version: 0x1fe0_0004 }),
+            ),
+            (0x2000_0004, true, None),
+            (0x2001_0004, true, Some(ContextualHeaderError::ChainIdWithoutAuxPowFlag)),
+            (0x2008_0004, true, Some(ContextualHeaderError::ChainIdWithoutAuxPowFlag)),
+            (0x201f_0004, true, Some(ContextualHeaderError::ChainIdWithoutAuxPowFlag)),
+            (
+                i32::MIN + 4,
+                false,
+                Some(ContextualHeaderError::BadVersion { base_version: i32::MIN + 4 }),
+            ),
+        ];
+        for height in [999, 1000, 1001] {
+            for (raw, valid_before, error_after) in &cases {
+                let expected = if height < 1000 {
+                    if *valid_before {
+                        None
+                    } else {
+                        Some(ContextualHeaderError::PreActivationVersion { version: *raw })
+                    }
+                } else {
+                    error_after.clone()
+                };
+                assert_eq!(
+                    check_base_version::<Infallible>(
+                        &params,
+                        BlockHeight::from_u32(height),
+                        Version::from_consensus(*raw)
+                    ),
+                    expected.map_or(Ok(()), Err),
+                    "height={height}, version={raw:x}"
+                );
+            }
+        }
+        params.auxpow_start_height = None;
+        assert!(matches!(
+            check_base_version::<Infallible>(
+                &params,
+                BlockHeight::from_u32(1001),
+                Version::from_consensus(4)
+            ),
+            Err(ContextualHeaderError::PreActivationVersion { .. })
+        ));
+        params.segwit_height = BlockHeight::from_u32(2000);
+        assert!(check_base_version::<Infallible>(
+            &params,
+            BlockHeight::from_u32(1001),
+            Version::from_consensus(4)
+        )
+        .is_ok());
+        params.auxpow_start_height = Some(BlockHeight::from_u32(1000));
+        params.strict_auxpow_chain_id = false;
+        assert!(check_base_version::<Infallible>(
+            &params,
+            BlockHeight::from_u32(1001),
+            Version::with_base_version(4, 8)
+        )
+        .is_ok());
     }
 }

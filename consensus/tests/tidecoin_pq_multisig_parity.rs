@@ -246,7 +246,7 @@ fn tidecoin_pq_multisig_single_scheme_matrix_matches_node() {
         return;
     };
 
-    let flags = VERIFY_WITNESS | VERIFY_P2SH;
+    let flags = VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT;
     let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
 
     for scheme in [
@@ -280,7 +280,7 @@ fn tidecoin_pq_multisig_single_scheme_matrix_matches_node() {
                     amount,
                     &witness_script,
                     &signers,
-                    true,
+                    false,
                 );
                 assert_case(
                     &harness,
@@ -330,7 +330,7 @@ fn tidecoin_pq_multisig_mixed_scheme_direct_and_wrapped_match_node() {
             amount,
             &witness_script,
             &signers,
-            true,
+            false,
         );
         assert_case(
             &harness,
@@ -338,7 +338,7 @@ fn tidecoin_pq_multisig_mixed_scheme_direct_and_wrapped_match_node() {
             &script_sig,
             &witness,
             amount,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
             true,
             &format!("mixed-scheme multisig wrap={wrap}"),
         )

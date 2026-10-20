@@ -5,7 +5,7 @@ resolver = "2"
 
 [workspace.metadata.rbmt.toolchains]
 nightly = "nightly-2026-03-27"
-stable = "1.94.1"
+stable = "1.99.1"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "deny", check-cfg = ['cfg(bench)', 'cfg(chacha20_poly1305_fuzz)', 'cfg(fuzzing)', 'cfg(hashes_fuzz)', 'cfg(kani)'] }
@@ -41,7 +41,6 @@ filter_map_next = "warn"
 flat_map_option = "warn"
 float_cmp = "allow" # Tidecoin floats are typically limited to 8 decimal places and we want them exact.
 fn_params_excessive_bools = "warn"
-from_iter_instead_of_collect = "warn"
 if_not_else = "warn"
 ignored_unit_patterns = "warn"
 implicit_clone = "warn"

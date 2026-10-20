@@ -4,7 +4,7 @@
   <p>Library and crate stack for Tidecoin protocol data, scripting, validation, and network messages.</p>
 
   <p>
-    <a href="https://github.com/tidecoin/rust-tidecoin/blob/master/LICENSE"><img alt="CC0 1.0 Universal Licensed" src="https://img.shields.io/badge/license-CC0--1.0-blue.svg"/></a>
+    <a href="https://github.com/tidecoin/rust-tidecoin/blob/v2/LICENSE"><img alt="CC0 1.0 Universal Licensed" src="https://img.shields.io/badge/license-CC0--1.0-blue.svg"/></a>
     <a href="https://github.com/tidecoin/rust-tidecoin/actions"><img alt="CI Status" src="https://github.com/tidecoin/rust-tidecoin/actions/workflows/rust.yml/badge.svg"></a>
     <a href="https://www.rust-lang.org/tools/install"><img alt="Rustc Version 1.94.1+" src="https://img.shields.io/badge/rustc-1.94.1%2B-lightgrey.svg"/></a>
   </p>
@@ -59,9 +59,28 @@ it is deliberately building on the lower-level shared engine.
 
 ## Consensus-sensitive changes
 
+The rc2 protocol-library compatibility checkpoint is validated locally against
+node `7d653be5d24e73b49d101578afb33d8d7a889c1d` (`v1.0.0rc2`). This covers the
+script, caller-context, header/PoW and stateless policy surfaces listed in the
+[proof matrix](ai-docs/NODE_PARITY_PROOF_MATRIX.md). Full chainstate/mempool
+acceptance and Rust PSBT interoperability remain outside that claim.
+
+CI targets `v2`/`main` and pull requests. Its `Required rc2 node parity` job
+checks out `node-parity/NODE_REVISION`, fails on unavailable/mismatched oracle
+configuration, and runs workspace tests, product node parity, Clippy and feature
+checks. The workflow is configured; a hosted run and branch-protection status
+have not been verified. See [node compatibility](docs/supported-versions.md) and
+the [migration evidence](ai-docs/RC2_MIGRATION_PLAN.md).
+
 Pure-Rust validation is checked against the real Tidecoin node. Consensus-sensitive changes should
 be treated as node-parity-sensitive engineering work and verified with the Tidecoin fixture and
 differential suites, not only with local unit tests.
+
+Normal CI and formatting use Rust **1.99.1**, pinned in `Cargo.toml`. For local
+format checks use `cargo +1.99.1 fmt --all -- --check`. Nightly remains for
+specialized checks and inherited maintainer-tool audits. Building the original
+C++ validation oracle is documented in the
+[migration evidence](ai-docs/RC2_MIGRATION_PLAN.md#original-node-validation-follow-up-2026-10-20).
 
 ## Minimum Supported Rust Version (MSRV)
 

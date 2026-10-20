@@ -2,7 +2,8 @@
 on:   # yamllint disable-line rule:truthy
   push:
     branches:
-      - master
+      - v2
+      - main
       - 'test-ci/**'
   pull_request:
 
@@ -11,6 +12,60 @@ name: Continuous integration
 permissions: {}
 
 jobs:
+  NodeParity:
+    name: Required rc2 node parity
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      TIDECOIN_NODE_REPO: ${{ github.workspace }}/reference-node
+      TIDECOIN_NODE_PARITY_REQUIRED: '1'
+      TIDECOIN_NODE_VALIDATION_ORACLE: ${{ github.workspace }}/target/node-oracle/tidecoin-validation-oracle
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Read authoritative node revision
+        id: node
+        run: echo "revision=$(cat node-parity/NODE_REVISION)" >> "$GITHUB_OUTPUT"
+      - name: Read stable Rust version
+        id: rust
+        run: echo "version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["metadata"]["rbmt"]["toolchains"]["stable"])')" >> "$GITHUB_OUTPUT"
+      - name: Checkout pinned C++ node
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: tidecoin/tidecoin
+          ref: ${{ steps.node.outputs.revision }}
+          path: reference-node
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+          components: clippy
+      - name: Install node oracle build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake pkg-config libboost-dev libevent-dev
+      - name: Build original node validation oracle
+        run: |
+          cmake -S node-parity/validation-oracle -B target/node-oracle \
+            -DTIDECOIN_NODE_REPO="$TIDECOIN_NODE_REPO" -DCMAKE_BUILD_TYPE=Release
+          cmake --build target/node-oracle --target tidecoin-validation-oracle -j 2
+      # A fresh runner builds the oracle directly from the pinned node sources.
+      - name: Workspace and node differential tests
+        run: cargo test --workspace --all-targets
+      - name: Product API node differential tests
+        run: cargo test -p tidecoin --lib --tests --features tidecoin-node-validation
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+      - name: No-default-features workspace
+        run: cargo check --workspace --no-default-features
+      - name: Independent no-std libraries
+        run: |
+          for package in consensus tidecoin-consensus-core tidecoin-consensus-encoding tidecoin-primitives tidecoin-p2p-messages tidecoin; do
+            cargo check -p "$package" --no-default-features
+          done
+          cargo check -p tidecoin-p2p-messages --no-default-features --features serde
+          cargo check -p tidecoin-p2p-messages --features serde
+
   Test:
     name: Test - ${{ matrix.toolchain }} toolchain
     runs-on: ubuntu-24.04
@@ -35,7 +90,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [lint, docs, docsrs, bench, "fmt --check"]
+        task: [lint, docs, docsrs, bench]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -43,6 +98,24 @@ jobs:
       - uses: rust-bitcoin/rust-bitcoin-maintainer-tools/.github/actions/setup-rbmt@64715bab0d6fa1f3ebd6f9be336c4c5089bb5eb9
       - name: "Run ${{ matrix.task }}"
         run: cargo rbmt ${{ matrix.task }}
+
+  Format:
+    name: Format - stable toolchain
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Read stable Rust version
+        id: rust
+        run: echo "version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["metadata"]["rbmt"]["toolchains"]["stable"])')" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
   Prerelease:
     runs-on: ubuntu-24.04
@@ -53,11 +126,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # History required for version bump detection.
-      - name: "Fetch master branch"
-        run: git fetch origin master:master
+      - name: "Fetch base branch"
+        env:
+          BASE_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: git fetch origin "refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
       - uses: rust-bitcoin/rust-bitcoin-maintainer-tools/.github/actions/setup-rbmt@64715bab0d6fa1f3ebd6f9be336c4c5089bb5eb9
       - name: "Run pre-release checks"
-        run: cargo rbmt prerelease
+        env:
+          BASE_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: cargo rbmt prerelease --baseline "origin/$BASE_BRANCH"
 
   # Non cargo-rbmt jobs manage their toolchain version directly.
   Prepare:
@@ -227,6 +304,9 @@ jobs:
         run: ./contrib/check-for-policy-violations.sh
 
   DiffMutants:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     name: Check cargo mutants in diff - stable toolchain
     runs-on: ubuntu-24.04
     steps:
@@ -238,9 +318,13 @@ jobs:
       - name: "Select toolchain"
         uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
       - name: "Fetch base branch for diff"
-        run: git fetch origin master
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: git fetch origin "refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
       - name: "Retrieve relative diff"
-        run: git diff origin/master.. -- '*.rs' | tee git.diff
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: git diff "origin/$BASE_BRANCH...HEAD" -- '*.rs' | tee git.diff
       - uses: taiki-e/install-action@81ee1d48d9194cdcab880cbdc7d36e87d39874cb # v2.62.45
         with:
           tool: cargo-mutants

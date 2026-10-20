@@ -1534,10 +1534,9 @@ mod tests {
     #[cfg(feature = "tidecoin-node-validation")]
     #[test]
     fn mlkem512_deterministic_paths_match_node() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping ML-KEM node-backed validation test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };

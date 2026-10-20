@@ -15,6 +15,7 @@
 #include <pq/pq_api.h>
 #include <pq/pq_txsize.h>
 #include <primitives/block.h>
+#include <pow.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
@@ -35,6 +36,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "spent_output.h"
 
 using util::SplitString;
 
@@ -241,6 +243,7 @@ Consensus::Params BridgeConsensusParams(int network)
     case 2:
         params.nSubsidyHalvingInterval = 20;
         params.nAuxpowStartHeight = 0;
+        params.fPowGenesisScrypt = true;
         params.powLimit =
             uint256{"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"};
         params.fPowAllowMinDifficultyBlocks = true;
@@ -256,361 +259,6 @@ Consensus::Params BridgeConsensusParams(int network)
     return params;
 }
 
-CAmount BlockSubsidyBridge(int height, const Consensus::Params& params)
-{
-    int halvings = 0;
-    int64_t high{0};
-    int64_t interval{params.nSubsidyHalvingInterval};
-    for (int i = 0; i <= 64; ++i) {
-        high += interval;
-        if (height >= high) {
-            ++halvings;
-        } else {
-            break;
-        }
-        interval *= 2;
-    }
-    if ((halvings * 2) >= 64) {
-        return 0;
-    }
-
-    CAmount subsidy = 40 * COIN;
-    subsidy >>= (halvings * 2);
-    return subsidy;
-}
-
-bool UsePostAuxpowPowRulesBridge(const Consensus::Params& params, int candidate_height)
-{
-    return candidate_height >= params.nAuxpowStartHeight;
-}
-
-bool CheckProofOfWorkBridge(uint256 hash, unsigned int nBits, const Consensus::Params& params)
-{
-    bool negative;
-    bool overflow;
-    arith_uint256 target;
-    target.SetCompact(nBits, &negative, &overflow);
-    if (negative || target == 0 || overflow || target > UintToArith256(params.powLimit)) {
-        return false;
-    }
-    return UintToArith256(hash) <= target;
-}
-
-uint256 GetPoWHashForHeightBridge(
-    const CBlockHeader& block,
-    const Consensus::Params& params,
-    int height)
-{
-    return UsePostAuxpowPowRulesBridge(params, height) ? block.GetScryptPoWHash()
-                                                       : block.GetPoWHash();
-}
-
-bool CheckProofOfWorkBridge(
-    const CBlockHeader& block,
-    const Consensus::Params& params,
-    int height)
-{
-    return CheckProofOfWorkBridge(GetPoWHashForHeightBridge(block, params, height), block.nBits, params);
-}
-
-bool CheckProofOfWorkAnyBridge(const CBlockHeader& block, const Consensus::Params& params)
-{
-    if (CheckProofOfWorkBridge(block.GetPoWHash(), block.nBits, params)) {
-        return true;
-    }
-    return CheckProofOfWorkBridge(block.GetScryptPoWHash(), block.nBits, params);
-}
-
-arith_uint256 ScaleTargetLegacyOverflowBridge(
-    arith_uint256 target,
-    int64_t actual_timespan,
-    int64_t target_timespan,
-    const arith_uint256& pow_limit)
-{
-    const bool shift = target.bits() > pow_limit.bits() - 1;
-    if (shift) {
-        target >>= 1;
-    }
-    target *= actual_timespan;
-    target /= target_timespan;
-    if (shift) {
-        target <<= 1;
-    }
-    return target;
-}
-
-bool LegacyRetargetMayOverflowBridge(
-    arith_uint256 target,
-    int64_t actual_timespan,
-    const arith_uint256& pow_limit)
-{
-    if (actual_timespan <= 0) return false;
-    if (target.bits() > pow_limit.bits() - 1) {
-        target >>= 1;
-    }
-    const arith_uint256 max_uint{~arith_uint256{0}};
-    return target > max_uint / arith_uint256{static_cast<uint64_t>(actual_timespan)};
-}
-
-bool PermittedDifficultyTransitionBridge(
-    const Consensus::Params& params,
-    int64_t height,
-    uint32_t old_nbits,
-    uint32_t new_nbits)
-{
-    if (params.fPowAllowMinDifficultyBlocks) return true;
-
-    if (!UsePostAuxpowPowRulesBridge(params, static_cast<int>(height))) {
-        if (height % params.DifficultyAdjustmentInterval() == 0) {
-            const int64_t smallest_timespan = params.nPowTargetTimespan / 4;
-            const int64_t largest_timespan = params.nPowTargetTimespan * 4;
-
-            const arith_uint256 pow_limit = UintToArith256(params.powLimit);
-            arith_uint256 observed_new_target;
-            observed_new_target.SetCompact(new_nbits);
-
-            arith_uint256 largest_difficulty_target;
-            largest_difficulty_target.SetCompact(old_nbits);
-            if (LegacyRetargetMayOverflowBridge(largest_difficulty_target, largest_timespan, pow_limit)) {
-                return true;
-            }
-            largest_difficulty_target = ScaleTargetLegacyOverflowBridge(
-                largest_difficulty_target,
-                largest_timespan,
-                params.nPowTargetTimespan,
-                pow_limit);
-            if (largest_difficulty_target > pow_limit) {
-                largest_difficulty_target = pow_limit;
-            }
-
-            arith_uint256 maximum_new_target;
-            maximum_new_target.SetCompact(largest_difficulty_target.GetCompact());
-            if (maximum_new_target < observed_new_target) return false;
-
-            arith_uint256 smallest_difficulty_target;
-            smallest_difficulty_target.SetCompact(old_nbits);
-            smallest_difficulty_target = ScaleTargetLegacyOverflowBridge(
-                smallest_difficulty_target,
-                smallest_timespan,
-                params.nPowTargetTimespan,
-                pow_limit);
-            if (smallest_difficulty_target > pow_limit) {
-                smallest_difficulty_target = pow_limit;
-            }
-
-            arith_uint256 minimum_new_target;
-            minimum_new_target.SetCompact(smallest_difficulty_target.GetCompact());
-            if (minimum_new_target > observed_new_target) return false;
-        } else if (old_nbits != new_nbits) {
-            return false;
-        }
-        return true;
-    }
-
-    const arith_uint256 pow_limit = UintToArith256(params.powLimit);
-
-    arith_uint256 old_target;
-    old_target.SetCompact(old_nbits);
-
-    arith_uint256 observed_new_target;
-    observed_new_target.SetCompact(new_nbits);
-
-    const int64_t up_pct = std::max<int64_t>(0, params.nPowMaxAdjustUp);
-    const int64_t down_pct = std::max<int64_t>(0, params.nPowMaxAdjustDown);
-
-    const int64_t up_num_sq = (100LL - up_pct) * (100LL - up_pct);
-    const int64_t down_num_sq = (100LL + down_pct) * (100LL + down_pct);
-
-    arith_uint256 largest_difficulty_target = old_target;
-    largest_difficulty_target *= down_num_sq;
-    largest_difficulty_target /= 10000LL;
-    if (largest_difficulty_target > pow_limit) largest_difficulty_target = pow_limit;
-
-    arith_uint256 smallest_difficulty_target = old_target;
-    smallest_difficulty_target *= up_num_sq;
-    smallest_difficulty_target /= 10000LL;
-
-    arith_uint256 maximum_new_target;
-    maximum_new_target.SetCompact(largest_difficulty_target.GetCompact());
-    maximum_new_target += 2;
-
-    arith_uint256 minimum_new_target;
-    minimum_new_target.SetCompact(smallest_difficulty_target.GetCompact());
-    if (minimum_new_target > 1) {
-        minimum_new_target -= 2;
-    } else if (minimum_new_target > 0) {
-        minimum_new_target -= 1;
-    }
-
-    if (observed_new_target < minimum_new_target) return false;
-    if (observed_new_target > maximum_new_target) return false;
-
-    return true;
-}
-
-bool CheckAuxPowContextBridge(
-    const CBlockHeader& block,
-    const Consensus::Params& params,
-    std::optional<int> height)
-{
-    const bool has_auxpow = static_cast<bool>(block.auxpow);
-    const bool auxpow_flag = block.IsAuxpow();
-
-    if (auxpow_flag && !has_auxpow) return false;
-    if (!auxpow_flag && has_auxpow) return false;
-
-    if (height && !UsePostAuxpowPowRulesBridge(params, *height)) {
-        if (auxpow_flag || has_auxpow) return false;
-    }
-
-    if (params.fStrictChainId && !block.IsLegacy()) {
-        if (auxpow_flag) {
-            if (block.GetChainId() != params.nAuxpowChainId) return false;
-        } else if (block.nVersion & CPureBlockHeader::MASK_AUXPOW_CHAINID_SHIFTED) {
-            return false;
-        }
-    }
-
-    if (auxpow_flag) {
-        if (!block.auxpow->check(block.GetHash(), block.GetChainId(), params)) return false;
-        if (!CheckProofOfWorkBridge(block.auxpow->getParentBlockHash(), block.nBits, params)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool CheckHeaderProofOfWorkBridge(
-    const CBlockHeader& header,
-    const Consensus::Params& params,
-    std::optional<int> height)
-{
-    if (!CheckAuxPowContextBridge(header, params, height)) return false;
-    if (header.IsAuxpow()) return true;
-    if (height) return CheckProofOfWorkBridge(header, params, *height);
-    return CheckProofOfWorkAnyBridge(header, params);
-}
-
-bool CheckBlockBridge(
-    const CBlock& block,
-    const Consensus::Params& params,
-    bool check_pow,
-    bool check_merkle_root)
-{
-    if (check_pow && !CheckHeaderProofOfWorkBridge(block, params, std::nullopt)) return false;
-
-    if (check_merkle_root) {
-        bool mutated = false;
-        const uint256 merkle_root = BlockMerkleRoot(block, &mutated);
-        if (block.hashMerkleRoot != merkle_root) return false;
-        if (mutated) return false;
-    }
-
-    if (block.vtx.empty() ||
-        block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT ||
-        ::GetSerializeSize(TX_NO_WITNESS(block)) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT) {
-        return false;
-    }
-
-    if (!block.vtx[0]->IsCoinBase()) return false;
-    for (size_t i = 1; i < block.vtx.size(); ++i) {
-        if (block.vtx[i]->IsCoinBase()) return false;
-    }
-
-    for (const auto& tx : block.vtx) {
-        TxValidationState state;
-        if (!CheckTransaction(*tx, state)) return false;
-    }
-
-    unsigned int sigops = 0;
-    for (const auto& tx : block.vtx) {
-        for (const auto& txin : tx->vin) {
-            sigops += txin.scriptSig.GetSigOpCount(false);
-        }
-        for (const auto& txout : tx->vout) {
-            sigops += txout.scriptPubKey.GetSigOpCount(false);
-        }
-    }
-    if (sigops * WITNESS_SCALE_FACTOR > MAX_BLOCK_SIGOPS_COST) return false;
-
-    return true;
-}
-
-bool CheckWitnessMalleationBridge(const CBlock& block, bool expect_witness_commitment)
-{
-    if (expect_witness_commitment) {
-        if (block.m_checked_witness_commitment) return true;
-
-        const int commitpos = GetWitnessCommitmentIndex(block);
-        if (commitpos != NO_WITNESS_COMMITMENT) {
-            if (block.vtx.empty() || block.vtx[0]->vin.empty()) return false;
-            const auto& witness_stack{block.vtx[0]->vin[0].scriptWitness.stack};
-            if (witness_stack.size() != 1 || witness_stack[0].size() != 32) {
-                return false;
-            }
-
-            uint256 hash_witness = BlockWitnessMerkleRoot(block, /*mutated=*/nullptr);
-            CHash256().Write(hash_witness).Write(witness_stack[0]).Finalize(hash_witness);
-            if (memcmp(hash_witness.begin(), &block.vtx[0]->vout[commitpos].scriptPubKey[6], 32)) {
-                return false;
-            }
-
-            block.m_checked_witness_commitment = true;
-            return true;
-        }
-    }
-
-    for (const auto& tx : block.vtx) {
-        if (tx->HasWitness()) return false;
-    }
-
-    return true;
-}
-
-bool IsFinalTxBridge(const CTransaction& tx, int height, int64_t lock_time_cutoff)
-{
-    if (tx.nLockTime == 0) return true;
-    const int64_t threshold =
-        static_cast<int64_t>(tx.nLockTime) < LOCKTIME_THRESHOLD ? height : lock_time_cutoff;
-    if (static_cast<int64_t>(tx.nLockTime) < threshold) return true;
-
-    for (const auto& txin : tx.vin) {
-        if (txin.nSequence != CTxIn::SEQUENCE_FINAL) return false;
-    }
-    return true;
-}
-
-bool ContextualCheckBlockBridge(
-    const CBlock& block,
-    const Consensus::Params& params,
-    int height,
-    int64_t lock_time_cutoff,
-    bool enforce_bip34_height,
-    bool expect_witness_commitment)
-{
-    if (!CheckBlockBridge(block, params, /*check_pow=*/false, /*check_merkle_root=*/true)) {
-        return false;
-    }
-
-    for (const auto& tx : block.vtx) {
-        if (!IsFinalTxBridge(*tx, height, lock_time_cutoff)) return false;
-    }
-
-    if (enforce_bip34_height) {
-        const CScript expect = CScript() << height;
-        if (block.vtx[0]->vin[0].scriptSig.size() < expect.size() ||
-            !std::equal(expect.begin(), expect.end(), block.vtx[0]->vin[0].scriptSig.begin())) {
-            return false;
-        }
-    }
-
-    if (!CheckWitnessMalleationBridge(block, expect_witness_commitment)) return false;
-    if (GetBlockWeight(block) > MAX_BLOCK_WEIGHT) return false;
-
-    return true;
-}
-
 CScriptWitness BuildWitness(const uint8_t* const* items, const size_t* lens, size_t count)
 {
     CScriptWitness witness;
@@ -624,12 +272,28 @@ CScriptWitness BuildWitness(const uint8_t* const* items, const size_t* lens, siz
     return witness;
 }
 
+bool ReadSpentOutputs(const TidecoinSpentOutput* supplied, size_t count, size_t inputs,
+                      std::vector<CTxOut>& outputs)
+{
+    // Node Init asserts on partial context. A malformed bridge request is not
+    // a consensus verdict; preserve empty context for missing-data/ACP tests.
+    if (count != 0 && (count != inputs || supplied == nullptr)) return false;
+    outputs.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        const auto& out = supplied[i];
+        if (out.script == nullptr) return false;
+        outputs.emplace_back(out.amount, CScript(out.script, out.script + out.script_len));
+    }
+    return true;
+}
+
 bool VerifyInputInternal(const CTransaction& tx,
                          size_t input_index,
                          const CScript& prev_script,
                          int64_t amount,
                          uint32_t flags,
-                         ScriptError* script_error)
+                         ScriptError* script_error,
+                         std::vector<CTxOut> spent_outputs = {})
 {
     if (input_index >= tx.vin.size()) {
         if (script_error) *script_error = SCRIPT_ERR_UNKNOWN_ERROR;
@@ -637,7 +301,8 @@ bool VerifyInputInternal(const CTransaction& tx,
     }
 
     const bool allow_legacy = !(flags & SCRIPT_VERIFY_PQ_STRICT);
-    const PrecomputedTransactionData txdata(tx);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx, std::move(spent_outputs));
     return VerifyScript(tx.vin[input_index].scriptSig,
                         prev_script,
                         &tx.vin[input_index].scriptWitness,
@@ -741,66 +406,22 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_yespower_pow_hash(
     }
 }
 
-TIDECOIN_BRIDGE_EXPORT int tidecoin_node_has_valid_header_pow(
-    const char* header_hex,
-    int network,
-    int has_height,
-    int height)
+
+
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_uses_scrypt_pow(int network, int height, int activation_height)
 {
     try {
-        CBlockHeader header;
-        if (!DecodeHeaderHex(header, header_hex)) return 0;
-        const Consensus::Params params = BridgeConsensusParams(network);
-        const std::optional<int> maybe_height = has_height ? std::make_optional(height) : std::nullopt;
-        return CheckHeaderProofOfWorkBridge(header, params, maybe_height) ? 1 : 0;
+        auto params = BridgeConsensusParams(network);
+        params.nAuxpowStartHeight = activation_height;
+        return UseScryptPoW(params, height) ? 1 : 0;
     } catch (const std::exception&) {
         return -1;
     }
 }
 
-TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_block(
-    const char* block_hex,
-    int network,
-    int check_pow,
-    int check_merkle_root)
-{
-    try {
-        CBlock block;
-        if (!DecodeBlockHex(block, block_hex)) return 0;
-        const Consensus::Params params = BridgeConsensusParams(network);
-        return CheckBlockBridge(
-            block,
-            params,
-            check_pow != 0,
-            check_merkle_root != 0) ? 1 : 0;
-    } catch (const std::exception&) {
-        return -1;
-    }
-}
 
-TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_contextual_block(
-    const char* block_hex,
-    int network,
-    int height,
-    int64_t lock_time_cutoff,
-    int enforce_bip34_height,
-    int expect_witness_commitment)
-{
-    try {
-        CBlock block;
-        if (!DecodeBlockHex(block, block_hex)) return 0;
-        const Consensus::Params params = BridgeConsensusParams(network);
-        return ContextualCheckBlockBridge(
-            block,
-            params,
-            height,
-            lock_time_cutoff,
-            enforce_bip34_height != 0,
-            expect_witness_commitment != 0) ? 1 : 0;
-    } catch (const std::exception&) {
-        return -1;
-    }
-}
+
+
 
 TIDECOIN_BRIDGE_EXPORT int tidecoin_node_permitted_difficulty_transition(
     int network,
@@ -810,22 +431,13 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_permitted_difficulty_transition(
 {
     try {
         const Consensus::Params params = BridgeConsensusParams(network);
-        return PermittedDifficultyTransitionBridge(params, height, old_nbits, new_nbits) ? 1 : 0;
+        return PermittedDifficultyTransition(params, height, old_nbits, new_nbits) ? 1 : 0;
     } catch (const std::exception&) {
         return -1;
     }
 }
 
-TIDECOIN_BRIDGE_EXPORT int64_t tidecoin_node_block_subsidy(int network, int height)
-{
-    try {
-        if (height < 0) return -1;
-        const Consensus::Params params = BridgeConsensusParams(network);
-        return BlockSubsidyBridge(height, params);
-    } catch (const std::exception&) {
-        return -1;
-    }
-}
+
 
 TIDECOIN_BRIDGE_EXPORT int64_t tidecoin_node_pq_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
 {
@@ -1007,19 +619,62 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_verify_tx_input(const char* tx_hex,
                                                          size_t prev_script_len,
                                                          int64_t amount,
                                                          uint32_t flags,
+                                                         const TidecoinSpentOutput* spent_outputs,
+                                                         size_t spent_output_count,
                                                          int* script_error_out)
 {
     try {
         CMutableTransaction decoded;
         if (!DecodeTxHex(decoded, tx_hex)) return -1;
         const CTransaction tx(decoded);
+        std::vector<CTxOut> outputs;
+        if (!ReadSpentOutputs(spent_outputs, spent_output_count, tx.vin.size(), outputs)) return -1;
         const CScript prev(prev_script, prev_script + prev_script_len);
         ScriptError script_error{SCRIPT_ERR_OK};
-        const bool ok = VerifyInputInternal(tx, input_index, prev, amount, flags, &script_error);
+        const bool ok = VerifyInputInternal(tx, input_index, prev, amount, flags, &script_error, std::move(outputs));
         if (script_error_out) *script_error_out = static_cast<int>(script_error);
         return ok ? 1 : 0;
     } catch (const std::exception&) {
         if (script_error_out) *script_error_out = static_cast<int>(SCRIPT_ERR_UNKNOWN_ERROR);
+        return -1;
+    }
+}
+
+// Calls the original node helper; no copied sigop-counting rules.
+TIDECOIN_BRIDGE_EXPORT int64_t tidecoin_node_count_witness_sigops(
+    const char* tx_hex, size_t input_index, const unsigned char* prev_script,
+    size_t prev_script_len, unsigned int flags)
+{
+    try {
+        CMutableTransaction tx;
+        if (!DecodeTxHex(tx, tx_hex) || input_index >= tx.vin.size()) return -1;
+        // The original helper asserts this flag dependency.
+        if ((flags & SCRIPT_VERIFY_WITNESS) && !(flags & SCRIPT_VERIFY_P2SH)) return -1;
+        CScript script(prev_script, prev_script + prev_script_len);
+        return CountWitnessSigOps(tx.vin[input_index].scriptSig, script, &tx.vin[input_index].scriptWitness, flags);
+    } catch (...) { return -1; }
+}
+
+// Calls the node implementation directly; no Rust or bridge copy of the preimage.
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_signature_hash_512(
+    const char* tx_hex, size_t input_index, const uint8_t* script, size_t script_len,
+    int64_t amount, int32_t hash_type, const TidecoinSpentOutput* spent_outputs,
+    size_t spent_output_count, uint8_t* hash_out)
+{
+    try {
+        CMutableTransaction decoded;
+        if (!DecodeTxHex(decoded, tx_hex) || input_index >= decoded.vin.size()) return -1;
+        std::vector<CTxOut> outputs;
+        if (!ReadSpentOutputs(spent_outputs, spent_output_count, decoded.vin.size(), outputs)) return -1;
+        PrecomputedTransactionData data;
+        // Signing callers (sign.cpp/psbt.cpp) force precomputation before witnesses exist.
+        data.Init(decoded, std::move(outputs), true);
+        uint512 hash;
+        if (!SignatureHash512(hash, CScript(script, script + script_len), decoded,
+                              input_index, hash_type, amount, &data)) return 0;
+        std::copy(hash.begin(), hash.end(), hash_out);
+        return 1;
+    } catch (const std::exception&) {
         return -1;
     }
 }
@@ -1158,6 +813,9 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_verify_script_case(
         tx_spend.vout[0].nValue = amount;
 
         const bool allow_legacy = !(flags & SCRIPT_VERIFY_PQ_STRICT);
+        // Match src/test/script_tests.cpp::DoTest, including the actual credit output.
+        PrecomputedTransactionData txdata;
+        txdata.Init(tx_spend, {credit.vout[0]}, true);
         ScriptError script_error{SCRIPT_ERR_OK};
         const bool ok = VerifyScript(
             tx_spend.vin[0].scriptSig,
@@ -1168,6 +826,7 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_verify_script_case(
                 &tx_spend,
                 0,
                 credit.vout[0].nValue,
+                txdata,
                 MissingDataBehavior::ASSERT_FAIL,
                 allow_legacy),
             &script_error);

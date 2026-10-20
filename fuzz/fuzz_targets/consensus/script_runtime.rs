@@ -39,6 +39,21 @@ fn do_test(data: &[u8]) {
     let tx_bytes = encode_to_vec(&tx);
 
     let _ = verify_with_flags_detailed(script_pubkey.as_bytes(), 50_000, &tx_bytes, None, 0, flags);
+    // Exercise the rc2 complete-context path as well as missing-context behavior.
+    // The script buffer remains alive through the byte API call.
+    let spent_outputs = [consensus::Utxo {
+        script_pubkey: script_pubkey.as_bytes().as_ptr(),
+        script_pubkey_len: script_pubkey.len() as u32,
+        value: 50_000,
+    }];
+    let _ = verify_with_flags_detailed(
+        script_pubkey.as_bytes(),
+        50_000,
+        &tx_bytes,
+        Some(&spent_outputs),
+        0,
+        flags,
+    );
 }
 
 fn script_case(

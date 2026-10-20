@@ -37,12 +37,16 @@ pub enum MiningHashAlgorithm {
 /// Returns the node-selected mining hash algorithm for `height`.
 ///
 /// The Tidecoin node uses yespower before AuxPoW activation and scrypt at and
-/// after AuxPoW activation. Networks with AuxPoW disabled always use yespower.
+/// after AuxPoW activation. Regtest's fixed genesis remains scrypt even when
+/// activation is delayed or disabled.
 pub fn pow_hash_algorithm_at_height(
     params: impl AsRef<Params>,
     height: BlockHeight,
 ) -> MiningHashAlgorithm {
-    if uses_post_auxpow_pow_rules(params.as_ref(), height) {
+    let params = params.as_ref();
+    if (height.to_u32() == 0 && params.pow_genesis_scrypt)
+        || uses_post_auxpow_pow_rules(params, height)
+    {
         MiningHashAlgorithm::Scrypt
     } else {
         MiningHashAlgorithm::Yespower
@@ -63,15 +67,49 @@ pub fn scrypt_pow_hash(header: &Header) -> BlockHash {
     BlockHash::from_byte_array(out)
 }
 
+/// An owned, reusable Tidecoin yespower hasher.
+///
+/// Scratch memory is allocated on the first hash, reused for subsequent headers,
+/// and released when the hasher is dropped. Construct one on each hashing worker;
+/// this type is neither `Send` nor `Sync`. It requires the native allocator even
+/// when built without `std`.
+#[cfg(feature = "pow")]
+#[derive(Debug)]
+pub struct YespowerHasher {
+    inner: rust_yespower::TidecoinHasher,
+}
+
+#[cfg(feature = "pow")]
+impl YespowerHasher {
+    /// Creates a hasher, returning an error if native context allocation fails.
+    pub fn new() -> Result<Self, MiningHashError> {
+        rust_yespower::TidecoinHasher::new()
+            .map(|inner| Self { inner })
+            .map_err(|_| MiningHashError::Yespower)
+    }
+
+    /// Hashes the pure 80-byte header, reusing this hasher's scratch memory.
+    ///
+    /// Uses yespower 1.0 with `N = 2048`, `r = 8`, and no personalization,
+    /// matching the node's `CPureBlockHeader::GetPoWHash()`.
+    pub fn hash(&mut self, header: &Header) -> Result<BlockHash, MiningHashError> {
+        self.inner
+            .hash(&header.pure_header_bytes())
+            .map(BlockHash::from_byte_array)
+            .map_err(|_| MiningHashError::Yespower)
+    }
+}
+
 /// Computes Tidecoin's yespower mining hash for the pure 80-byte block header.
 ///
 /// This mirrors the node's `CPureBlockHeader::GetPoWHash()`, which runs
 /// yespower 1.0 with `N = 2048`, `r = 8`, and no personalization.
+///
+/// Allocates an owned context and releases it after hashing. For repeated hashes,
+/// reuse a [`YespowerHasher`] to avoid allocating scratch memory for each header.
 #[cfg(feature = "pow")]
 pub fn yespower_pow_hash(header: &Header) -> Result<BlockHash, MiningHashError> {
-    rust_yespower::tidecoin_hash(&header.pure_header_bytes())
-        .map(BlockHash::from_byte_array)
-        .map_err(|_| MiningHashError::Yespower)
+    YespowerHasher::new()?.hash(header)
 }
 
 /// Computes the Tidecoin mining hash selected by consensus for `height`.
@@ -187,7 +225,9 @@ fn validate_pow_hash_at_height(
 /// merge-mining commitment, and the parent scrypt proof against the child
 /// header's `nBits`. It intentionally does not validate the child header's
 /// own pure-header PoW when AuxPoW is absent; call [`validate_pow_at_height`]
-/// for that path.
+/// for that path. Ordinary-header chain-ID bits are checked by contextual header
+/// validation, not by this proof check. Errors classified as replaceable below
+/// apply to one proof and must not permanently invalidate the pure header.
 #[cfg(feature = "pow")]
 pub fn validate_auxpow_context(
     header: &Header,
@@ -211,17 +251,12 @@ pub fn validate_auxpow_context(
         }
     }
 
-    if params.strict_auxpow_chain_id && header.version.to_consensus() != 1 {
-        if auxpow_flag {
-            if header.version.chain_id() != params.auxpow_chain_id as i32 {
-                return Err(AuxPowValidationError::ChainIdMismatch);
-            }
-        } else if (header.version.to_consensus()
-            & crate::block::Version::MASK_AUXPOW_CHAINID_SHIFTED)
-            != 0
-        {
-            return Err(AuxPowValidationError::ChainIdWithoutAuxPowFlag);
-        }
+    if params.strict_auxpow_chain_id
+        && header.version.to_consensus() != 1
+        && auxpow_flag
+        && header.version.chain_id() != params.auxpow_chain_id as i32
+    {
+        return Err(AuxPowValidationError::ChainIdMismatch);
     }
 
     if let Some(auxpow) = auxpow {
@@ -425,6 +460,8 @@ pub enum AuxPowValidationError {
     /// Header AuxPoW chain ID does not match network consensus params.
     ChainIdMismatch,
     /// Chain ID bits are set without the AuxPoW version flag.
+    /// Retained for API compatibility; `validate_auxpow_context` no longer
+    /// returns this. The height-aware contextual header check owns this rule.
     ChainIdWithoutAuxPowFlag,
     /// Parent header carries this chain's AuxPoW chain ID under strict-chain-id rules.
     ParentHasOwnChainId,
@@ -452,6 +489,18 @@ pub enum AuxPowValidationError {
     ParentTarget(PowTargetError),
     /// Parent scrypt proof does not meet the child header target.
     ParentProofOfWork,
+}
+
+impl AuxPowValidationError {
+    /// Whether the node classifies this as a replaceable-proof failure
+    /// (`BLOCK_MUTATED`). Do not permanently invalidate the pure header on this
+    /// error alone; this classification does not guarantee a valid proof exists.
+    pub fn is_replaceable_proof(&self) -> bool {
+        !matches!(
+            self,
+            Self::PreActivation | Self::ChainIdMismatch | Self::ChainIdWithoutAuxPowFlag
+        )
+    }
 }
 
 impl fmt::Display for AuxPowValidationError {
@@ -3506,10 +3555,9 @@ mod tests {
     #[test]
     #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn node_generated_auxpow_fixtures_match_tidecoin_node_bridge() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed AuxPoW fixture test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };
@@ -3521,6 +3569,13 @@ mod tests {
             let network = case["network"].as_i64().expect("fixture network") as i32;
             let height = case["height"].as_i64().expect("fixture height") as i32;
             let got = harness.has_valid_header_pow_hex(header_hex, network, Some(height));
+            if expected == "decode_error" {
+                assert!(
+                    matches!(got, Err(node_parity::NodeParityError::NodeDecode(_))),
+                    "{name} must fail node decoding before proof validation: {got:?}"
+                );
+                continue;
+            }
 
             if expected == "valid" {
                 got.unwrap_or_else(|err| panic!("{name} should be node-valid: {err}"));
@@ -3664,10 +3719,9 @@ mod tests {
     #[test]
     #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn real_testnet_headers_match_tidecoin_node_bridge() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed real testnet header test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };
@@ -3744,14 +3798,14 @@ mod tests {
 
     #[test]
     #[cfg(feature = "pow")]
-    fn validate_auxpow_context_rejects_chain_id_without_auxpow_flag() {
+    fn proof_check_leaves_ordinary_chain_id_bits_to_contextual_validation() {
         let mut header =
             test_header(1_700_000_000, Params::REGTEST.max_attainable_target.to_compact_lossy());
         header.version = crate::block::Version::with_base_version(2, 8);
 
         assert_eq!(
             validate_auxpow_context(&header, Params::REGTEST, Some(BlockHeight::from_u32(0))),
-            Err(AuxPowValidationError::ChainIdWithoutAuxPowFlag)
+            Ok(())
         );
     }
 
@@ -4193,10 +4247,9 @@ mod tests {
     #[test]
     #[cfg(feature = "tidecoin-node-validation")]
     fn permitted_difficulty_transition_matches_tidecoin_node_bridge() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed difficulty-transition test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };
@@ -4276,10 +4329,60 @@ mod tests {
         .expect("valid yespower hash hex");
 
         assert_eq!(yespower_pow_hash(&header), Ok(BlockHash::from_byte_array(expected)));
+        let mut hasher = YespowerHasher::new().expect("owned yespower context");
+        assert_eq!(hasher.hash(&header), Ok(BlockHash::from_byte_array(expected)));
+        assert_eq!(hasher.hash(&header), Ok(BlockHash::from_byte_array(expected)));
         assert_eq!(
             mining_hash_for_height(&header, Params::MAINNET, BlockHeight::from_u32(1)),
             Ok(BlockHash::from_byte_array(expected))
         );
+    }
+
+    #[test]
+    #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
+    fn yespower_owned_context_reuse_and_workers_match_node() {
+        let Some(harness) = node_parity::TidecoinNodeHarness::optional_from_env() else {
+            return;
+        };
+        let original = pow_vector_header();
+        let mut headers = vec![original.clone()];
+        for (index, nonce) in
+            [0, 1, 255, 256, 65_535, 65_536, 0x8000_0000, u32::MAX].into_iter().enumerate()
+        {
+            let mut header = original.clone();
+            header.nonce = nonce;
+            header.merkle_root = crate::TxMerkleNode::from_byte_array([index as u8; 32]);
+            headers.push(header);
+        }
+        // Returning to the original header catches scratch state carried across calls.
+        headers.push(original);
+        let expected: Vec<_> = headers
+            .iter()
+            .map(|header| {
+                BlockHash::from_byte_array(
+                    harness
+                        .yespower_pow_hash(&header.pure_header_bytes())
+                        .expect("node yespower hash"),
+                )
+            })
+            .collect();
+        let mut hasher = YespowerHasher::new().expect("owned yespower context");
+        for (header, expected) in headers.iter().zip(&expected) {
+            assert_eq!(hasher.hash(header), Ok(*expected));
+            assert_eq!(yespower_pow_hash(header), Ok(*expected));
+        }
+        drop(hasher);
+        // Every worker creates and releases its own context on the owning thread.
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    let mut hasher = YespowerHasher::new().expect("worker yespower context");
+                    for (header, expected) in headers.iter().zip(&expected) {
+                        assert_eq!(hasher.hash(header), Ok(*expected));
+                    }
+                });
+            }
+        });
     }
 
     #[test]
@@ -4375,10 +4478,9 @@ mod tests {
     #[test]
     #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn scrypt_pow_hash_matches_tidecoin_node_bridge() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed scrypt PoW test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };
@@ -4410,10 +4512,9 @@ mod tests {
     #[test]
     #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn header_pow_validation_matches_tidecoin_node_bridge() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed header PoW test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };
@@ -4505,10 +4606,9 @@ mod tests {
     #[test]
     #[cfg(all(feature = "pow", feature = "tidecoin-node-validation"))]
     fn yespower_pow_hash_matches_tidecoin_node_bridge_vector() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed yespower PoW test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };
@@ -4588,6 +4688,39 @@ mod tests {
 
         assert_ne!(post_auxpow_bits, legacy_bits);
         assert_ne!(post_auxpow_bits, headers[4].bits);
+    }
+    #[test]
+    #[cfg(feature = "pow")]
+    fn rc2_ordinary_chain_id_bits_are_not_a_proof_error_and_proof_failures_are_replaceable() {
+        let mut params = Params::REGTEST;
+        params.auxpow_start_height = Some(BlockHeight::from_u32(20));
+        let mut header =
+            test_header(1_700_000_000, params.max_attainable_target.to_compact_lossy());
+        header.version = crate::block::Version::from_consensus(0x2008_0004);
+        for height in [
+            None,
+            Some(BlockHeight::from_u32(19)),
+            Some(BlockHeight::from_u32(20)),
+            Some(BlockHeight::from_u32(21)),
+        ] {
+            assert!(validate_auxpow_context(&header, &params, height).is_ok());
+        }
+        for error in [
+            AuxPowValidationError::MissingAuxPow,
+            AuxPowValidationError::UnexpectedAuxPow,
+            AuxPowValidationError::ParentProofOfWork,
+            AuxPowValidationError::WrongChainIndex,
+            AuxPowValidationError::CoinbaseMerkleRoot,
+        ] {
+            assert!(error.is_replaceable_proof());
+        }
+        for error in [
+            AuxPowValidationError::PreActivation,
+            AuxPowValidationError::ChainIdMismatch,
+            AuxPowValidationError::ChainIdWithoutAuxPowFlag,
+        ] {
+            assert!(!error.is_replaceable_proof());
+        }
     }
 }
 

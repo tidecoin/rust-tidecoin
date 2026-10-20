@@ -169,6 +169,8 @@ pub enum TidecoinValidationError {
     /// This indicates required prevout state was unavailable at the engine
     /// boundary. It is a missing-context error, not a script failure.
     MissingSpentOutput(OutPoint),
+    /// Supplied previous-output context is inconsistent.
+    SpentOutputs(crate::SpentOutputsError),
 }
 
 impl fmt::Display for TidecoinValidationError {
@@ -186,6 +188,7 @@ impl fmt::Display for TidecoinValidationError {
             Self::AmountRequired => {
                 f.write_str("input amount is required if witness verification is used")
             }
+            Self::SpentOutputs(err) => err.fmt(f),
             Self::MissingSpentOutput(outpoint) => {
                 write!(f, "missing spent output {:?}", outpoint)
             }
@@ -201,3 +204,9 @@ impl From<ScriptError> for TidecoinValidationError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for TidecoinValidationError {}
+
+impl From<crate::SpentOutputsError> for TidecoinValidationError {
+    fn from(value: crate::SpentOutputsError) -> Self {
+        Self::SpentOutputs(value)
+    }
+}

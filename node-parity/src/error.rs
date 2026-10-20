@@ -12,6 +12,17 @@ pub enum NodeParityError {
     InvalidCString(&'static str),
     /// A native bridge call returned an unexpected failure mode.
     BridgeFailure(&'static str),
+    /// The original-node process could not produce an authenticated verdict.
+    Oracle(String),
+    /// The node decoder rejected the input before validation could run.
+    NodeDecode(String),
+    /// The original node rejected the supplied block or header.
+    NodeValidation {
+        /// Node reject reason.
+        reason: String,
+        /// Node BlockValidationResult discriminant.
+        result: i32,
+    },
     /// A Tidecoin-node script verification call returned a script error.
     Script(ScriptError),
 }
@@ -25,6 +36,11 @@ impl fmt::Display for NodeParityError {
                 write!(f, "tidecoin node parity bridge call failed: {}", name)
             }
             Self::Script(err) => write!(f, "script validation failed: {}", err),
+            Self::NodeDecode(err) => write!(f, "node decoding failed: {err}"),
+            Self::Oracle(err) => write!(f, "original node oracle failed: {err}"),
+            Self::NodeValidation { reason, result } => {
+                write!(f, "node rejected: {reason} (result {result})")
+            }
         }
     }
 }

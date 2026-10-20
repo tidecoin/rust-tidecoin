@@ -60,13 +60,22 @@ fn to_node_result(
     let harness = try_harness().expect("TIDECOIN_NODE_REPO must be configured");
     let tx_hex = encode_to_vec(tx).to_lower_hex_string();
     let prevout = &prevouts[input_index];
-    node_script_result(harness.verify_tx_input_hex(
-        &tx_hex,
-        input_index,
-        prevout.script_pubkey.as_bytes(),
-        prevout.amount.to_sat() as i64,
-        flags,
-    ))
+    node_script_result(
+        harness.verify_tx_input_with_spent_outputs(
+            &tx_hex,
+            input_index,
+            prevout.script_pubkey.as_bytes(),
+            prevout.amount.to_sat() as i64,
+            flags,
+            &prevouts
+                .iter()
+                .map(|out| node_parity::SpentOutput {
+                    amount: out.amount.to_sat() as i64,
+                    script_pubkey: out.script_pubkey.as_bytes(),
+                })
+                .collect::<Vec<_>>(),
+        ),
+    )
 }
 
 #[test]
@@ -102,7 +111,9 @@ fn tidecoin_script_assets_match_node_subset_superset_semantics() {
         if let Some(success) = row.get("success") {
             let tx = apply_asset_variant(&base_tx, input_index, success);
             for flags in &all_flags {
-                if is_final || ((flags & test_flags) == *flags) {
+                if node_parity::same_script_activation(*flags, test_flags)
+                    && (is_final || ((flags & test_flags) == *flags))
+                {
                     let ours = to_rust_result(&tx, &owned_prevouts, input_index, *flags)
                         .map_err(map_rust_script_error);
                     let node = to_node_result(&tx, &prevout_txouts, input_index, *flags);
@@ -123,7 +134,9 @@ fn tidecoin_script_assets_match_node_subset_superset_semantics() {
         if let Some(failure) = row.get("failure") {
             let tx = apply_asset_variant(&base_tx, input_index, failure);
             for flags in &all_flags {
-                if (*flags & test_flags) == test_flags {
+                if node_parity::same_script_activation(*flags, test_flags)
+                    && (*flags & test_flags) == test_flags
+                {
                     let ours = to_rust_result(&tx, &owned_prevouts, input_index, *flags)
                         .map_err(map_rust_script_error);
                     let node = to_node_result(&tx, &prevout_txouts, input_index, *flags);

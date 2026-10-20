@@ -90,6 +90,8 @@ pub struct Params {
     pub segwit_height: BlockHeight,
     /// Block height at which auxpow activates, if any.
     pub auxpow_start_height: Option<BlockHeight>,
+    /// Keep the fixed genesis on scrypt independently of AuxPoW activation.
+    pub pow_genesis_scrypt: bool,
     /// Auxpow chain ID encoded into header version bits.
     pub auxpow_chain_id: u32,
     /// Whether auxpow chain ID checks are consensus-enforced.
@@ -150,6 +152,7 @@ impl Params {
         csv_height: BlockHeight::from_u32(1),
         segwit_height: BlockHeight::from_u32(1),
         auxpow_start_height: None,
+        pow_genesis_scrypt: false,
         auxpow_chain_id: 8,
         strict_auxpow_chain_id: true,
         subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
@@ -174,6 +177,7 @@ impl Params {
         csv_height: BlockHeight::from_u32(1),
         segwit_height: BlockHeight::from_u32(1),
         auxpow_start_height: Some(BlockHeight::from_u32(1000)),
+        pow_genesis_scrypt: false,
         auxpow_chain_id: 8,
         strict_auxpow_chain_id: true,
         subsidy_initial_interval: crate::blockdata::constants::SUBSIDY_INITIAL_INTERVAL,
@@ -198,6 +202,7 @@ impl Params {
         csv_height: BlockHeight::from_u32(1),
         segwit_height: BlockHeight::from_u32(0),
         auxpow_start_height: Some(BlockHeight::from_u32(0)),
+        pow_genesis_scrypt: true,
         auxpow_chain_id: 8,
         strict_auxpow_chain_id: true,
         subsidy_initial_interval: 20,

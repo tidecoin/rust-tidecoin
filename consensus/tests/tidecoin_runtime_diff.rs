@@ -156,11 +156,16 @@ fn compare_script_case(
 
     let tx_bytes =
         build_test_transaction(script_pubkey, script_sig, witness, amount_sat.max(0) as u64);
+    let outputs = [consensus::Utxo {
+        script_pubkey: script_pubkey.as_ptr(),
+        script_pubkey_len: script_pubkey.len().try_into().unwrap(),
+        value: amount_sat,
+    }];
     let ours = verify_with_flags_detailed(
         script_pubkey,
         amount_sat.max(0) as u64,
         &tx_bytes,
-        None,
+        Some(&outputs),
         0,
         flags,
     )
@@ -227,7 +232,7 @@ fn tidecoin_runtime_diff_script_tests_pq_matches_node() {
         for trial in 0..SCRIPT_MONOTONICITY_TRIALS_PER_VECTOR {
             let extra_flags = rng.next_u32() & ALL_TIDECOIN_SCRIPT_FLAGS;
             let combined_flags =
-                if expected_ok { flags & !extra_flags } else { flags | extra_flags };
+                node_parity::script_flags_for_comparison(flags, extra_flags, expected_ok);
             if (combined_flags ^ flags) & TIDECOIN_SCRIPT_ACTIVATION_FLAGS != 0
                 || !is_valid_script_flag_combination(combined_flags)
             {
@@ -302,26 +307,51 @@ fn tidecoin_runtime_diff_tx_corpora_match_node() {
 
             let mut node_results = Vec::with_capacity(tx.inputs.len());
             let mut ours_results = Vec::with_capacity(tx.inputs.len());
+            let outputs: Vec<_> = tx
+                .inputs
+                .iter()
+                .map(|input| {
+                    let out = prevouts.get(&input.previous_output).expect("previous output");
+                    consensus::Utxo {
+                        script_pubkey: out.script_pubkey.as_ptr(),
+                        script_pubkey_len: out.script_pubkey.len().try_into().unwrap(),
+                        value: out.amount_sat,
+                    }
+                })
+                .collect();
 
             for (input_index, input) in tx.inputs.iter().enumerate() {
                 let spent = prevouts.get(&input.previous_output).unwrap_or_else(|| {
                     panic!("{fixture_name}[{index}] missing prevout {:?}", input.previous_output)
                 });
 
-                let node = node_script_result(harness.verify_tx_input_hex(
-                    tx_hex,
-                    input_index,
-                    &spent.script_pubkey,
-                    spent.amount_sat,
-                    flags,
-                ));
+                let node = node_script_result(
+                    harness.verify_tx_input_with_spent_outputs(
+                        tx_hex,
+                        input_index,
+                        &spent.script_pubkey,
+                        spent.amount_sat,
+                        flags,
+                        &tx.inputs
+                            .iter()
+                            .map(|input| {
+                                let out =
+                                    prevouts.get(&input.previous_output).expect("previous output");
+                                node_parity::SpentOutput {
+                                    amount: out.amount_sat,
+                                    script_pubkey: &out.script_pubkey,
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                );
                 node_results.push(node);
 
                 let ours = verify_with_flags_detailed(
                     &spent.script_pubkey,
                     spent.amount_sat.max(0) as u64,
                     &tx_bytes,
-                    None,
+                    Some(&outputs),
                     input_index,
                     flags,
                 )

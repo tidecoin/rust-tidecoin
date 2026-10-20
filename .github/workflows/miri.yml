@@ -2,7 +2,8 @@
 on:   # yamllint disable-line rule:truthy
   push:
     branches:
-      - master
+      - v2
+      - main
       - 'test-ci/**'
   pull_request:
 

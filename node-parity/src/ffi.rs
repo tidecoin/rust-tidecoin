@@ -2,7 +2,34 @@
 
 use core::ffi::{c_char, c_int};
 
+/// Borrowed C representation of a spent transaction output.
+#[repr(C)]
+pub struct NodeSpentOutput {
+    /// Value in satoshis.
+    pub amount: i64,
+    /// Script bytes.
+    pub script: *const u8,
+    /// Number of script bytes.
+    pub script_len: usize,
+}
+
 unsafe extern "C" {
+    /// Calls node CountWitnessSigOps for a decoded transaction input.
+    pub fn tidecoin_node_count_witness_sigops(
+        tx_hex: *const c_char,
+        input_index: usize,
+        prev_script: *const u8,
+        prev_script_len: usize,
+        flags: u32,
+    ) -> i64;
+
+    /// Calls node `UseScryptPoW` with the selected network and activation height.
+    pub fn tidecoin_node_uses_scrypt_pow(
+        network: c_int,
+        height: c_int,
+        activation_height: c_int,
+    ) -> c_int;
+
     /// Verifies a single transaction input against the Tidecoin node interpreter.
     pub fn tidecoin_node_verify_tx_input(
         tx_hex: *const c_char,
@@ -11,7 +38,22 @@ unsafe extern "C" {
         prev_script_len: usize,
         amount: i64,
         flags: u32,
+        spent_outputs: *const NodeSpentOutput,
+        spent_output_count: usize,
         script_error_out: *mut c_int,
+    ) -> c_int;
+
+    /// Calls node `SignatureHash512`; 0 means unavailable digest, -1 invalid arguments.
+    pub fn tidecoin_node_signature_hash_512(
+        tx_hex: *const c_char,
+        input_index: usize,
+        script: *const u8,
+        script_len: usize,
+        amount: i64,
+        hash_type: i32,
+        spent_outputs: *const NodeSpentOutput,
+        spent_output_count: usize,
+        hash_out: *mut u8,
     ) -> c_int;
 
     /// Runs Tidecoin node `CheckTransaction` on a serialized transaction.
@@ -33,32 +75,6 @@ unsafe extern "C" {
         out_len: usize,
     ) -> c_int;
 
-    /// Runs Tidecoin node-equivalent header PoW validation, including AuxPoW context.
-    pub fn tidecoin_node_has_valid_header_pow(
-        header_hex: *const c_char,
-        network: c_int,
-        has_height: c_int,
-        height: c_int,
-    ) -> c_int;
-
-    /// Runs Tidecoin node-equivalent context-free block sanity validation.
-    pub fn tidecoin_node_check_block(
-        block_hex: *const c_char,
-        network: c_int,
-        check_pow: c_int,
-        check_merkle_root: c_int,
-    ) -> c_int;
-
-    /// Runs Tidecoin node-equivalent UTXO-independent contextual block validation.
-    pub fn tidecoin_node_check_contextual_block(
-        block_hex: *const c_char,
-        network: c_int,
-        height: c_int,
-        lock_time_cutoff: i64,
-        enforce_bip34_height: c_int,
-        expect_witness_commitment: c_int,
-    ) -> c_int;
-
     /// Runs Tidecoin node-equivalent permitted difficulty transition checks.
     pub fn tidecoin_node_permitted_difficulty_transition(
         network: c_int,
@@ -66,9 +82,6 @@ unsafe extern "C" {
         old_nbits: u32,
         new_nbits: u32,
     ) -> c_int;
-
-    /// Returns the Tidecoin node block subsidy for a network and height.
-    pub fn tidecoin_node_block_subsidy(network: c_int, height: c_int) -> i64;
 
     /// Runs Tidecoin node `pq::VSizeP2WPKHInput`.
     pub fn tidecoin_node_pq_p2wpkh_input_vsize(sig_len: usize, pubkey_len: usize) -> i64;

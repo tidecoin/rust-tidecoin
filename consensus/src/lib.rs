@@ -59,6 +59,8 @@ pub const VERIFY_WITNESS_V1_512: c_uint = core_flags::VERIFY_WITNESS_V1_512 as c
 pub const VERIFY_SHA512: c_uint = core_flags::VERIFY_SHA512 as c_uint;
 /// Make OP_CODESEPARATOR and signature find-and-delete fail in legacy scripts.
 pub const VERIFY_CONST_SCRIPTCODE: c_uint = core_flags::VERIFY_CONST_SCRIPTCODE as c_uint;
+/// Require defined signature hash bytes (relay-only for legacy/v0).
+pub const VERIFY_DEFINED_HASHTYPE: c_uint = core_flags::VERIFY_DEFINED_HASHTYPE as c_uint;
 
 /// Tidecoin default verification flags after auxpow-era features are enabled.
 pub const VERIFY_ALL_TIDECOIN: c_uint = core_flags::VERIFY_ALL_TIDECOIN as c_uint;
@@ -193,15 +195,6 @@ fn perform_verification(
         .map(|raw| decode_spent_outputs(tx.inputs.len(), raw))
         .transpose()
         .map_err(|err| ScriptFailure { error: err, script_error: ScriptError::Ok })?;
-    if let Some(set) = spent_outputs.as_ref() {
-        let prevout = &set.txouts()[input_index];
-        if prevout.script_pubkey.as_bytes() != spent_output_script {
-            return Err(ScriptFailure {
-                error: Error::ERR_SPENT_OUTPUTS_MISMATCH,
-                script_error: ScriptError::Ok,
-            });
-        }
-    }
     let explicit_amount_known = true;
     let has_amount = explicit_amount_known;
     let spend_context = SpendContext::new(spent_output_script, spent_outputs, amount, has_amount);
@@ -266,6 +259,9 @@ fn map_validation_error(error: &consensus_core::TidecoinValidationError) -> Erro
         consensus_core::TidecoinValidationError::InvalidInputIndex { .. } => Error::ERR_TX_INDEX,
         consensus_core::TidecoinValidationError::InvalidFlags => Error::ERR_INVALID_FLAGS,
         consensus_core::TidecoinValidationError::AmountRequired => Error::ERR_AMOUNT_REQUIRED,
+        consensus_core::TidecoinValidationError::SpentOutputs(_) => {
+            Error::ERR_SPENT_OUTPUTS_MISMATCH
+        }
         consensus_core::TidecoinValidationError::MissingSpentOutput(_) => {
             Error::ERR_SPENT_OUTPUTS_REQUIRED
         }
@@ -1479,28 +1475,21 @@ mod tests {
     }
 
     #[test]
-    fn witness_v1_512_disabled_is_reserved_unless_discouraged() {
+    fn witness_v1_512_disabled_is_ordinary_script_with_unexpected_witness() {
         let script = Builder::new().push_opcode(all::OP_PUSHNUM_1).into_script();
         let (spent_script, witness) = witness_v1_512_fixture(script, Vec::new());
-
-        run_witness_script_with_ctx(
-            Builder::new().into_script(),
-            spent_script.clone(),
-            witness.clone(),
-            sat(50_000),
-            VERIFY_WITNESS,
-        )
-        .expect("disabled witness-v1-512 remains reserved when not discouraged");
-
-        let failure = run_witness_script_with_ctx(
-            Builder::new().into_script(),
-            spent_script,
-            witness,
-            sat(50_000),
-            VERIFY_WITNESS | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
-        )
-        .expect_err("disabled witness-v1-512 should be discouraged explicitly");
-        assert_eq!(failure.script_error, ScriptError::DiscourageUpgradableWitnessProgram);
+        for flags in [VERIFY_WITNESS, VERIFY_WITNESS | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM]
+        {
+            let failure = run_witness_script_with_ctx(
+                Builder::new().into_script(),
+                spent_script.clone(),
+                witness.clone(),
+                sat(50_000),
+                flags,
+            )
+            .unwrap_err();
+            assert_eq!(failure.script_error, ScriptError::WitnessUnexpected);
+        }
     }
 
     #[test]

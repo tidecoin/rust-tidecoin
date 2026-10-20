@@ -1,4 +1,4 @@
-use std::{env, fs, path::Path};
+use std::{fs, path::Path};
 
 use hashes::sha256;
 use node_parity::fixtures::{test_data_path, TIDECOIN_NODE_REPO_ENV};
@@ -11,7 +11,7 @@ struct FixtureHash {
 const FIXTURES: &[FixtureHash] = &[
     FixtureHash {
         name: "script_tests_pq.json",
-        sha256_hex: "4aca9566a321f29575f62d9830d8e944c9731b249390d0c6780dc9d370183811",
+        sha256_hex: "8974ec8afbd1d6ebc224baae18252b857014714e96bf81efbc4fac9bedce3852",
     },
     FixtureHash {
         name: "tx_valid_pq.json",
@@ -39,7 +39,7 @@ fn hash_file(path: &Path) -> String {
 
 #[test]
 fn tidecoin_node_fixtures_match_pinned_hashes_when_available() {
-    if env::var_os(TIDECOIN_NODE_REPO_ENV).is_none() {
+    if node_parity::TidecoinNodeHarness::optional_from_env().is_none() {
         eprintln!(
             "skipping Tidecoin fixture hash check (set {TIDECOIN_NODE_REPO_ENV} to enable corpus pinning)"
         );

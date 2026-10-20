@@ -69,3 +69,31 @@ fn normalize_script_error(
         other => other,
     }
 }
+
+/// Verifies every input using complete previous outputs in input order.
+///
+/// Transaction decoding is the caller's responsibility. One sighash cache and
+/// one owned previous-output set are shared across all input verifications.
+/// This checks scripts, not transaction-level value or block consensus rules.
+pub fn verify_transaction_inputs(
+    tx: &Transaction,
+    spent_outputs: crate::SpentOutputs,
+    flags: u32,
+) -> Result<(), TidecoinValidationError> {
+    let flags = ScriptFlags::from_bits(normalize_flags(flags))?;
+    let tx_ctx = TransactionContext::new(tx);
+    let mut cache = crate::SighashCache::new_with_spent_outputs(tx, spent_outputs)?;
+    for index in 0..tx.inputs.len() {
+        // Only the current output is cloned; the full context/cache moves between
+        // interpreters and retains the hashes computed for preceding inputs.
+        let output = cache.spent_outputs().expect("complete context").txouts()[index].clone();
+        let spend =
+            SpendContext::new(output.script_pubkey.as_bytes(), None, output.amount.to_sat(), true);
+        let mut interpreter = Interpreter::with_cache(&tx_ctx, index, spend, flags, cache)?;
+        interpreter
+            .verify()
+            .map_err(|err| normalize_script_error(err, interpreter.last_script_error()))?;
+        cache = interpreter.into_sighash_cache();
+    }
+    Ok(())
+}

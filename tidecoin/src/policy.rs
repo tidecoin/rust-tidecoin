@@ -10,7 +10,7 @@ use core::fmt;
 
 use consensus_core::{
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
-    VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
     VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
     VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
     VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
@@ -112,12 +112,13 @@ pub const STANDARD_SCRIPT_VERIFY_FLAGS: u32 = MANDATORY_SCRIPT_VERIFY_FLAGS
 pub const STANDARD_NOT_MANDATORY_VERIFY_FLAGS: u32 =
     STANDARD_SCRIPT_VERIFY_FLAGS & !MANDATORY_SCRIPT_VERIFY_FLAGS;
 
-/// Returns the Tidecoin node's standard policy script flags for the next block height.
+/// Returns the node's mempool script flags for the candidate height.
+/// Includes relay-only DEFINED_HASHTYPE; do not use for historical final verification.
 pub fn standard_policy_script_flags(
     params: impl AsRef<Params>,
     next_block_height: BlockHeight,
 ) -> u32 {
-    let mut flags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    let mut flags = STANDARD_SCRIPT_VERIFY_FLAGS | VERIFY_DEFINED_HASHTYPE;
     if params.as_ref().auxpow_start_height.is_some_and(|height| next_block_height >= height) {
         flags |= VERIFY_PQ_STRICT | VERIFY_WITNESS_V1_512 | VERIFY_SHA512;
     }
@@ -591,7 +592,10 @@ where
         return Err(StandardRelayPrecheckError::WitnessNotStandard);
     }
 
-    let sigop_cost = tx.total_sigop_cost(&mut spent);
+    let sigop_cost = tx.total_sigop_cost_with_flags(
+        &mut spent,
+        standard_policy_script_flags(params, next_block_height),
+    );
     if sigop_cost > MAX_STANDARD_TX_SIGOPS_COST as usize {
         return Err(StandardRelayPrecheckError::TooManySigops { cost: sigop_cost });
     }
@@ -1807,7 +1811,7 @@ mod tests {
 
     #[test]
     fn standard_policy_script_flags_match_node_auxpow_activation() {
-        let base = STANDARD_SCRIPT_VERIFY_FLAGS;
+        let base = STANDARD_SCRIPT_VERIFY_FLAGS | VERIFY_DEFINED_HASHTYPE;
         assert_eq!(standard_policy_script_flags(Params::TESTNET, BlockHeight::from_u32(999)), base);
         assert_eq!(
             standard_policy_script_flags(Params::TESTNET, BlockHeight::from_u32(1000)),
@@ -1975,10 +1979,9 @@ mod tests {
     #[test]
     #[cfg(feature = "tidecoin-node-validation")]
     fn pq_input_vsize_matches_tidecoin_node_bridge_all_schemes() {
-        let harness = match node_parity::TidecoinNodeHarness::from_env() {
-            Ok(harness) => harness,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed txsize test: {err}");
+        let harness = match node_parity::TidecoinNodeHarness::optional_from_env() {
+            Some(harness) => harness,
+            None => {
                 return;
             }
         };

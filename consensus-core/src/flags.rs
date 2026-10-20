@@ -35,6 +35,10 @@ pub const VERIFY_WITNESS_V1_512: u32 = 1 << 14;
 /// Enable Tidecoin `OP_SHA512`.
 pub const VERIFY_SHA512: u32 = 1 << 15;
 
+/// Require one of the six defined hash bytes for nonempty signatures.
+/// This is relay policy for legacy/v0; active witness v1 enforces it independently.
+pub const VERIFY_DEFINED_HASHTYPE: u32 = 1 << 16;
+
 /// Tidecoin's default verification flags.
 pub const VERIFY_ALL_TIDECOIN: u32 = VERIFY_P2SH
     | VERIFY_NULLDUMMY

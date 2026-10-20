@@ -202,7 +202,8 @@ pub use crate::{
 #[doc(inline)]
 pub use consensus_core::{
     InputsIndexError, LegacySighash, NonStandardSighashTypeError, SegwitV0Sighash, Sighash512,
-    SighashTypeParseError, TxSighashType,
+    SighashCache, SighashTypeParseError, SpentOutputs, SpentOutputsError, TxSighashType,
+    WitnessV1SighashError,
 };
 // Re-export all modules from `blockdata`, users should never need to use `blockdata` directly.
 #[doc(inline)]

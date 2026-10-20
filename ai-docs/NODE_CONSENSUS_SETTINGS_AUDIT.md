@@ -1,16 +1,18 @@
 # Tidecoin Node Consensus and Settings Audit
 
-Status: active protocol reference, 2026-04-12.
+Status: historical April protocol reference; rc2 corrections are tracked separately.
 
 This is a technical reference beneath
 [README.md](/home/yaroslav/dev/tidecoin/rust-tidecoin/ai-docs/README.md), not a
 separate source of planning authority.
 
-This document compares the current Rust workspace against the local Tidecoin
-node checkout at `/home/yaroslav/dev/tidecoin/tidecoin`. The node is the
-acceptance standard for consensus-sensitive behavior.
+This document records the earlier comparison against the Tidecoin node.
+The node remains the acceptance standard for consensus-sensitive behavior.
+Use [RC2_COMPATIBILITY_REVIEW.md](RC2_COMPATIBILITY_REVIEW.md) for the
+2026-10-20 assessment and [RC2_MIGRATION_PLAN.md](RC2_MIGRATION_PLAN.md)
+for current work. Claims below about remaining work describe the April baseline.
 
-Current node reference commit:
+Historical node reference commit:
 
 - `fe36ef8dde80f730f02fd1e64c80432d06b1c436`
 
@@ -45,12 +47,11 @@ Primary node references:
 
 ## Executive Status
 
-The Rust script/spend validation engine is no longer the main problem. The
-current high-risk gap is the chain-level envelope around it: chain parameters,
-header proof selection, AuxPoW context checks, difficulty transition rules, and
-block/contextual validation.
+At the April checkpoint, the remaining work emphasized the chain-level envelope.
+The rc2 review supersedes that priority: script/spend verification, v1 hashing
+and activation behavior now have confirmed gaps alongside header rules.
 
-The most important current facts:
+The established architecture and earlier implementation inventory:
 
 - `consensus-core` owns the Tidecoin script interpreter, typed transaction
   context, sighash logic, PQ verification, and witness execution planning.
@@ -66,7 +67,10 @@ The most important current facts:
   validation, heightless `CheckProofOfWorkAny` parity, AuxPoW context
   validation, pre/post-AuxPoW retarget switch, and
   `PermittedDifficultyTransition` parity. The yespower implementation comes
-  from the published `rust-yespower` crate with default features disabled.
+  from published `rust-yespower` 0.3.0 with default features disabled.
+  `pow::YespowerHasher` owns reusable scratch memory and releases it on drop;
+  `yespower_pow_hash` creates and drops one context per call. Repeated hashing
+  callers can retain a hasher on their worker to avoid repeated allocation.
   Real testnet header and retarget-window fixtures now cover the AuxPoW
   activation area; broader historical chain walks remain open.
 - `pow::HeaderPowExt::validate_pow(params, height, required_target)` is now

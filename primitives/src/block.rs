@@ -1974,7 +1974,10 @@ impl<'a> Arbitrary<'a> for Block {
 impl<'a> Arbitrary<'a> for Header {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            version: Version::arbitrary(u)?,
+            // This generator emits no AuxPoW payload. Keep the wire-layout bit
+            // consistent: CBlockHeader::SerializationOp requires a payload
+            // whenever IsAuxpow() is true. Preserve all other version bits.
+            version: Version::arbitrary(u)?.with_auxpow(false),
             prev_blockhash: BlockHash::from_byte_array(u.arbitrary()?),
             merkle_root: TxMerkleNode::from_byte_array(u.arbitrary()?),
             time: u.arbitrary()?,
@@ -2002,6 +2005,21 @@ impl<'a> Arbitrary<'a> for Version {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(feature = "arbitrary", feature = "alloc"))]
+    #[test]
+    fn arbitrary_header_without_auxpow_payload_roundtrips() {
+        use super::*;
+
+        // The block-sanity fuzzer found this with a generated version of -1.
+        let bytes = [0xff; 128];
+        let header = Header::arbitrary(&mut Unstructured::new(&bytes)).unwrap();
+        assert_eq!(header.version, Version::from_consensus(-1).with_auxpow(false));
+        assert!(header.auxpow.is_none());
+        let encoded = encoding::encode_to_vec(&header);
+        assert_eq!(encoded.len(), Header::SIZE);
+        assert_eq!(encoding::decode_from_slice::<Header>(&encoded).unwrap(), header);
+    }
+
     #[cfg(feature = "alloc")]
     use alloc::string::ToString;
     #[cfg(feature = "alloc")]

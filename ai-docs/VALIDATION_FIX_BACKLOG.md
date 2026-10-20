@@ -18,14 +18,29 @@ The shared engine split is already in place:
 - `tidecoin` is the product-facing Rust API
 - `node-parity` is dev/parity infrastructure
 
-The main remaining work is proof depth, fixture reconciliation, and a small
-amount of maintenance.
+The local rc2 protocol-library checkpoint is validated; remaining work follows
+the recorded scope and evidence. [RC2_MIGRATION_PLAN.md](RC2_MIGRATION_PLAN.md)
+owns the implementation order and gates; the
+[compatibility review](RC2_COMPATIBILITY_REVIEW.md) owns baseline evidence.
 
 ## Open
 
-### 1. Chain-rule parity tails (current)
+### 1. rc2 checkpoint follow-through
 
-This is the main active validation task.
+- Required node CI and current provenance are implemented; local workspace,
+  product parity and feature gates are recorded in phase 4 of the migration plan.
+  Verify the hosted workflow after the changes are pushed. Branch protection
+  must be checked separately; naming a job required does not configure it.
+- The verifier uses pinned Git revision `522f179ae3fdbcf180854f17a41de520013e9ec6`.
+  Registry publication is deferred and only blocks dependent crates.io releases.
+- Preserve the documented oracle limits. Phase 5 PSBT/descriptor interoperability
+  is the next implementation milestone, not an implied consequence of this gate.
+
+Phase 2 completed R01/R02/R03/R10 locally: rc2 v1 hashing, SINGLE failure,
+complete previous-output propagation and caller-context validation. Evidence
+and API migration details live in the migration plan.
+
+### 2. Chain-rule parity depth (follow-up)
 
 Still needed:
 
@@ -37,7 +52,7 @@ Still needed:
 Do not expand this into full chainstate or mempool validation. Those belong to
 future stateful crates.
 
-### 2. Shared node-parity proof-matrix reconciliation (current)
+### 3. Shared node-parity proof-matrix reconciliation
 
 Active Tidecoin parity now runs through:
 
@@ -54,7 +69,7 @@ Still needed:
 - do not restore archived Core-diff tests unless they are rewritten as
   Tidecoin-node parity tests
 
-### 3. `consensus/` historical cleanup (supporting)
+### 4. `consensus/` historical cleanup (supporting)
 
 The active `consensus` crate is already Tidecoin-native.
 
@@ -66,7 +81,7 @@ Remaining work is narrow:
 
 This is maintenance, not the lead task.
 
-### 4. `consensus-core` boundary maintenance (supporting)
+### 5. `consensus-core` boundary maintenance (supporting)
 
 This is no longer the main open architecture problem.
 

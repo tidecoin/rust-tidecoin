@@ -6,6 +6,12 @@ use tidecoin_p2p_messages::Magic;
 #[test]
 fn tidecoin_node_chainparams_message_start_matches_rust_magic_constants() {
     let Ok(node_repo) = env::var("TIDECOIN_NODE_REPO") else {
+        assert_ne!(
+            env::var("TIDECOIN_NODE_PARITY_REQUIRED").as_deref(),
+            Ok("1"),
+            "required node parity needs TIDECOIN_NODE_REPO"
+        );
+        eprintln!("SKIP node message-start source check: TIDECOIN_NODE_REPO is not configured");
         return;
     };
 

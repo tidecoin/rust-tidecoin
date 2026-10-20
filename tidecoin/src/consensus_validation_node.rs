@@ -7,9 +7,10 @@ use core::fmt;
 #[cfg(test)]
 use consensus_core::{
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CONST_SCRIPTCODE,
-    VERIFY_DISCOURAGE_UPGRADABLE_NOPS, VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
-    VERIFY_MINIMALDATA, VERIFY_MINIMALIF, VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL,
-    VERIFY_PQ_STRICT, VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS_V1_512,
+    VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
+    VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_PQ_STRICT, VERIFY_SHA512,
+    VERIFY_SIGPUSHONLY, VERIFY_WITNESS_V1_512,
 };
 use consensus_core::{VERIFY_CLEANSTACK, VERIFY_P2SH, VERIFY_WITNESS};
 use internals::hex::DisplayHex as _;
@@ -35,6 +36,7 @@ pub enum TidecoinValidationError {
     InvalidFlags,
     AmountRequired,
     MissingSpentOutput(OutPoint),
+    SpentOutputs(consensus_core::SpentOutputsError),
     BridgeFailure(&'static str),
 }
 
@@ -57,6 +59,7 @@ impl fmt::Display for TidecoinValidationError {
             Self::AmountRequired => {
                 f.write_str("input amount is required if witness verification is used")
             }
+            Self::SpentOutputs(err) => err.fmt(f),
             Self::MissingSpentOutput(outpoint) => write!(f, "missing spent output {}", outpoint),
             Self::BridgeFailure(name) => {
                 write!(f, "tidecoin node validation bridge call failed: {}", name)
@@ -77,6 +80,7 @@ impl From<consensus_core::TidecoinValidationError> for TidecoinValidationError {
             consensus_core::TidecoinValidationError::InvalidInputIndex { index, inputs } => {
                 Self::InvalidInputIndex { index, inputs }
             }
+            consensus_core::TidecoinValidationError::SpentOutputs(err) => Self::SpentOutputs(err),
             consensus_core::TidecoinValidationError::InvalidFlags => Self::InvalidFlags,
             consensus_core::TidecoinValidationError::AmountRequired => Self::AmountRequired,
             consensus_core::TidecoinValidationError::MissingSpentOutput(outpoint) => {
@@ -147,18 +151,30 @@ pub(crate) fn verify_script_input(
     tx: &Transaction,
     flags: u32,
 ) -> Result<(), TidecoinValidationError> {
+    verify_script_input_with_spent_outputs(script_pubkey, index, amount, tx, flags, &[])
+}
+
+fn verify_script_input_with_spent_outputs(
+    script_pubkey: &ScriptPubKey,
+    index: usize,
+    amount: Amount,
+    tx: &Transaction,
+    flags: u32,
+    outputs: &[node_parity::SpentOutput<'_>],
+) -> Result<(), TidecoinValidationError> {
     if index >= tx.inputs.len() {
         return Err(TidecoinValidationError::InvalidInputIndex { index, inputs: tx.inputs.len() });
     }
 
     TidecoinNodeHarness::from_env()
         .map_err(map_node_parity_error)?
-        .verify_tx_input_hex(
+        .verify_tx_input_with_spent_outputs(
             &encode_consensus_hex(tx),
             index,
             script_pubkey.as_bytes(),
             amount.to_sat().try_into().unwrap(),
             normalize_flags(flags),
+            outputs,
         )
         .map_err(map_node_parity_error)
 }
@@ -252,13 +268,7 @@ mod tests {
     use consensus_core::SighashCache;
 
     fn node_harness_available() -> bool {
-        match TidecoinNodeHarness::from_env() {
-            Ok(_) => true,
-            Err(err) => {
-                std::eprintln!("skipping Tidecoin node-backed validation test: {err}");
-                false
-            }
-        }
+        TidecoinNodeHarness::optional_from_env().is_some()
     }
 
     macro_rules! require_node_harness {
@@ -410,12 +420,17 @@ mod tests {
     fn witness_v1_512_sig(
         tx: &Transaction,
         input_index: usize,
-        amount: Amount,
+        spent_outputs: Vec<TxOut>,
         witness_script: &WitnessScriptBuf,
         sk: &PqSecretKey,
         legacy: bool,
     ) -> Vec<u8> {
-        let mut cache = SighashCache::new(tx);
+        let amount = spent_outputs[input_index].amount;
+        let mut cache = SighashCache::new_with_spent_outputs(
+            tx,
+            consensus_core::SpentOutputs::from_txouts(spent_outputs),
+        )
+        .unwrap();
         let sighash = cache
             .p2wsh512_signature_hash(
                 input_index,
@@ -605,6 +620,7 @@ mod tests {
         flags.split(',').fold(VERIFY_NONE, |acc, word| {
             acc | match word {
                 "P2SH" => VERIFY_P2SH,
+                "DEFINED_HASHTYPE" => VERIFY_DEFINED_HASHTYPE,
                 "SIGPUSHONLY" => VERIFY_SIGPUSHONLY,
                 "MINIMALDATA" => VERIFY_MINIMALDATA,
                 "NULLDUMMY" => VERIFY_NULLDUMMY,
@@ -707,7 +723,7 @@ mod tests {
 
     fn all_consensus_flags() -> Vec<u32> {
         let mut out = Vec::new();
-        for i in 0..64u32 {
+        for i in 0..256u32 {
             let mut flags = VERIFY_NONE;
             if i & 1 != 0 {
                 flags |= VERIFY_P2SH;
@@ -726,6 +742,12 @@ mod tests {
             }
             if i & 32 != 0 {
                 flags |= VERIFY_PQ_STRICT;
+            }
+            if i & 64 != 0 {
+                flags |= VERIFY_WITNESS_V1_512;
+            }
+            if i & 128 != 0 {
+                flags |= VERIFY_SHA512;
             }
             if flags & VERIFY_WITNESS != 0 && flags & VERIFY_P2SH == 0 {
                 continue;
@@ -806,10 +828,26 @@ mod tests {
                 .unwrap_or_else(|e| panic!("valid tx sanity failed at {}: {}", idx, e));
             for (input_idx, input) in tx.inputs.iter().enumerate() {
                 let spent = prevouts.get(&input.previous_output).unwrap();
-                verify_script_input(&spent.script_pubkey, input_idx, spent.amount, &tx, flags)
-                    .unwrap_or_else(|e| {
-                        panic!("tx_valid_pq[{}] input {} failed: {}", idx, input_idx, e)
-                    });
+                verify_script_input_with_spent_outputs(
+                    &spent.script_pubkey,
+                    input_idx,
+                    spent.amount,
+                    &tx,
+                    flags,
+                    &tx.inputs
+                        .iter()
+                        .map(|input| {
+                            let out = prevouts.get(&input.previous_output).unwrap();
+                            node_parity::SpentOutput {
+                                amount: out.amount.to_sat() as i64,
+                                script_pubkey: out.script_pubkey.as_bytes(),
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_else(|e| {
+                    panic!("tx_valid_pq[{}] input {} failed: {}", idx, input_idx, e)
+                });
             }
         }
     }
@@ -840,8 +878,24 @@ mod tests {
             let mut any_failed = false;
             for (input_idx, input) in tx.inputs.iter().enumerate() {
                 let spent = prevouts.get(&input.previous_output).unwrap();
-                if verify_script_input(&spent.script_pubkey, input_idx, spent.amount, &tx, flags)
-                    .is_err()
+                if verify_script_input_with_spent_outputs(
+                    &spent.script_pubkey,
+                    input_idx,
+                    spent.amount,
+                    &tx,
+                    flags,
+                    &tx.inputs
+                        .iter()
+                        .map(|input| {
+                            let out = prevouts.get(&input.previous_output).unwrap();
+                            node_parity::SpentOutput {
+                                amount: out.amount.to_sat() as i64,
+                                script_pubkey: out.script_pubkey.as_bytes(),
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .is_err()
                 {
                     any_failed = true;
                     break;
@@ -1147,14 +1201,23 @@ mod tests {
                 tx.inputs[index].witness = Witness::from_slice(&witness_items);
 
                 for flags in &all_flags {
-                    if is_final || (*flags & test_flags) == *flags {
+                    if node_parity::same_script_activation(*flags, test_flags)
+                        && (is_final || (*flags & test_flags) == *flags)
+                    {
                         let prevout = &prevouts[index];
-                        verify_script_input(
+                        verify_script_input_with_spent_outputs(
                             &prevout.script_pubkey,
                             index,
                             prevout.amount,
                             &tx,
                             *flags,
+                            &prevouts
+                                .iter()
+                                .map(|out| node_parity::SpentOutput {
+                                    amount: out.amount.to_sat() as i64,
+                                    script_pubkey: out.script_pubkey.as_bytes(),
+                                })
+                                .collect::<Vec<_>>(),
                         )
                         .unwrap_or_else(|e| {
                             panic!(
@@ -1179,15 +1242,24 @@ mod tests {
                 tx.inputs[index].witness = Witness::from_slice(&witness_items);
 
                 for flags in &all_flags {
-                    if (*flags & test_flags) == test_flags {
+                    if node_parity::same_script_activation(*flags, test_flags)
+                        && (*flags & test_flags) == test_flags
+                    {
                         let prevout = &prevouts[index];
                         assert!(
-                            verify_script_input(
+                            verify_script_input_with_spent_outputs(
                                 &prevout.script_pubkey,
                                 index,
                                 prevout.amount,
                                 &tx,
-                                *flags
+                                *flags,
+                                &prevouts
+                                    .iter()
+                                    .map(|out| node_parity::SpentOutput {
+                                        amount: out.amount.to_sat() as i64,
+                                        script_pubkey: out.script_pubkey.as_bytes(),
+                                    })
+                                    .collect::<Vec<_>>(),
                             )
                             .is_err(),
                             "script_assets_test[{}] failure unexpectedly passed under {:x}",
@@ -1321,14 +1393,16 @@ mod tests {
             ScriptPubKeyBuf::builder().push_int(1).unwrap().push_slice(program).into_script();
         let witness = Witness::from_slice(&[witness_script.as_bytes()]);
 
-        verify_script_case(
-            &ScriptSigBuf::new(),
-            &script_pubkey,
-            &witness,
-            Amount::from_sat(0).unwrap(),
-            VERIFY_WITNESS | VERIFY_P2SH,
-        )
-        .unwrap();
+        assert_eq!(
+            verify_script_case(
+                &ScriptSigBuf::new(),
+                &script_pubkey,
+                &witness,
+                Amount::from_sat(0).unwrap(),
+                VERIFY_WITNESS | VERIFY_P2SH,
+            ),
+            Err(TidecoinValidationError::Script(ScriptError::WitnessUnexpected))
+        );
 
         assert_eq!(
             verify_script_case(
@@ -1338,7 +1412,7 @@ mod tests {
                 Amount::from_sat(0).unwrap(),
                 VERIFY_WITNESS | VERIFY_P2SH | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
             ),
-            Err(TidecoinValidationError::Script(ScriptError::DiscourageUpgradableWitnessProgram,))
+            Err(TidecoinValidationError::Script(ScriptError::WitnessUnexpected,))
         );
     }
 
@@ -1411,7 +1485,7 @@ mod tests {
         require_node_harness!();
 
         run_with_large_stack("pq-multisig-single-scheme", || {
-            let flags = VERIFY_WITNESS | VERIFY_P2SH;
+            let flags = VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT;
             let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
 
             for scheme in [
@@ -1425,8 +1499,8 @@ mod tests {
                     let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
                         .map(|idx| deterministic_keypair(scheme, (0x10 + n + idx) as u8))
                         .collect();
-                    verify_multisig_case(&keys, m, false, flags, true);
-                    verify_multisig_case(&keys, m, true, flags, true);
+                    verify_multisig_case(&keys, m, false, flags, false);
+                    verify_multisig_case(&keys, m, true, flags, false);
                 }
             }
         });
@@ -1452,14 +1526,14 @@ mod tests {
             amount,
             &witness_script,
             &[keys[0].1.clone(), keys[1].1.clone()],
-            true,
+            false,
         );
         verify_script_input(
             &direct_p2wsh_script_pubkey(&witness_script),
             0,
             amount,
             &direct_tx,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
         )
         .unwrap();
 
@@ -1472,10 +1546,16 @@ mod tests {
             amount,
             &witness_script,
             &[keys[0].1.clone(), keys[1].1.clone()],
-            true,
+            false,
         );
-        verify_script_input(&wrapped_spk, 0, amount, &wrapped_tx, VERIFY_WITNESS | VERIFY_P2SH)
-            .unwrap();
+        verify_script_input(
+            &wrapped_spk,
+            0,
+            amount,
+            &wrapped_tx,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1632,13 +1712,13 @@ mod tests {
 
         let mut direct_tx = tx_template(1);
         direct_tx.inputs[0].witness =
-            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, true);
+            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, false);
         verify_script_input(
             &direct_p2wsh_script_pubkey(&witness_script),
             0,
             amount,
             &direct_tx,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
         )
         .unwrap();
 
@@ -1646,12 +1726,18 @@ mod tests {
         let mut wrapped_tx = tx_template(1);
         wrapped_tx.inputs[0].script_sig = wrapped_sig;
         wrapped_tx.inputs[0].witness =
-            signed_committed_hash_witness(&wrapped_tx, 0, amount, &witness_script, &keys, 2, true);
-        verify_script_input(&wrapped_spk, 0, amount, &wrapped_tx, VERIFY_WITNESS | VERIFY_P2SH)
-            .unwrap();
+            signed_committed_hash_witness(&wrapped_tx, 0, amount, &witness_script, &keys, 2, false);
+        verify_script_input(
+            &wrapped_spk,
+            0,
+            amount,
+            &wrapped_tx,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
+        )
+        .unwrap();
 
         let mut bad_pubkey_witness =
-            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, true)
+            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, false)
                 .to_vec();
         bad_pubkey_witness.swap(1, 3);
         let mut bad_pubkey_tx = tx_template(1);
@@ -1661,12 +1747,12 @@ mod tests {
             0,
             amount,
             &bad_pubkey_tx,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
         )
         .is_err());
 
         let mut bad_sig_blob =
-            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, true)
+            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, false)
                 .to_vec();
         bad_sig_blob[0] = vec![0x01];
         let mut bad_sig_tx = tx_template(1);
@@ -1676,7 +1762,7 @@ mod tests {
             0,
             amount,
             &bad_sig_tx,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
         )
         .is_err());
 
@@ -1688,19 +1774,19 @@ mod tests {
             &witness_script,
             &keys,
             1,
-            true,
+            false,
         );
         assert!(verify_script_input(
             &direct_p2wsh_script_pubkey(&witness_script),
             0,
             amount,
             &threshold_tx,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
         )
         .is_err());
 
         let mut swapped_sig_witness =
-            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, true)
+            signed_committed_hash_witness(&direct_tx, 0, amount, &witness_script, &keys, 2, false)
                 .to_vec();
         swapped_sig_witness.swap(0, 2);
         let mut swapped_sig_tx = tx_template(1);
@@ -1710,7 +1796,7 @@ mod tests {
             0,
             amount,
             &swapped_sig_tx,
-            VERIFY_WITNESS | VERIFY_P2SH,
+            VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT,
         )
         .is_err());
     }
@@ -1720,7 +1806,7 @@ mod tests {
         require_node_harness!();
 
         run_with_large_stack("pq-committed-hash-single-scheme", || {
-            let flags = VERIFY_WITNESS | VERIFY_P2SH;
+            let flags = VERIFY_WITNESS | VERIFY_P2SH | VERIFY_PQ_STRICT;
             let cases = [(1usize, 1usize), (2, 3), (3, 5), (15, 15), (20, 20)];
 
             for scheme in [
@@ -1734,8 +1820,8 @@ mod tests {
                     let keys: Vec<(PqPublicKey, PqSecretKey)> = (0..n)
                         .map(|idx| deterministic_keypair(scheme, (0xC0 + n + idx) as u8))
                         .collect();
-                    verify_committed_hash_case(&keys, m, false, flags, true);
-                    verify_committed_hash_case(&keys, m, true, flags, true);
+                    verify_committed_hash_case(&keys, m, false, flags, false);
+                    verify_committed_hash_case(&keys, m, true, flags, false);
                 }
             }
         });
@@ -1758,7 +1844,14 @@ mod tests {
             ScriptPubKeyBuf::builder().push_int(1).unwrap().push_slice(program).into_script();
         let amount = Amount::from_sat_u32(1);
         let mut tx = tx_template(1);
-        let mut sig = witness_v1_512_sig(&tx, 0, amount, &witness_script, &seckey, true);
+        let mut sig = witness_v1_512_sig(
+            &tx,
+            0,
+            vec![TxOut { amount, script_pubkey: script_pubkey.clone() }],
+            &witness_script,
+            &seckey,
+            true,
+        );
         *sig.last_mut().unwrap() = 0;
         tx.inputs[0].witness = Witness::from_slice(&[sig, witness_script.as_bytes().to_vec()]);
 

@@ -7,7 +7,7 @@ use std::str::FromStr;
 use consensus::{ScriptError as RustScriptError, Utxo};
 use consensus_core::{
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
-    VERIFY_CONST_SCRIPTCODE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
+    VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
     VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
     VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
     VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
@@ -36,12 +36,13 @@ pub const ALL_TIDECOIN_SCRIPT_FLAGS: u32 = VERIFY_P2SH
     | VERIFY_CONST_SCRIPTCODE
     | VERIFY_PQ_STRICT
     | VERIFY_WITNESS_V1_512
-    | VERIFY_SHA512;
+    | VERIFY_SHA512
+    | VERIFY_DEFINED_HASHTYPE;
 
-pub const TIDECOIN_SCRIPT_ACTIVATION_FLAGS: u32 = VERIFY_WITNESS_V1_512 | VERIFY_SHA512;
+pub const TIDECOIN_SCRIPT_ACTIVATION_FLAGS: u32 = node_parity::SCRIPT_ACTIVATION_FLAGS;
 
 pub fn try_harness() -> Option<TidecoinNodeHarness> {
-    TidecoinNodeHarness::from_env().ok()
+    TidecoinNodeHarness::optional_from_env()
 }
 
 pub fn parse_script_flags(flags: &str) -> u32 {
@@ -66,6 +67,7 @@ pub fn parse_script_flags(flags: &str) -> u32 {
             "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM" => VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
             "WITNESS_V1_512" => VERIFY_WITNESS_V1_512,
             "CONST_SCRIPTCODE" => VERIFY_CONST_SCRIPTCODE,
+            "DEFINED_HASHTYPE" => VERIFY_DEFINED_HASHTYPE,
             "PQ_STRICT" => VERIFY_PQ_STRICT,
             other => panic!("unknown Tidecoin verification flag {other}"),
         }
@@ -342,7 +344,7 @@ impl OwnedUtxoSet {
 
 pub fn all_script_assets_consensus_flags() -> Vec<u32> {
     let mut flags = Vec::new();
-    for bits in 0u32..64 {
+    for bits in 0u32..256 {
         let mut value = 0u32;
         if bits & 1 != 0 {
             value |= VERIFY_P2SH;
@@ -361,6 +363,12 @@ pub fn all_script_assets_consensus_flags() -> Vec<u32> {
         }
         if bits & 32 != 0 {
             value |= VERIFY_PQ_STRICT;
+        }
+        if bits & 64 != 0 {
+            value |= VERIFY_WITNESS_V1_512;
+        }
+        if bits & 128 != 0 {
+            value |= VERIFY_SHA512;
         }
         if value & VERIFY_WITNESS != 0 && value & VERIFY_P2SH == 0 {
             continue;

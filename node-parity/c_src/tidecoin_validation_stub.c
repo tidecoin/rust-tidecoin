@@ -1,5 +1,12 @@
 #include <stddef.h>
 #include <stdint.h>
+#include "spent_output.h"
+
+int tidecoin_node_uses_scrypt_pow(int network, int height, int activation_height)
+{
+    (void)network; (void)height; (void)activation_height;
+    return -1;
+}
 
 int tidecoin_node_check_transaction(const char* tx_hex)
 {
@@ -33,48 +40,11 @@ int tidecoin_node_yespower_pow_hash(
     return -1;
 }
 
-int tidecoin_node_has_valid_header_pow(
-    const char* header_hex,
-    int network,
-    int has_height,
-    int height)
-{
-    (void)header_hex;
-    (void)network;
-    (void)has_height;
-    (void)height;
-    return -1;
-}
 
-int tidecoin_node_check_block(
-    const char* block_hex,
-    int network,
-    int check_pow,
-    int check_merkle_root)
-{
-    (void)block_hex;
-    (void)network;
-    (void)check_pow;
-    (void)check_merkle_root;
-    return -1;
-}
 
-int tidecoin_node_check_contextual_block(
-    const char* block_hex,
-    int network,
-    int height,
-    int64_t lock_time_cutoff,
-    int enforce_bip34_height,
-    int expect_witness_commitment)
-{
-    (void)block_hex;
-    (void)network;
-    (void)height;
-    (void)lock_time_cutoff;
-    (void)enforce_bip34_height;
-    (void)expect_witness_commitment;
-    return -1;
-}
+
+
+
 
 int tidecoin_node_permitted_difficulty_transition(
     int network,
@@ -89,12 +59,7 @@ int tidecoin_node_permitted_difficulty_transition(
     return -1;
 }
 
-int64_t tidecoin_node_block_subsidy(int network, int height)
-{
-    (void)network;
-    (void)height;
-    return -1;
-}
+
 
 int64_t tidecoin_node_pq_p2wpkh_input_vsize(size_t sig_len, size_t pubkey_len)
 {
@@ -269,6 +234,8 @@ int tidecoin_node_verify_tx_input(
     size_t prev_script_len,
     int64_t amount,
     uint32_t flags,
+    const TidecoinSpentOutput* spent_outputs,
+    size_t spent_output_count,
     int* script_error_out)
 {
     (void)tx_hex;
@@ -277,9 +244,22 @@ int tidecoin_node_verify_tx_input(
     (void)prev_script_len;
     (void)amount;
     (void)flags;
+    (void)spent_outputs;
+    (void)spent_output_count;
     if (script_error_out != NULL) {
         *script_error_out = 1;
     }
+    return -1;
+}
+
+int tidecoin_node_signature_hash_512(
+    const char* tx_hex, size_t input_index, const uint8_t* script, size_t script_len,
+    int64_t amount, int32_t hash_type, const TidecoinSpentOutput* spent_outputs,
+    size_t spent_output_count, uint8_t* hash_out)
+{
+    (void)tx_hex; (void)input_index; (void)script; (void)script_len;
+    (void)amount; (void)hash_type; (void)spent_outputs; (void)spent_output_count;
+    (void)hash_out;
     return -1;
 }
 
@@ -320,5 +300,12 @@ int tidecoin_node_verify_script_case(
     if (script_error_out != NULL) {
         *script_error_out = 1;
     }
+    return -1;
+}
+
+int64_t tidecoin_node_count_witness_sigops(const char* tx_hex, size_t input_index,
+    const unsigned char* prev_script, size_t prev_script_len, unsigned int flags)
+{
+    (void)tx_hex; (void)input_index; (void)prev_script; (void)prev_script_len; (void)flags;
     return -1;
 }

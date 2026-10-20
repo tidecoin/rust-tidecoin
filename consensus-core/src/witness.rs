@@ -83,6 +83,16 @@ impl<'a> WitnessProgram<'a> {
         ParsedWitnessProgram::parse_script_pubkey(script_bytes).map(Self)
     }
 
+    /// Recognizes witness execution under the candidate's flags.
+    /// The structural v1-512 form is an ordinary script before activation.
+    pub fn parse_for_flags(script_bytes: &'a [u8], flags: u32) -> Option<Self> {
+        Self::parse(script_bytes).filter(|program| {
+            program.version() != 1
+                || program.program().len() != 64
+                || flags & VERIFY_WITNESS_V1_512 != 0
+        })
+    }
+
     /// Returns the witness version.
     pub fn version(self) -> u8 {
         self.0.version()
