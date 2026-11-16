@@ -95,4 +95,4 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
       - run: find executed_* -type f -exec cat {} + | sort > executed
-      - run: cargo fuzz list | sort | diff - executed
+      - run: cargo fuzz list | grep -v "^consensus_node_differential$" | sort | diff - executed

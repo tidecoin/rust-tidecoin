@@ -9,7 +9,12 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+[features]
+node-oracle = ["dep:node_parity", "dep:consensus_core"]
+
 [dependencies]
+node_parity = { package = "tidecoin-node-parity", path = "../node-parity", optional = true }
+consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core", optional = true }
 consensus = { path = "../consensus" }
 tidecoin = { path = "../tidecoin", features = [ "serde", "arbitrary" ] }
 tidecoin_consensus_encoding = { path = "../consensus_encoding", package = "tidecoin-consensus-encoding" }
@@ -277,3 +282,11 @@ bench = false
 # Inherits the product crypto API families and derive macros listed in tidecoin.
 # Fuzz infrastructure also brings different getrandom APIs and target/build libc copies.
 allowed_duplicates = ["block-buffer", "cpufeatures", "crypto-common", "digest", "getrandom", "keccak", "libc", "rand_core", "sha3", "syn"]
+
+[[bin]]
+name = "consensus_node_differential"
+path = "fuzz_targets/consensus/node_differential.rs"
+required-features = ["node-oracle"]
+test = false
+doc = false
+bench = false

@@ -93,6 +93,11 @@ impl<'a> ParsedWitnessProgram<'a> {
         if script_bytes.len() != push_len + 2 {
             return None;
         }
+        // Original CScript::IsWitnessProgram extends the 2..=40-byte shape
+        // only for Tidecoin's exact 64-byte v1 program, not every version/length.
+        if push_len > 40 && !(version == 1 && push_len == 64) {
+            return None;
+        }
 
         Some(Self { version, program: &script_bytes[2..] })
     }

@@ -14,6 +14,9 @@ pub struct NodeSpentOutput {
 }
 
 unsafe extern "C" {
+    /// Strict wire decode and original CheckTransaction, with separate invalid-input stages.
+    pub fn tidecoin_node_transaction_status(bytes: *const u8, len: usize) -> c_int;
+
     /// Calls node CountWitnessSigOps for a decoded transaction input.
     pub fn tidecoin_node_count_witness_sigops(
         tx_hex: *const c_char,

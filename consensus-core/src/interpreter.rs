@@ -282,8 +282,15 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         self.sighash_cache.into_inner()
     }
 
-    /// Executes script verification for the configured input.
+    /// Executes script verification for the configured input from fresh execution state.
+    /// Repeated calls have the same verdict, including after a failed attempt.
     pub fn verify(&mut self) -> Result<(), TidecoinValidationError> {
+        // Only transaction-bound sighash data survives calls. Reset before any
+        // early return, just like the node's VerifyScript local execution state.
+        self.stack = ScriptStack::new();
+        self.exec_stack.clear();
+        self.op_count = 0;
+        self.sigops = 0;
         self.last_error = ScriptError::Ok;
         self.had_witness = false;
         self.script_code_cache = None;
@@ -546,6 +553,9 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                 cursor = len_cursor + push_len;
             } else {
                 let op = Opcode::from(opcode);
+                if opcode > all::OP_PUSHNUM_16.to_u8() {
+                    self.add_ops(1)?;
+                }
 
                 if matches!(op, all::OP_VERIF | all::OP_VERNOTIF) {
                     return Err(self.fail(ScriptError::BadOpcode));
@@ -569,9 +579,6 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                         | all::OP_RSHIFT
                 ) {
                     return Err(self.fail(ScriptError::DisabledOpcode));
-                }
-                if opcode > all::OP_PUSHNUM_16.to_u8() {
-                    self.add_ops(1)?;
                 }
                 if op == all::OP_CODESEPARATOR
                     && sigversion == SigVersion::Base
@@ -773,6 +780,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                 self.push_element(stack, second)?;
             }
             OP_PICK => {
+                self.require_stack_items(stack, 2)?;
                 let depth = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
                 if depth < 0 {
                     return Err(self.fail(ScriptError::InvalidStackOperation));
@@ -786,6 +794,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                 self.push_element(stack, value)?;
             }
             OP_ROLL => {
+                self.require_stack_items(stack, 2)?;
                 let depth = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
                 if depth < 0 {
                     return Err(self.fail(ScriptError::InvalidStackOperation));
@@ -876,6 +885,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             | OP_GREATERTHANOREQUAL
             | OP_MIN
             | OP_MAX => {
+                self.require_stack_items(stack, 2)?;
                 let b = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
                 let a = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
                 let result = match op {
@@ -959,6 +969,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                 }
             }
             OP_WITHIN => {
+                self.require_stack_items(stack, 3)?;
                 let max = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
                 let min = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
                 let value = self.pop_scriptnum(stack, require_minimal, SCRIPTNUM_MAX_LEN)?;
@@ -1042,19 +1053,16 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
                     let condition =
                         self.map_failure(stack.pop_bytes(), ScriptError::UnbalancedConditional)?;
                     let enforce_minimal_if = match sigversion {
-                        SigVersion::WitnessV0 => self.flags.bits() & VERIFY_MINIMALIF != 0,
-                        SigVersion::WitnessV1_512 => true,
+                        SigVersion::WitnessV0 | SigVersion::WitnessV1_512 => {
+                            self.flags.bits() & VERIFY_MINIMALIF != 0
+                        }
                         SigVersion::Base => false,
-                    };
-                    let minimal_if_error = match sigversion {
-                        SigVersion::WitnessV1_512 => ScriptError::MinimalIf,
-                        _ => ScriptError::MinimalIf,
                     };
                     if enforce_minimal_if
                         && !condition.is_empty()
                         && !is_minimal_if_condition(&condition)
                     {
-                        return Err(self.fail(minimal_if_error));
+                        return Err(self.fail(ScriptError::MinimalIf));
                     }
                     value = read_scriptbool(&condition);
                     if op == OP_NOTIF {
@@ -1280,6 +1288,19 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         Err(self.fail(ScriptError::BadOpcode))
     }
 
+    /// Match `EvalScript`: reject a short stack before `CScriptNum` can raise
+    /// `SCRIPT_ERR_UNKNOWN_ERROR` for overflow or a non-minimal encoding.
+    fn require_stack_items(
+        &mut self,
+        stack: &ScriptStack,
+        needed: usize,
+    ) -> Result<(), TidecoinValidationError> {
+        if stack.len() < needed {
+            return Err(self.fail(ScriptError::InvalidStackOperation));
+        }
+        Ok(())
+    }
+
     fn pop_scriptnum(
         &mut self,
         stack: &mut ScriptStack,
@@ -1406,7 +1427,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         }
         let tail = &script.as_bytes()[code_separator..];
         if strip_codeseparators {
-            let stripped = strip_opcode(tail, all::OP_CODESEPARATOR)?;
+            let stripped = strip_opcode(tail, all::OP_CODESEPARATOR);
             Ok(RawScriptBuf::from_bytes(stripped))
         } else {
             Ok(RawScriptBuf::from_bytes(tail.to_vec()))
@@ -1679,9 +1700,11 @@ fn is_p2sh(script_bytes: &[u8]) -> bool {
         && script_bytes[22] == all::OP_EQUAL.to_u8()
 }
 
+/// Encodes `data` as original `CScript() << data` does: always a length-prefixed
+/// push, never a small-integer opcode. This is the FindAndDelete search pattern.
 fn single_push_script(data: &[u8]) -> Result<RawScriptBuf, primitives::script::PushBytesError> {
     let push = PushBytesBuf::try_from(data.to_vec())?;
-    Ok(Builder::new().push_slice(push).into_script())
+    Ok(Builder::new().push_slice_non_minimal(push).into_script())
 }
 
 fn map_core_script_error(error: ScriptError) -> ScriptError {
@@ -1734,21 +1757,20 @@ fn is_minimal_push(opcode: u8, data: &[u8]) -> bool {
     opcode == OP_PUSHDATA4.to_u8()
 }
 
-fn strip_opcode(script_bytes: &[u8], opcode: Opcode) -> Result<Vec<u8>, Error> {
-    let instructions =
-        collect_instruction_indices(script_bytes, false).map_err(|_| script_unknown())?;
+fn strip_opcode(script_bytes: &[u8], opcode: Opcode) -> Vec<u8> {
+    // Original CTransactionSignatureSerializer stops GetOp at a malformed
+    // instruction and preserves the remaining bytes. Preparing scriptCode must
+    // not reject a tail before execution reaches it (or before an earlier error).
     let mut stripped = Vec::with_capacity(script_bytes.len());
-
-    for (idx, (pos, instruction)) in instructions.iter().enumerate() {
-        if matches!(instruction, Instruction::Op(op) if *op == opcode) {
-            continue;
+    let mut pos = 0;
+    while let Some(next) = next_instruction_offset(script_bytes, pos) {
+        if next != pos + 1 || script_bytes[pos] != opcode.to_u8() {
+            stripped.extend_from_slice(&script_bytes[pos..next]);
         }
-        let next_pos =
-            if idx + 1 < instructions.len() { instructions[idx + 1].0 } else { script_bytes.len() };
-        stripped.extend_from_slice(&script_bytes[*pos..next_pos]);
+        pos = next;
     }
-
-    Ok(stripped)
+    stripped.extend_from_slice(&script_bytes[pos..]);
+    stripped
 }
 
 fn find_and_delete(script_bytes: &[u8], pattern: &[u8]) -> (Vec<u8>, usize) {
@@ -1882,6 +1904,7 @@ fn count_sigops(script_bytes: &[u8], accurate: bool) -> Result<u32, TidecoinVali
     Ok(total)
 }
 
+#[cfg(test)]
 fn collect_instruction_indices<'a>(
     script_bytes: &'a [u8],
     enforce_minimal: bool,
@@ -1967,7 +1990,7 @@ fn decode_op_n(opcode: Option<Opcode>) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{VERIFY_P2SH, VERIFY_SIGPUSHONLY, VERIFY_WITNESS};
+    use crate::{VERIFY_MINIMALDATA, VERIFY_P2SH, VERIFY_SIGPUSHONLY, VERIFY_WITNESS};
     use alloc::vec;
     use hashes::sha256;
     use primitives::{
@@ -2181,6 +2204,27 @@ mod tests {
     }
 
     #[test]
+    fn signature_pattern_uses_explicit_push_encoding() {
+        // Original EvalChecksigPreTapscript searches for `CScript() << vchSig`,
+        // which always writes a length prefix. Values that have small-integer
+        // opcodes must not be converted to OP_0/OP_1NEGATE/OP_1..OP_16.
+        // Minimized from crash-bf928ece.
+        assert_eq!(single_push_script(&[]).unwrap().as_bytes(), [0x00]);
+        assert_eq!(single_push_script(&[0x00]).unwrap().as_bytes(), [0x01, 0x00]);
+        assert_eq!(single_push_script(&[0x81]).unwrap().as_bytes(), [0x01, 0x81]);
+        for value in 1..=16u8 {
+            assert_eq!(single_push_script(&[value]).unwrap().as_bytes(), [0x01, value]);
+        }
+        assert_eq!(single_push_script(&[0x04, 0x01]).unwrap().as_bytes(), [0x02, 0x04, 0x01]);
+
+        let script = vec![all::OP_PUSHNUM_4.to_u8(), 0x01, 0x04, all::OP_CHECKSIG.to_u8()];
+        let pattern = single_push_script(&[0x04]).unwrap();
+        let (stripped, removed) = find_and_delete(&script, pattern.as_bytes());
+        assert_eq!(removed, 1);
+        assert_eq!(stripped, vec![all::OP_PUSHNUM_4.to_u8(), all::OP_CHECKSIG.to_u8()]);
+    }
+
+    #[test]
     fn find_and_delete_does_not_match_sub_slices() {
         let pattern = single_push_script(&[0xaa]).unwrap();
         let script = Builder::new()
@@ -2305,6 +2349,46 @@ mod tests {
     }
 
     #[test]
+    fn repeated_verification_starts_with_empty_execution_state() {
+        for (script, valid) in [
+            (vec![0x51], true),
+            (vec![0x51, 0x6e, 0x75, 0x75, 0x75], false),
+            (vec![0x51, 0x63], false),
+            (vec![0x51, 0x6b, 0x6a], false),
+        ] {
+            let tx = Transaction {
+                version: TransactionVersion::TWO,
+                lock_time: LockTime::ZERO,
+                inputs: vec![TxIn {
+                    previous_output: dummy_outpoint(),
+                    script_sig: ScriptSigBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::new(),
+                }],
+                outputs: vec![TxOut {
+                    amount: Amount::from_sat(1).unwrap(),
+                    script_pubkey: ScriptPubKeyBuf::new(),
+                }],
+            };
+            let ctx = TransactionContext::new(&tx);
+            let mut interpreter = Interpreter::new(
+                &ctx,
+                0,
+                SpendContext::new(&script, None, 2, true),
+                ScriptFlags::from_bits(crate::VERIFY_ALL_TIDECOIN).unwrap(),
+            )
+            .unwrap();
+            let first = interpreter.verify();
+            let error = interpreter.last_script_error();
+            assert_eq!(first.is_ok(), valid);
+            for _ in 0..3 {
+                assert_eq!(interpreter.verify(), first, "script={script:?}");
+                assert_eq!(interpreter.last_script_error(), error);
+            }
+        }
+    }
+
+    #[test]
     fn scriptnum_overflow_maps_to_unknown() {
         let overflow = vec![0x00, 0x00, 0x00, 0x80, 0x00];
         let err = parse_scriptnum(&overflow, false, SCRIPTNUM_MAX_LEN).unwrap_err();
@@ -2318,6 +2402,74 @@ mod tests {
         assert_eq!(err, ScriptError::Unknown);
         let ok = parse_scriptnum(&non_minimal, false, SCRIPTNUM_MAX_LEN).unwrap();
         assert_eq!(ok, 1);
+    }
+
+    fn verify_legacy(
+        script_sig: &[u8],
+        script_pubkey: &[u8],
+        flags: u32,
+    ) -> Result<(), ScriptError> {
+        let tx = Transaction {
+            version: TransactionVersion::TWO,
+            lock_time: LockTime::ZERO,
+            inputs: vec![TxIn {
+                previous_output: dummy_outpoint(),
+                script_sig: ScriptSigBuf::from_bytes(script_sig.to_vec()),
+                sequence: Sequence::MAX,
+                witness: Witness::new(),
+            }],
+            outputs: vec![TxOut {
+                amount: Amount::from_sat(1).unwrap(),
+                script_pubkey: ScriptPubKeyBuf::new(),
+            }],
+        };
+        let ctx = TransactionContext::new(&tx);
+        let mut interpreter = Interpreter::new(
+            &ctx,
+            0,
+            SpendContext::new(script_pubkey, None, 2, true),
+            ScriptFlags::from_bits(flags).unwrap(),
+        )
+        .unwrap();
+        interpreter.verify().map_err(|_| interpreter.last_script_error())
+    }
+
+    #[test]
+    fn numeric_opcodes_check_stack_depth_before_scriptnum_errors() {
+        let oversized = [0x05, 0, 0, 0, 0, 0];
+        let two = [0x01, 0x01, 0x05, 0, 0, 0, 0, 0];
+        let minimal_flags = VERIFY_MINIMALDATA;
+        for opcode in [0x93, 0x94, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4]
+        {
+            assert_eq!(
+                verify_legacy(&oversized, &[opcode], 0),
+                Err(ScriptError::InvalidStackOperation),
+                "opcode={opcode:#x}"
+            );
+            assert_eq!(
+                verify_legacy(&two, &[opcode], 0),
+                Err(ScriptError::Unknown),
+                "opcode={opcode:#x}"
+            );
+            assert_eq!(
+                verify_legacy(&[0x02, 0x01, 0x00], &[opcode], minimal_flags),
+                Err(ScriptError::InvalidStackOperation),
+                "opcode={opcode:#x}"
+            );
+        }
+        for opcode in [0x79, 0x7a] {
+            let mut short = oversized.to_vec();
+            short.push(opcode);
+            assert_eq!(verify_legacy(&[], &short, 0), Err(ScriptError::InvalidStackOperation));
+            let mut deep = two.to_vec();
+            deep.push(opcode);
+            assert_eq!(verify_legacy(&[], &deep, 0), Err(ScriptError::Unknown));
+        }
+        assert_eq!(verify_legacy(&two, &[0xa5], 0), Err(ScriptError::InvalidStackOperation));
+        assert_eq!(
+            verify_legacy(&[0x01, 0x01, 0x01, 0x01, 0x05, 0, 0, 0, 0, 0], &[0xa5], 0),
+            Err(ScriptError::Unknown)
+        );
     }
 
     #[test]

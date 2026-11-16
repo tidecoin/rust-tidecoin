@@ -1,0 +1,68 @@
+name: Original-node differential fuzzing
+on:
+  push:
+    branches: [v2, main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 5 * * *'
+permissions: {}
+jobs:
+  differential:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      TIDECOIN_NODE_REPO: ${{ github.workspace }}/reference-node
+      TIDECOIN_NODE_PARITY_REQUIRED: '1'
+      CC: clang
+      CXX: clang++
+      CFLAGS: '-fsanitize=address -fno-omit-frame-pointer'
+      CXXFLAGS: '-fsanitize=address -fno-omit-frame-pointer'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Read pinned versions
+        id: pins
+        run: |
+          echo "node=$(cat node-parity/NODE_REVISION)" >> "$GITHUB_OUTPUT"
+          echo "rust=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["metadata"]["rbmt"]["toolchains"]["nightly"])')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: tidecoin/tidecoin
+          ref: ${{ steps.pins.outputs.node }}
+          path: reference-node
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        with:
+          toolchain: ${{ steps.pins.outputs.rust }}
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libboost-dev
+          cargo install cargo-fuzz --version 0.13.1 --locked
+      - name: Seed original-node corpus
+        run: python3 fuzz/seed-node-corpus.py target/node-corpus
+      - name: Compare original C++ and Rust with AddressSanitizer
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          mkdir -p target/node-artifacts
+          budget=(-runs=50000)
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+            budget=(-max_total_time=1800)
+          fi
+          cargo fuzz run --features node-oracle --target-dir target/node-fuzz \
+            consensus_node_differential target/node-corpus -- \
+            "${budget[@]}" -max_len=8192 -seed=1 \
+            -artifact_prefix=target/node-artifacts/
+      - name: Preserve reproductions and corpus
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: original-node-fuzz-corpus
+          path: |
+            target/node-corpus
+            target/node-artifacts

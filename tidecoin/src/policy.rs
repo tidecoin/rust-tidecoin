@@ -753,7 +753,9 @@ fn witness_standard_for_program<T: crate::script::ScriptHashableTag>(
     if script.witness_version().is_none() {
         return false;
     }
-    if script.is_p2wpkh() {
+    // IsWitnessStandard only applies v0 stack limits to P2WSH. Invalid
+    // v0 program lengths are rejected later by consensus, not by this helper.
+    if script.witness_version() == Some(WitnessVersion::V0) && !script.is_p2wsh() {
         return true;
     }
     if script.is_p2wsh() || script.is_p2wsh512() {

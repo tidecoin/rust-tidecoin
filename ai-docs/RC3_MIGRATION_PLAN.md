@@ -249,3 +249,71 @@ product gate **371 passed / 9 targets**, no failures or ignored tests. Pinned
 nightly all-features/all-targets Clippy with `-D warnings`, MSRV 1.94.1 no-default
 product check, formatting and public documentation builds pass. Hosted results
 for this follow-up must be checked separately from the initial rc3 run above.
+
+### Script, witness and decoding review (2026-11-16)
+
+This review extended original-C++ comparison beyond the initial checkpoint to
+interpreter state, witness recognition, sighash context, wire decoding and limit
+combinations. It found the following Rust discrepancies. All were fixed in Rust.
+None is a node defect.
+
+| Finding | Effect before the fix | Fix and regression |
+| --- | --- | --- |
+| `Interpreter::verify()` kept its stack between calls | Reusing one low-level interpreter could accept a script that a fresh verification rejects. The higher-level verification functions create fresh interpreters. | All execution state is reset before any early return. Transaction-bound sighash caches are kept. `original_node_execution_boundaries_and_reuse` |
+| Witness v1 always enforced `MINIMALIF` | Rust rejected v1 spends that rc3 accepts when `MINIMALIF` is not set. That flag is standard but not mandatory. | Flag-controlled for v0 and v1, as in the original `EvalScript`. `minimalif_and_competing_opcode_errors_follow_original_flags` |
+| Witness program recognition accepted other lengths and versions | Rust classified some ordinary scripts as witness programs. | Recognition is limited to 2–40 bytes plus exactly 64-byte v1, as in `CScript::IsWitnessProgram`. `witness_program_recognition_matches_original_execution` |
+| The policy helper rejected malformed v0 program lengths | Policy verdict differed. Original `IsWitnessStandard` leaves this to consensus. | Only P2WSH gets v0 stack limits. `rc3_witness_context.rs` |
+| Legacy multisig scriptCode preparation rejected a malformed script end | Wrong error (generic instead of `BAD_OPCODE`). | The malformed end is kept, as in original `FindAndDelete`. `malformed_legacy_multisig_tail_preserves_original_error_order` (crash-61efecbb) |
+| Disabled/invalid opcode checks ran before the opcode-count limit | Wrong error when both apply. | Order follows original `EvalScript`. Same MINIMALIF/opcode test. |
+| `PICK`, `ROLL`, binary numeric opcodes and `WITHIN` decoded operands before checking stack depth | `UNKNOWN_ERROR` instead of `INVALID_STACK_OPERATION`. | Depth is checked first. `numeric_opcode_depth_precedes_scriptnum_errors` (crash-8e940121) |
+| The legacy `FindAndDelete` search pattern used minimal push encoding | For a 1-byte signature 1–16 or `0x81`, Rust searched for `OP_1`…`OP_16`/`OP_1NEGATE` instead of `CScript() << vchSig` (`01 xx`). It removed the wrong bytes and reported `SIG_FINDANDDELETE` incorrectly. Under standard flags both reject with different errors. Consensus outcome is unchanged because such a signature cannot verify. With `CONST_SCRIPTCODE` but not `NULLFAIL`, Rust rejected spends rc3 accepts. | Length-prefixed push, as in the original `AppendDataSize`. `legacy_signature_removal_uses_explicit_push_encoding` (crash-bf928ece) and `signature_pattern_uses_explicit_push_encoding` |
+
+The P2SH-witness check that the scriptSig is exactly one push of the redeem
+script uses the same helper. It also matches the original
+`CScript() << vector`. Its input is always a witness program of at least 4 bytes,
+so its result is unchanged.
+
+**Comparison infrastructure.** `fuzz/src/differential.rs` runs each case through
+original C++ `VerifyScript` and through Rust in three ways: fresh typed
+verification, the byte API, and three repeated calls on one interpreter. It
+compares exact script errors, not only acceptance. Harness or context failures
+stop the run instead of counting as script rejection. Wire decoding and
+transaction sanity are compared separately from script execution, because C++
+can run scripts on a transaction that fails sanity checks, while the Rust byte
+API rejects it while decoding. The cases cover:
+
+- mixed legacy/v0/v1 signed transactions
+- mutated amounts, scripts, outpoints, sequences, signatures and hash modes
+- cached versus fresh v1 hashes
+- complete versus missing spent-output context
+- compact inputs expanded to large script, stack and element sizes
+
+`fuzz/tests/node_oracle.rs` holds the deterministic matrices and the minimized
+regressions. It runs in the required node-parity CI job. `consensus_node_differential`
+is the fuzz target. `fuzz/seed-node-corpus.py` writes 1,406 seeds, including the
+four original inputs that exposed the mismatches. `node-differential.yml` runs
+the target with AddressSanitizer in both Rust and C++: 50,000 runs on push and
+pull request, and 30 minutes on schedule or manual dispatch.
+
+**Results.**
+
+- The deterministic matrices found the other four findings in the table.
+- Four ASan fuzz campaigns found the four findings with crash IDs, one per
+  campaign. Each was minimized into a regression and fixed, and the saved
+  inputs now replay cleanly.
+- After the last fix, a 50,000-run campaign (seed 5) found no mismatch.
+- Four parallel 30-minute ASan campaigns (seeds 11–14) completed 4,902,283
+  runs with no mismatch. Coverage leveled off at 7,039–7,044 edges and about
+  2,000 corpus entries.
+- Required original-node workspace gate: **1,811 passed / 109 targets**.
+- Product gate: **372 passed / 9 targets**.
+- `node_oracle`: 8 passed. No failures or ignored tests.
+- The oracle executable was rebuilt from the pinned rc3 checkout for these runs.
+- Pinned nightly all-features/all-targets Clippy with `-D warnings`,
+  no-default-features workspace check, MSRV 1.94.1 no-default checks and
+  formatting pass.
+
+**Limits.** Fuzzing samples inputs; a clean campaign does not prove that no
+mismatch remains. The comparison covers script verification with
+caller-supplied spent outputs. It does not cover UTXO-backed checks, mempool or
+package policy. Miri and constant-time properties are outside this review.

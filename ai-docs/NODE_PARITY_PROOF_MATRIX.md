@@ -26,6 +26,15 @@ and fractional rate precision gaps. Signing tests also cover nonce freshness,
 forced completed retries, exhaustion, entropy failure and repeated original-node
 verification. See the follow-up in [the migration plan](RC3_MIGRATION_PLAN.md).
 
+The script, witness and decoding review adds `fuzz/tests/node_oracle.rs` and the
+`consensus_node_differential` fuzz target. Both compare exact script errors from
+original C++ `VerifyScript` with fresh, byte-API and repeated-interpreter Rust
+verification, and compare wire decoding and transaction sanity as separate
+layers. Eight Rust discrepancies were found and fixed: interpreter reuse,
+witness-v1 `MINIMALIF`, witness program recognition, v0 standardness, multisig
+tail order, opcode-limit order, numeric stack depth and `FindAndDelete` push
+encoding. See [the review record](RC3_MIGRATION_PLAN.md#script-witness-and-decoding-review-2026-11-16).
+
 ## Retained and updated differential suites
 
 Historical `rc2` filenames retain regression provenance; required runs now use
@@ -105,6 +114,7 @@ ephemeral dust packages belong to future stateful crates.
 | Node fuzz surface | Rust fuzz/proof target | Status |
 | --- | --- | --- |
 | `script_interpreter.cpp` | `consensus_script_runtime`, `tidecoin_random_consistency`, script assets | active stateless coverage |
+| `script_interpreter.cpp` verdicts and errors | `consensus_node_differential` (original C++ comparison, ASan), `fuzz/tests/node_oracle.rs` | active differential coverage |
 | `script_ops.cpp`, `scriptnum_ops.cpp` | scriptnum unit matrices and runtime consistency | active test/property coverage |
 | `script.cpp` | `tidecoin_script_policy` | active fuzz coverage |
 | `tx_out.cpp` | `tidecoin_tx_out_policy` | active fuzz coverage |

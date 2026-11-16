@@ -54,6 +54,8 @@ jobs:
         run: cargo test --workspace --all-targets
       - name: Product API node differential tests
         run: cargo test -p tidecoin --lib --tests --features tidecoin-node-validation
+      - name: Original-node script, witness, sighash and wire matrices
+        run: cargo test -p tidecoin-fuzz --features node-oracle --test node_oracle
       - name: Clippy
         run: cargo clippy --workspace --all-targets
       - name: No-default-features workspace

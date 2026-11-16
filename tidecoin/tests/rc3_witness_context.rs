@@ -121,3 +121,97 @@ fn rc3_headers_batch_size_and_message_limits_match_node() {
         }
     }
 }
+
+#[test]
+fn malformed_witness_shapes_policy_and_sigops_match_original_callers() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let mut requests = Vec::new();
+    let mut expected = Vec::new();
+    for version in [0u8, 1, 2, 16] {
+        for length in [0, 1, 2, 19, 20, 21, 31, 32, 33, 40, 41, 63, 64, 65] {
+            let program = [
+                vec![if version == 0 { 0 } else { 0x50 + version }, length as u8],
+                vec![0; length],
+            ]
+            .concat();
+            for wrapped in [false, true] {
+                for malformed_sig in [false, true] {
+                    for active in [false, true] {
+                        for witness in [
+                            vec![],
+                            vec![vec![]],
+                            vec![vec![0xac]],
+                            vec![vec![0; 8193], vec![0x75, 0x51]],
+                        ] {
+                            let mut tx = Transaction {
+                                version: Version::TWO,
+                                lock_time: absolute::LockTime::ZERO,
+                                inputs: vec![TxIn {
+                                    previous_output: OutPoint {
+                                        txid: Txid::from_byte_array([9; 32]),
+                                        vout: 0,
+                                    },
+                                    script_sig: ScriptSigBuf::new(),
+                                    sequence: Sequence::MAX,
+                                    witness: Witness::from(witness),
+                                }],
+                                outputs: vec![TxOut {
+                                    amount: Amount::ONE_SAT,
+                                    script_pubkey: ScriptPubKeyBuf::new(),
+                                }],
+                            };
+                            let locking = if wrapped {
+                                let mut sig = vec![program.len() as u8];
+                                sig.extend_from_slice(&program);
+                                tx.inputs[0].script_sig = ScriptSigBuf::from_bytes(sig);
+                                [
+                                    vec![0xa9, 20],
+                                    hash160::Hash::hash(&program).to_byte_array().to_vec(),
+                                    vec![0x87],
+                                ]
+                                .concat()
+                            } else {
+                                program.clone()
+                            };
+                            if malformed_sig {
+                                let mut sig = tx.inputs[0].script_sig.as_bytes().to_vec();
+                                sig.push(0);
+                                tx.inputs[0].script_sig = ScriptSigBuf::from_bytes(sig);
+                            }
+                            let flags = consensus_core::VERIFY_P2SH
+                                | consensus_core::VERIFY_WITNESS
+                                | if active { consensus_core::VERIFY_WITNESS_V1_512 } else { 0 };
+                            let prevout = TxOut {
+                                amount: Amount::from_sat_u32(2),
+                                script_pubkey: ScriptPubKeyBuf::from_bytes(locking.clone()),
+                            };
+                            let raw = hex(&encoding::encode_to_vec(&tx));
+                            assert_eq!(tx.total_sigop_cost_with_flags(|_|Some(prevout.clone()),flags),
+                                node.count_witness_sigops(&raw,0,&locking,flags).unwrap(),
+                                "version={version} length={length} wrapped={wrapped} malformed={malformed_sig} active={active}");
+                            requests.push(json!({"op":"witness_policy","tx":raw,"prev_script":hex(&locking),"flags":flags}));
+                            expected.push((
+                                tidecoin::policy::is_witness_standard(&tx, |_| {
+                                    Some(prevout.clone())
+                                }),
+                                tidecoin::policy::spends_non_anchor_witness_program_with_flags(
+                                    &tx,
+                                    |_| Some(prevout.clone()),
+                                    flags,
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (batch, answers) in requests.chunks(128).zip(expected.chunks(128)) {
+        for ((request, (standard, dependent)), result) in
+            batch.iter().zip(answers).zip(validation::run(batch).unwrap())
+        {
+            assert_eq!(result["standard"], *standard, "{request}");
+            assert_eq!(result["dependent"], *dependent, "{request}");
+        }
+    }
+}

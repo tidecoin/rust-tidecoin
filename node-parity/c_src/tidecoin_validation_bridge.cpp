@@ -360,6 +360,25 @@ BCLog::Logger& LogInstance()
 
 extern "C" {
 
+// Strict wire decoding, without DecodeTxHex's RPC legacy/witness heuristics.
+// 0: malformed wire input, 1: decoded but CheckTransaction rejects, 2: valid.
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_transaction_status(const uint8_t* bytes, size_t len)
+{
+    if (bytes == nullptr && len != 0) return -1;
+    try {
+        DataStream stream{std::span<const uint8_t>{bytes, len}};
+        CMutableTransaction tx;
+        stream >> TX_WITH_WITNESS(tx);
+        if (!stream.empty()) return 0;
+        TxValidationState state;
+        return CheckTransaction(CTransaction(tx), state) ? 2 : 1;
+    } catch (const std::ios_base::failure&) {
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
 TIDECOIN_BRIDGE_EXPORT int tidecoin_node_check_transaction(const char* tx_hex)
 {
     try {

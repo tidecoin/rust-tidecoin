@@ -21,7 +21,13 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+[features]
+node-oracle = ["dep:node_parity", "dep:consensus_core"]
+
 [dependencies]
+node_parity = { package = "tidecoin-node-parity", path = "../node-parity", optional = true }
+consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core", optional = true }
+consensus = { path = "../consensus" }
 tidecoin = { path = "../tidecoin", package = "tidecoin", features = [ "serde", "arbitrary" ] }
 tidecoin_consensus_encoding = { path = "../consensus_encoding", package = "tidecoin-consensus-encoding" }
 p2p = { path = "../p2p", package = "tidecoin-p2p-messages", features = ["arbitrary"] }
@@ -42,16 +48,27 @@ EOF
 
 for targetFile in $(listTargetFiles); do
     targetName=$(targetFileToName "$targetFile")
+    requiredFeatures=""
+    if [ "$targetName" = consensus_node_differential ]; then
+        requiredFeatures='required-features = ["node-oracle"]'
+    fi
     cat >> "$REPO_DIR/fuzz/Cargo.toml" <<EOF
 
 [[bin]]
 name = "$targetName"
 path = "$targetFile"
+$requiredFeatures
 test = false
 doc = false
 bench = false
 EOF
 done
+
+cat >> "$REPO_DIR/fuzz/Cargo.toml" <<'EOF'
+
+[package.metadata.rbmt.lint]
+allowed_duplicates = ["block-buffer", "cpufeatures", "crypto-common", "digest", "getrandom", "keccak", "libc", "rand_core", "sha3", "syn"]
+EOF
 
 # 2. Generate .github/workflows/fuzz.yml
 cat > "$REPO_DIR/.github/workflows/cron-daily-fuzz.yml" <<EOF
@@ -78,7 +95,7 @@ jobs:
         # We only get 20 jobs at a time, we probably don't want to go
         # over that limit with fuzzing because of the hour run time.
         fuzz_target: [
-$(for name in $(cargo fuzz list); do echo "          $name,"; done)
+$(for name in $(cargo fuzz list | grep -v "^consensus_node_differential$"); do echo "          $name,"; done)
         ]
     steps:
       - name: Install test dependencies
@@ -124,5 +141,5 @@ $(for name in $(cargo fuzz list); do echo "          $name,"; done)
       - name: Display structure of downloaded files
         run: ls -R
       - run: find executed_* -type f -exec cat {} + | sort > executed
-      - run: cargo fuzz list | sort | diff - executed
+      - run: cargo fuzz list | grep -v "^consensus_node_differential$" | sort | diff - executed
 EOF

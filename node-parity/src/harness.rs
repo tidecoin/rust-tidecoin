@@ -155,6 +155,16 @@ impl TidecoinNodeHarness {
         }
     }
 
+    /// Strict witness-aware wire decoding followed by original `CheckTransaction`.
+    /// Returns 0 for malformed bytes, 1 for a decoded sanity-invalid transaction,
+    /// and 2 for a sane transaction. Infrastructure errors are never rejection verdicts.
+    pub fn transaction_decode_status(&self, bytes: &[u8]) -> Result<u8, NodeParityError> {
+        match unsafe { crate::ffi::tidecoin_node_transaction_status(bytes.as_ptr(), bytes.len()) } {
+            status @ 0..=2 => Ok(status as u8),
+            _ => Err(NodeParityError::BridgeFailure("transaction_decode_status")),
+        }
+    }
+
     /// Runs Tidecoin node `CheckTransaction` on a serialized transaction hex string.
     pub fn check_transaction_hex(&self, tx_hex: &str) -> Result<(), NodeParityError> {
         let tx_hex = CString::new(tx_hex).map_err(|_| NodeParityError::InvalidCString("tx hex"))?;

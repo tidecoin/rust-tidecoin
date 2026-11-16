@@ -309,3 +309,9 @@ int64_t tidecoin_node_count_witness_sigops(const char* tx_hex, size_t input_inde
     (void)tx_hex; (void)input_index; (void)prev_script; (void)prev_script_len; (void)flags;
     return -1;
 }
+
+int tidecoin_node_transaction_status(const uint8_t* bytes, size_t len)
+{
+    (void)bytes; (void)len;
+    return -1;
+}
