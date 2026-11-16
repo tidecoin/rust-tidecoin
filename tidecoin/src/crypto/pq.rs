@@ -347,6 +347,11 @@ impl PqPublicKey {
         Ok(Self { scheme, data: raw.to_vec() })
     }
 
+    /// Checks the complete rc3 public-key encoding, beyond prefix and length.
+    pub fn is_fully_valid(&self) -> bool {
+        self.as_consensus_key().is_ok_and(|key| key.is_fully_valid())
+    }
+
     /// Serializes as `[scheme_prefix_byte][raw_pubkey_bytes]`.
     pub fn to_prefixed_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(1 + self.data.len());
@@ -624,11 +629,17 @@ impl PqSignature {
                 let mut signing_key =
                     SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
                 let mut sig = vec![0u8; sk.scheme().max_sig_len()];
-                let sig_len = signing_key
-                    .sign_falcon(rng, FalconProfile::PqClean, msg, &mut sig)
-                    .map_err(|_| PqError::BackendFailure)?;
-                sig.truncate(sig_len);
-                Self::from_slice(&sig)
+                for _ in 0..10_000 {
+                    if let Ok(sig_len) =
+                        signing_key.sign_falcon(rng, FalconProfile::PqClean, msg, &mut sig)
+                    {
+                        if sig_len > 0 && sig_len <= sk.scheme().local_signing_max_sig_len() {
+                            sig.truncate(sig_len);
+                            return Ok(Self::from_slice(&sig));
+                        }
+                    }
+                }
+                return Err(PqError::BackendFailure);
             }
             PqScheme::MlDsa44 => {
                 let sk_arr =
@@ -674,11 +685,17 @@ impl PqSignature {
         let mut signing_key =
             SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
         let mut sig = vec![0u8; TIDECOIN_LEGACY_FALCON512_SIG_MAX];
-        let sig_len = signing_key
-            .sign_falcon(rng, FalconProfile::TidecoinLegacyFalcon512, msg, &mut sig)
-            .map_err(|_| PqError::BackendFailure)?;
-        sig.truncate(sig_len);
-        Ok(Self { data: sig })
+        for _ in 0..10_000 {
+            if let Ok(sig_len) =
+                signing_key.sign_falcon(rng, FalconProfile::TidecoinLegacyFalcon512, msg, &mut sig)
+            {
+                if sig_len > 0 && sig_len <= sk.scheme().local_signing_max_sig_len() {
+                    sig.truncate(sig_len);
+                    return Ok(Self { data: sig });
+                }
+            }
+        }
+        Err(PqError::BackendFailure)
     }
 
     fn as_consensus_signature(&self) -> ConsensusPqSignature {
@@ -1368,7 +1385,7 @@ mod tests {
             let (pk, sk) = deterministic_keypair(scheme, scheme.prefix());
             let mut rng = test_rng(u64::from(scheme.prefix()));
             let sig = PqSignature::sign_msg32_with_rng(&msg, &sk, &mut rng).unwrap();
-            assert!(sig.len() <= scheme.max_sig_len());
+            assert!(sig.len() <= scheme.local_signing_max_sig_len());
             sig.verify_msg32(&msg, &pk).unwrap();
 
             let wrong_msg = [0xA5u8; 32];
@@ -1390,7 +1407,7 @@ mod tests {
             let (pk, sk) = deterministic_keypair(scheme, scheme.prefix());
             let mut rng = test_rng(0x64 + u64::from(scheme.prefix()));
             let sig = PqSignature::sign_msg64_with_rng(&msg, &sk, &mut rng).unwrap();
-            assert!(sig.len() <= scheme.max_sig_len());
+            assert!(sig.len() <= scheme.local_signing_max_sig_len());
             sig.verify_msg64(&msg, &pk).unwrap();
 
             let wrong_msg = [0xCCu8; 64];
@@ -1464,7 +1481,7 @@ mod tests {
             PqSignature::sign_msg32_legacy_with_rng(&msg, &sk, &mut test_rng(0x55)).unwrap();
 
         assert_eq!(legacy.as_bytes().first().copied(), Some(0x39));
-        assert!(legacy.len() <= 690);
+        assert!(legacy.len() <= PqScheme::Falcon512.local_signing_max_sig_len());
         assert_ne!(legacy, strict);
         legacy.verify_msg32_legacy(&msg, &pk).unwrap();
         legacy.verify_msg32_allow_legacy(&msg, &pk).unwrap();
@@ -1479,7 +1496,7 @@ mod tests {
             PqSignature::sign_msg64_legacy_with_rng(&msg, &sk, &mut test_rng(0x56)).unwrap();
 
         assert_eq!(legacy.as_bytes().first().copied(), Some(0x39));
-        assert!(legacy.len() <= 690);
+        assert!(legacy.len() <= PqScheme::Falcon512.local_signing_max_sig_len());
         legacy.verify_msg64_legacy(&msg, &pk).unwrap();
         legacy.verify_msg64_allow_legacy(&msg, &pk).unwrap();
     }

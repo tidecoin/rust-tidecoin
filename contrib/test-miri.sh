@@ -11,7 +11,7 @@ target_features="$(rustc --print target-features | awk '{ if ($1 == "") { exit 0
 for crate in $CRATES;
 do
 	# Running miri is expensive and not needed for crates that don't contain unsafe
-	if RUSTFLAGS="-C target-feature=$target_features -F unsafe-code" cargo check -q --all-features --target x86_64-unknown-linux-gnu 2>/dev/null;
+	if RUSTFLAGS="-C target-feature=$target_features -F unsafe-code" cargo check -q --manifest-path "$crate/Cargo.toml" --all-features --target x86_64-unknown-linux-gnu 2>/dev/null;
 	then
 		echo "No unsafe code in $crate, skipping..." >&2
 		continue

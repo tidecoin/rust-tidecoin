@@ -98,6 +98,8 @@ pub enum ScriptError {
     UnsatisfiedLocktime,
     /// `SCRIPT_ERR_SIG_HASHTYPE`
     SigHashType,
+    /// Noncanonical historical Falcon signature (relay policy).
+    SigFalconEncoding,
     /// `SCRIPT_ERR_MINIMALDATA`
     MinimalData,
     /// `SCRIPT_ERR_SIG_PUSHONLY`
@@ -181,6 +183,7 @@ impl ScriptError {
             38 => Self::WitnessUnexpected,
             39 => Self::OpCodeSeparator,
             40 => Self::SigFindAndDelete,
+            41 => Self::SigFalconEncoding,
             _ => Self::UnknownError,
         }
     }
@@ -211,6 +214,7 @@ impl ScriptError {
             "NEGATIVE_LOCKTIME" => Self::NegativeLocktime,
             "UNSATISFIED_LOCKTIME" => Self::UnsatisfiedLocktime,
             "SIG_HASHTYPE" => Self::SigHashType,
+            "SIG_FALCON_ENCODING" => Self::SigFalconEncoding,
             "MINIMALDATA" => Self::MinimalData,
             "SIG_PUSHONLY" => Self::SigPushOnly,
             "SIG_HIGH_S" => Self::SigHighS,
@@ -260,6 +264,7 @@ impl fmt::Display for ScriptError {
             Self::NegativeLocktime => "NEGATIVE_LOCKTIME",
             Self::UnsatisfiedLocktime => "UNSATISFIED_LOCKTIME",
             Self::SigHashType => "SIG_HASHTYPE",
+            Self::SigFalconEncoding => "SIG_FALCON_ENCODING",
             Self::MinimalData => "MINIMALDATA",
             Self::SigPushOnly => "SIG_PUSHONLY",
             Self::SigHighS => "SIG_HIGH_S",

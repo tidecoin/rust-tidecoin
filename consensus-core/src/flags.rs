@@ -30,7 +30,7 @@ pub const VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM: u32 = 1 << 9;
 pub const VERIFY_CONST_SCRIPTCODE: u32 = 1 << 12;
 /// Reject legacy Falcon-512 signatures.
 pub const VERIFY_PQ_STRICT: u32 = 1 << 13;
-/// Enable Tidecoin witness-v1-512 validation.
+/// Enable native Tidecoin witness-v1-512 validation.
 pub const VERIFY_WITNESS_V1_512: u32 = 1 << 14;
 /// Enable Tidecoin `OP_SHA512`.
 pub const VERIFY_SHA512: u32 = 1 << 15;
@@ -48,3 +48,7 @@ pub const VERIFY_ALL_TIDECOIN: u32 = VERIFY_P2SH
     | VERIFY_PQ_STRICT
     | VERIFY_WITNESS_V1_512
     | VERIFY_SHA512;
+
+/// Relay-only rejection of noncanonical historical Falcon-512 encodings.
+/// Inactive with PQ_STRICT; not part of consensus or shared signing flags.
+pub const VERIFY_FALCON_CANONICAL: u32 = 1 << 17;

@@ -12,10 +12,28 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::pq::{PqError, PqPublicKey, PqScheme, PqSchemeCryptoExt as _, PqSecretKey};
 
-/// PQHD v1 purpose constant.
+/// Generic/custom descriptor purpose (retained for explicit paths).
 pub const PURPOSE: u32 = 10_007;
-/// PQHD v1 coin type constant.
+/// Mainnet coin type (retained for explicit paths).
 pub const COIN_TYPE: u32 = 6_868;
+/// Standard legacy output purpose.
+pub const PURPOSE_PKH: u32 = 10_044;
+/// Standard wrapped-v0 output purpose.
+pub const PURPOSE_SH_WPKH: u32 = 10_049;
+/// Standard native-v0 output purpose.
+pub const PURPOSE_WPKH: u32 = 10_084;
+/// Standard native-v1 output purpose.
+pub const PURPOSE_WSH512: u32 = 10_087;
+/// Testnet/regtest default coin type.
+pub const COIN_TYPE_TEST: u32 = 1;
+/// Whether an explicit path purpose is recognized by rc3.
+pub const fn is_known_purpose(purpose: u32) -> bool {
+    matches!(purpose, PURPOSE | PURPOSE_PKH | PURPOSE_SH_WPKH | PURPOSE_WPKH | PURPOSE_WSH512)
+}
+/// Explicit paths may use either recognized coin type on any network.
+pub const fn is_known_coin_type(coin_type: u32) -> bool {
+    matches!(coin_type, COIN_TYPE | COIN_TYPE_TEST)
+}
 /// Hardened-bit mask used for PQHD path elements.
 pub const HARDENED: u32 = 0x8000_0000;
 
@@ -204,10 +222,10 @@ pub fn validate_v1_leaf_path(path_hardened: &[u32]) -> bool {
     if path_hardened.iter().any(|elem| elem & HARDENED == 0) {
         return false;
     }
-    if path_hardened[0] != HARDENED | PURPOSE {
+    if !is_known_purpose(path_hardened[0] & !HARDENED) {
         return false;
     }
-    if path_hardened[1] != HARDENED | COIN_TYPE {
+    if !is_known_coin_type(path_hardened[1] & !HARDENED) {
         return false;
     }
 

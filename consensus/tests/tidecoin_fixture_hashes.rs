@@ -11,7 +11,7 @@ struct FixtureHash {
 const FIXTURES: &[FixtureHash] = &[
     FixtureHash {
         name: "script_tests_pq.json",
-        sha256_hex: "8974ec8afbd1d6ebc224baae18252b857014714e96bf81efbc4fac9bedce3852",
+        sha256_hex: "03e58539340044aea49ff951e9033561b898ccee8cd9136d2dd890668ae1f153",
     },
     FixtureHash {
         name: "tx_valid_pq.json",

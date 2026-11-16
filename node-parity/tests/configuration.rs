@@ -5,12 +5,29 @@ use tidecoin_node_parity::TidecoinNodeHarness;
 #[test]
 fn configuration_child() {
     if std::env::var_os("TIDECOIN_PARITY_CONFIG_CHILD").is_some() {
+        eprintln!("configuration child entered");
         let _ = TidecoinNodeHarness::optional_from_env();
     }
 }
 
+// Cargo applies its runner only to the top-level test executable. Reuse it for
+// child tests too, so cross builds do not try to execute foreign ELF directly.
+fn test_command() -> Command {
+    let target = env!("TIDECOIN_NODE_PARITY_TARGET").replace('-', "_").to_uppercase();
+    let runner = std::env::var(format!("CARGO_TARGET_{target}_RUNNER")).unwrap_or_default();
+    let mut words = runner.split_whitespace();
+    let executable = std::env::current_exe().unwrap();
+    if let Some(program) = words.next() {
+        let mut command = Command::new(program);
+        command.args(words).arg(executable);
+        command
+    } else {
+        Command::new(executable)
+    }
+}
+
 fn child(required: &str, repo: Option<&str>) -> bool {
-    let mut command = Command::new(std::env::current_exe().unwrap());
+    let mut command = test_command();
     command
         .args(["--exact", "configuration_child", "--nocapture"])
         .env("TIDECOIN_PARITY_CONFIG_CHILD", "1")
@@ -20,6 +37,16 @@ fn child(required: &str, repo: Option<&str>) -> bool {
         command.env("TIDECOIN_NODE_REPO", repo);
     }
     let output = command.output().unwrap();
+    eprintln!(
+        "configuration child: status={}\nstdout={}\nstderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("configuration child entered"),
+        "child did not execute the configuration check; this is not a configuration rejection"
+    );
     output.status.success()
 }
 
@@ -74,7 +101,7 @@ fn original_oracle_missing_and_stale_executables_are_not_verdicts() {
         )
         .unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let status = Command::new(std::env::current_exe().unwrap())
+        let status = test_command()
             .args(["--exact", "oracle_configuration_child", "--nocapture"])
             .env(ORACLE_ENV, &executable)
             .env("TIDECOIN_ORACLE_EXPECT_ERROR", expected)
@@ -83,7 +110,7 @@ fn original_oracle_missing_and_stale_executables_are_not_verdicts() {
         assert!(status.success());
     }
     for path in [None, Some("/nonexistent-original-node-oracle")] {
-        let mut child = Command::new(std::env::current_exe().unwrap());
+        let mut child = test_command();
         child
             .args(["--exact", "oracle_configuration_child", "--nocapture"])
             .env_remove(ORACLE_ENV)

@@ -59,18 +59,18 @@ it is deliberately building on the lower-level shared engine.
 
 ## Consensus-sensitive changes
 
-The rc2 protocol-library compatibility checkpoint is validated locally against
-node `7d653be5d24e73b49d101578afb33d8d7a889c1d` (`v1.0.0rc2`). This covers the
+The active protocol-library target is Tidecoin `v1.0.0rc3`,
+node `ffed4e92e60ff2de30361648a71cba64531f9077`. Validation covers the
 script, caller-context, header/PoW and stateless policy surfaces listed in the
 [proof matrix](ai-docs/NODE_PARITY_PROOF_MATRIX.md). Full chainstate/mempool
 acceptance and Rust PSBT interoperability remain outside that claim.
 
-CI targets `v2`/`main` and pull requests. Its `Required rc2 node parity` job
+CI targets `v2`/`main` and pull requests. Its `Required rc3 node parity` job
 checks out `node-parity/NODE_REVISION`, fails on unavailable/mismatched oracle
 configuration, and runs workspace tests, product node parity, Clippy and feature
 checks. Hosted verification is in progress; `v2` currently has no branch
 protection or enforced status checks. See [node compatibility](docs/supported-versions.md) and
-the [migration evidence](ai-docs/RC2_MIGRATION_PLAN.md).
+the [migration evidence](ai-docs/RC3_MIGRATION_PLAN.md).
 
 Pure-Rust validation is checked against the real Tidecoin node. Consensus-sensitive changes should
 be treated as node-parity-sensitive engineering work and verified with the Tidecoin fixture and
@@ -80,7 +80,7 @@ Normal CI and formatting use Rust **1.99.1**, pinned in `Cargo.toml`. For local
 format checks use `cargo +1.99.1 fmt --all -- --check`. Nightly remains for
 specialized checks and inherited maintainer-tool audits. Building the original
 C++ validation oracle is documented in the
-[migration evidence](ai-docs/RC2_MIGRATION_PLAN.md#original-node-validation-follow-up-2026-10-20).
+[migration evidence](ai-docs/RC3_MIGRATION_PLAN.md#validation-commands).
 
 ## Minimum Supported Rust Version (MSRV)
 

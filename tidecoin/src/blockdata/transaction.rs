@@ -495,6 +495,9 @@ impl TransactionExtPriv for Transaction {
             };
 
             // This will return 0 if the redeemScript wasn't a witness program
+            if prevout.script_pubkey.is_p2sh() && witness_program.is_p2wsh512() {
+                return 0;
+            }
             count_sigops_with_witness_program(witness, witness_program, flags)
         }
 
@@ -1272,7 +1275,7 @@ mod tests {
         let tx_bytes = hex::decode_to_vec(&json[1..(json.len() - 1)]).unwrap();
         let expected = encoding::decode_from_slice::<Transaction>(&tx_bytes).unwrap();
         assert_eq!(tx, expected);
-        let mut bytes = Vec::new();
+        let mut bytes = alloc::vec::Vec::new();
         let mut serializer = serde_json::Serializer::new(&mut bytes);
         con_serde::serialize(&tx, &mut serializer).unwrap();
         assert_eq!(bytes, json.as_bytes())

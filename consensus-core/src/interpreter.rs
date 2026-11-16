@@ -14,9 +14,9 @@ use crate::{
     WitnessProgram, WitnessSigVersion, WitnessSigops, WitnessV1SighashError,
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
     VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
-    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
-    VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
-    VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
+    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_FALCON_CANONICAL, VERIFY_MINIMALDATA,
+    VERIFY_MINIMALIF, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT,
+    VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
 };
 use hashes::{hash160, ripemd160, sha1, sha256, sha256d, sha512};
 use primitives::{
@@ -54,7 +54,8 @@ const SUPPORTED_FLAGS: u32 = VERIFY_P2SH
     | VERIFY_WITNESS_V1_512
     | VERIFY_SHA512
     | VERIFY_CONST_SCRIPTCODE
-    | VERIFY_DEFINED_HASHTYPE;
+    | VERIFY_DEFINED_HASHTYPE
+    | VERIFY_FALCON_CANONICAL;
 
 const MAX_STACK_SIZE: usize = 1000;
 const MAX_SCRIPT_SIZE: usize = 65_536;
@@ -347,9 +348,11 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             }
 
             if witness_enabled {
-                if let Some(witness_program) =
-                    WitnessProgram::parse_for_flags(&redeem_script, self.flags.bits())
-                {
+                if let Some(witness_program) = WitnessProgram::parse_for_flags_in_context(
+                    &redeem_script,
+                    self.flags.bits(),
+                    true,
+                ) {
                     self.had_witness = true;
                     let expected = single_push_script(&redeem_script)
                         .map_err(|_| self.fail(ScriptError::SigPushOnly))?;
@@ -1166,6 +1169,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         let script_code =
             self.build_signature_script_code(script, code_separator, sigversion, &[&sig])?;
         self.check_signature_hash_type(&sig, sigversion)?;
+        self.check_falcon_encoding(&sig)?;
         let result =
             self.verify_signature_against_code(&sig, &pubkey, script_code.as_script(), sigversion)?;
         if !result && self.flags.bits() & VERIFY_NULLFAIL != 0 && !sig.is_empty() {
@@ -1218,6 +1222,7 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
             // Match node order: validate each argument before its FindAndDelete,
             // including signatures the matching loop will never reach.
             self.check_signature_hash_type(signature, sigversion)?;
+            self.check_falcon_encoding(signature)?;
             if sigversion == SigVersion::Base {
                 script_code =
                     self.apply_legacy_find_and_delete(script_code.as_script(), &[signature])?;
@@ -1461,6 +1466,18 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         }
         if !read_scriptbool(stack.last().expect("stack length checked")) {
             return Err(self.fail(ScriptError::EvalFalse));
+        }
+        Ok(())
+    }
+
+    fn check_falcon_encoding(&mut self, signature: &[u8]) -> Result<(), TidecoinValidationError> {
+        if self.flags.bits() & VERIFY_FALCON_CANONICAL != 0
+            && self.flags.bits() & VERIFY_PQ_STRICT == 0
+            && signature
+                .split_last()
+                .is_some_and(|(_, raw)| crate::pq::is_noncanonical_legacy_falcon512(raw))
+        {
+            return Err(self.fail(ScriptError::SigFalconEncoding));
         }
         Ok(())
     }

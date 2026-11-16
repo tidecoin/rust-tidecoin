@@ -78,6 +78,8 @@ pub struct PqhdKeyPathInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PqhdKeyExpression {
     seed_id: PqhdSeedId,
+    purpose: u32,
+    coin_type: u32,
     scheme: PqScheme,
     account: u32,
     change: u32,
@@ -98,7 +100,15 @@ impl PqhdKeyExpression {
         index: u32,
     ) -> Result<Self, KeyExpressionError> {
         validate_change(change)?;
-        Ok(Self { seed_id, scheme, account, change, index: KeyIndex::Fixed(index) })
+        Ok(Self {
+            seed_id,
+            purpose: pqhd::PURPOSE,
+            coin_type: pqhd::COIN_TYPE,
+            scheme,
+            account,
+            change,
+            index: KeyIndex::Fixed(index),
+        })
     }
 
     /// Creates a ranged-form `pqhd(...)` key expression.
@@ -113,7 +123,15 @@ impl PqhdKeyExpression {
         change: u32,
     ) -> Result<Self, KeyExpressionError> {
         validate_change(change)?;
-        Ok(Self { seed_id, scheme, account, change, index: KeyIndex::Wildcard })
+        Ok(Self {
+            seed_id,
+            purpose: pqhd::PURPOSE,
+            coin_type: pqhd::COIN_TYPE,
+            scheme,
+            account,
+            change,
+            index: KeyIndex::Wildcard,
+        })
     }
 
     /// Returns the seed id.
@@ -155,8 +173,8 @@ impl PqhdKeyExpression {
     pub fn key_path_info(&self) -> PqhdKeyPathInfo {
         PqhdKeyPathInfo {
             fixed_path: [
-                pqhd::HARDENED | pqhd::PURPOSE,
-                pqhd::HARDENED | pqhd::COIN_TYPE,
+                pqhd::HARDENED | self.purpose,
+                pqhd::HARDENED | self.coin_type,
                 pqhd::HARDENED | u32::from(self.scheme.prefix()),
                 pqhd::HARDENED | self.account,
                 pqhd::HARDENED | self.change,
@@ -188,7 +206,10 @@ impl PqhdKeyExpression {
             }
         };
 
-        Ok(pqhd::make_v1_leaf_path(self.scheme, self.account, self.change, index))
+        let mut path = pqhd::make_v1_leaf_path(self.scheme, self.account, self.change, index);
+        path[0] = pqhd::HARDENED | self.purpose;
+        path[1] = pqhd::HARDENED | self.coin_type;
+        Ok(path)
     }
 
     /// Derives the deterministic PQ keypair this expression resolves to.
@@ -230,8 +251,8 @@ impl fmt::Display for PqhdKeyExpression {
             f,
             "pqhd({})/{}h/{}h/{}h/{}h/{}h/",
             self.seed_id,
-            pqhd::PURPOSE,
-            pqhd::COIN_TYPE,
+            self.purpose,
+            self.coin_type,
             self.scheme.prefix(),
             self.account,
             self.change
@@ -292,16 +313,12 @@ impl FromStr for PqhdKeyExpression {
             return Err(KeyExpressionError::FixedRequiresSixElements(elem_count));
         }
 
-        check_eq(
-            elems[0],
-            pqhd::PURPOSE,
-            KeyExpressionError::PurposeMustBe(pqhd::PURPOSE, elems[0]),
-        )?;
-        check_eq(
-            elems[1],
-            pqhd::COIN_TYPE,
-            KeyExpressionError::CoinTypeMustBe(pqhd::COIN_TYPE, elems[1]),
-        )?;
+        if !pqhd::is_known_purpose(elems[0]) {
+            return Err(KeyExpressionError::UnsupportedPurpose(elems[0]));
+        }
+        if !pqhd::is_known_coin_type(elems[1]) {
+            return Err(KeyExpressionError::UnsupportedCoinType(elems[1]));
+        }
 
         let scheme_u32 = elems[2];
         if scheme_u32 > u32::from(u8::MAX) {
@@ -314,7 +331,15 @@ impl FromStr for PqhdKeyExpression {
         validate_change(change)?;
 
         let index = if wildcard { KeyIndex::Wildcard } else { KeyIndex::Fixed(elems[5]) };
-        Ok(Self { seed_id, scheme, account: elems[3], change, index })
+        Ok(Self {
+            seed_id,
+            purpose: elems[0],
+            coin_type: elems[1],
+            scheme,
+            account: elems[3],
+            change,
+            index,
+        })
     }
 }
 
@@ -418,7 +443,19 @@ pub fn generate_pqhd_wallet_descriptor(
         }
     }
 
-    let expr = PqhdKeyExpression::ranged(seed_id, scheme, 0, u32::from(internal))?.to_string();
+    let mut expression = PqhdKeyExpression::ranged(seed_id, scheme, 0, u32::from(internal))?;
+    expression.purpose = match output_type {
+        WalletOutputType::Legacy => pqhd::PURPOSE_PKH,
+        WalletOutputType::P2shSegwit => pqhd::PURPOSE_SH_WPKH,
+        WalletOutputType::Bech32 => pqhd::PURPOSE_WPKH,
+        WalletOutputType::Bech32Pq => pqhd::PURPOSE_WSH512,
+    };
+    expression.coin_type = if params.network == crate::Network::Tidecoin {
+        pqhd::COIN_TYPE
+    } else {
+        pqhd::COIN_TYPE_TEST
+    };
+    let expr = expression.to_string();
     Ok(match output_type {
         WalletOutputType::Legacy => alloc::format!("pkh({expr})"),
         WalletOutputType::P2shSegwit => alloc::format!("sh(wpkh({expr}))"),
@@ -430,6 +467,10 @@ pub fn generate_pqhd_wallet_descriptor(
 /// Errors produced by `pqhd(...)` parsing, derivation, and descriptor generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyExpressionError {
+    /// Purpose is not one of the five rc3 recognized purposes.
+    UnsupportedPurpose(u32),
+    /// Coin type is neither mainnet nor testnet.
+    UnsupportedCoinType(u32),
     /// The input is not a `pqhd(...)` key expression.
     NotPqhdExpression,
     /// The seed id does not have the required 32-byte hex length.
@@ -486,6 +527,8 @@ pub enum KeyExpressionError {
 impl fmt::Display for KeyExpressionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedPurpose(value) => write!(f, "unsupported PQHD purpose {value}"),
+            Self::UnsupportedCoinType(value) => write!(f, "unsupported PQHD coin type {value}"),
             Self::NotPqhdExpression => f.write_str("not a pqhd() key expression"),
             Self::SeedIdLength(len) => {
                 write!(f, "pqhd() seed id is not 32-byte hex ({} characters)", len)
@@ -567,14 +610,6 @@ fn validate_change(change: u32) -> Result<(), KeyExpressionError> {
         Ok(())
     } else {
         Err(KeyExpressionError::InvalidChange(change))
-    }
-}
-
-fn check_eq(actual: u32, expected: u32, err: KeyExpressionError) -> Result<(), KeyExpressionError> {
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(err)
     }
 }
 
@@ -722,7 +757,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             bech32,
-            "wpkh(pqhd(000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)/10007h/6868h/7h/0h/0h/*h)"
+            "wpkh(pqhd(000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)/10084h/6868h/7h/0h/0h/*h)"
         );
 
         let bech32_internal = generate_pqhd_wallet_descriptor(
@@ -736,7 +771,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             bech32_internal,
-            "wpkh(pqhd(000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)/10007h/6868h/7h/0h/1h/*h)"
+            "wpkh(pqhd(000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)/10084h/6868h/7h/0h/1h/*h)"
         );
 
         assert_eq!(
@@ -763,7 +798,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             p2wsh512,
-            "wsh512(pk(pqhd(000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)/10007h/6868h/9h/0h/0h/*h))"
+            "wsh512(pk(pqhd(000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f)/10087h/6868h/9h/0h/0h/*h))"
         );
 
         assert_eq!(

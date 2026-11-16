@@ -321,6 +321,7 @@ fn original_contextual_header_retarget_and_buried_deployment_boundaries() {
     check_cases(cases);
 }
 
+#[cfg(feature = "pow")]
 fn auxpow_header() -> Header {
     use tidecoin::transaction::{TxIn, TxOut};
     use tidecoin::{absolute, Amount, Sequence, Transaction, Witness};
@@ -364,6 +365,7 @@ fn auxpow_header() -> Header {
 }
 
 #[test]
+#[cfg(feature = "pow")]
 fn original_auxpow_rejections_preserve_replaceable_proof_categories() {
     let Some(_) = TidecoinNodeHarness::optional_from_env() else { return };
     let good = auxpow_header();
@@ -456,5 +458,40 @@ fn original_network_defaults_match_rust_without_oracle_overrides() {
             "max_adjust_up": params.pow_max_adjust_up,
         }).as_object().unwrap() { expected[key] = value.clone(); }
         assert_eq!(node, expected, "network={:?}", params.network);
+    }
+}
+
+#[test]
+#[cfg(feature = "pow")]
+fn rc3_complete_auxpow_header_size_boundary_matches_original_node() {
+    let Some(_) = TidecoinNodeHarness::optional_from_env() else { return };
+    use tidecoin::block_validation::{is_oversized_auxpow_header, MAX_BLOCK_HEADER_SIZE};
+    let mut requests = Vec::new();
+    let mut expected = Vec::new();
+    for size in [MAX_BLOCK_HEADER_SIZE - 1, MAX_BLOCK_HEADER_SIZE, MAX_BLOCK_HEADER_SIZE + 1] {
+        let mut header = auxpow_header();
+        header.auxpow.as_mut().unwrap().coinbase_tx.inputs[0].script_sig =
+            tidecoin::script::ScriptSigBuf::from_bytes(vec![0; MAX_BLOCK_HEADER_SIZE]);
+        let overhead = header.serialized_len() - MAX_BLOCK_HEADER_SIZE;
+        header.auxpow.as_mut().unwrap().coinbase_tx.inputs[0].script_sig =
+            tidecoin::script::ScriptSigBuf::from_bytes(vec![0; size - overhead]);
+        assert_eq!(header.serialized_len(), size);
+        assert_eq!(is_oversized_auxpow_header(&header), size > MAX_BLOCK_HEADER_SIZE);
+        requests.push(json!({"op":"header_size", "header":hex(&header)}));
+        expected.push(size > MAX_BLOCK_HEADER_SIZE);
+        for drop_proof in [false, true] {
+            requests.push(json!({"op":"header_size", "header":hex(&header), "drop_auxpow":drop_proof,"clear_auxpow_flag":!drop_proof}));
+            let mut unchecked = header.clone();
+            if drop_proof {
+                unchecked.auxpow = None;
+            } else {
+                unchecked.version = unchecked.version.with_auxpow(false);
+            }
+            assert!(!is_oversized_auxpow_header(&unchecked));
+            expected.push(false);
+        }
+    }
+    for (result, expected) in validation::run(&requests).unwrap().iter().zip(expected) {
+        assert_eq!(result["oversized"], expected);
     }
 }

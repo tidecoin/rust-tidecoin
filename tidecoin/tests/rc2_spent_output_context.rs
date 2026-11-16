@@ -25,11 +25,6 @@ fn rc2_product_multi_input_verification_retains_spent_output_context() {
         .into_script();
     let program =
         [vec![0x51, 64], sha512::Hash::hash(script.as_bytes()).as_byte_array().to_vec()].concat();
-    let wrapped = Builder::<()>::new()
-        .push_opcode(all::OP_HASH160)
-        .push_slice(hash160::Hash::hash(&program).to_byte_array())
-        .push_opcode(all::OP_EQUAL)
-        .into_script();
     let outputs = vec![
         TxOut {
             amount: Amount::from_sat_u32(1000),
@@ -37,7 +32,7 @@ fn rc2_product_multi_input_verification_retains_spent_output_context() {
         },
         TxOut {
             amount: Amount::from_sat_u32(2000),
-            script_pubkey: ScriptPubKeyBuf::from_bytes(wrapped.into_bytes()),
+            script_pubkey: ScriptPubKeyBuf::from_bytes(program.clone()),
         },
     ];
     for mode in [
@@ -87,9 +82,6 @@ fn rc2_product_multi_input_verification_retains_spent_output_context() {
         for (index, sig) in signatures.into_iter().enumerate() {
             tx.inputs[index].witness = Witness::from_slice(&[sig, script.as_bytes().to_vec()]);
         }
-        tx.inputs[1].script_sig = ScriptSigBuf::from_bytes(
-            Builder::<()>::new().push_slice(program.clone()).into_script().into_bytes(),
-        );
         let mut lookups = Vec::new();
         verify_transaction_with_flags(
             &tx,
@@ -238,7 +230,10 @@ fn sigop_cost_uses_candidate_flags_and_matches_node_count_witness_sigops() {
                         1
                     } else if has_witness
                         && ((version == 0 && length == 32)
-                            || (version == 1 && length == 64 && flags & VERIFY_WITNESS_V1_512 != 0))
+                            || (version == 1
+                                && length == 64
+                                && !wrapped
+                                && flags & VERIFY_WITNESS_V1_512 != 0))
                     {
                         3
                     } else {

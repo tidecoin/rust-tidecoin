@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   NodeParity:
-    name: Required rc2 node parity
+    name: Required rc3 node parity
     runs-on: ubuntu-24.04
     permissions:
       contents: read

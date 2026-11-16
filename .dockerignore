@@ -1,0 +1,2 @@
+# The cross image installs build tools; source is mounted by cross at runtime.
+**

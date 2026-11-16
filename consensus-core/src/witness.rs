@@ -86,10 +86,20 @@ impl<'a> WitnessProgram<'a> {
     /// Recognizes witness execution under the candidate's flags.
     /// The structural v1-512 form is an ordinary script before activation.
     pub fn parse_for_flags(script_bytes: &'a [u8], flags: u32) -> Option<Self> {
+        Self::parse_for_flags_in_context(script_bytes, flags, false)
+    }
+
+    /// Recognizes native or P2SH-wrapped witness execution under rc3 rules.
+    /// The 64-byte v1 extension never activates inside P2SH.
+    pub fn parse_for_flags_in_context(
+        script_bytes: &'a [u8],
+        flags: u32,
+        is_p2sh: bool,
+    ) -> Option<Self> {
         Self::parse(script_bytes).filter(|program| {
             program.version() != 1
                 || program.program().len() != 64
-                || flags & VERIFY_WITNESS_V1_512 != 0
+                || (!is_p2sh && flags & VERIFY_WITNESS_V1_512 != 0)
         })
     }
 
@@ -121,28 +131,10 @@ impl<'a> WitnessProgram<'a> {
                     Err(ScriptError::WitnessProgramWrongLength)
                 }
             },
-            1 => {
-                if flags & VERIFY_WITNESS_V1_512 == 0 {
-                    if flags & VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM != 0 {
-                        Err(ScriptError::DiscourageUpgradableWitnessProgram)
-                    } else {
-                        Ok(WitnessProgramClass::Upgradable)
-                    }
-                } else {
-                    match self.0.class() {
-                        PrimitiveWitnessProgramClass::P2wsh512 => {
-                            Ok(WitnessProgramClass::WitnessV1_512)
-                        }
-                        PrimitiveWitnessProgramClass::P2wpkh
-                        | PrimitiveWitnessProgramClass::P2wsh
-                        | PrimitiveWitnessProgramClass::P2a
-                        | PrimitiveWitnessProgramClass::Upgradable => {
-                            Err(ScriptError::WitnessProgramWrongLength)
-                        }
-                    }
-                }
+            1 if self.program().len() == 64 && flags & VERIFY_WITNESS_V1_512 != 0 => {
+                Ok(WitnessProgramClass::WitnessV1_512)
             }
-            2..=16 => {
+            1..=16 => {
                 if flags & VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM != 0 {
                     Err(ScriptError::DiscourageUpgradableWitnessProgram)
                 } else {

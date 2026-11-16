@@ -77,6 +77,16 @@ impl PqScheme {
         }
     }
 
+    /// Maximum detached signature returned by the rc3 local signer.
+    /// External signatures may be longer; verification uses its own bounds.
+    pub const fn local_signing_max_sig_len(self) -> usize {
+        match self {
+            Self::Falcon512 => 666,
+            Self::Falcon1024 => 1280,
+            _ => self.max_sig_len(),
+        }
+    }
+
     /// Maximum serialized script signature length including the trailing sighash byte.
     pub const fn max_sig_len_in_script(self) -> usize {
         self.max_sig_len() + 1

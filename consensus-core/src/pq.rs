@@ -10,6 +10,60 @@ use fips204::traits::{SerDes, Verifier};
 use primitives::PqScheme;
 use tide_fn_dsa_vrfy::{FalconProfile, VerifyingKey as TideVerifyingKey, VerifyingKeyStandard};
 
+// rc3 src/pq/falcon512.c preserves the 0.18.3 compressed decoder for legacy
+// verification: negative zero and unused final bits are accepted, but extra
+// bytes, truncation and magnitudes above 2047 are not. Clear only those two
+// encoding differences before using the existing legacy arithmetic verifier.
+// This does not change the nonce, coefficients, norm bound or message hashing.
+fn canonical_falcon(signature: &[u8], logn: u8) -> Option<Vec<u8>> {
+    if signature.first() != Some(&(0x30 + logn)) || signature.len() <= 41 {
+        return None;
+    }
+    let body = &signature[41..];
+    let mut bit = 0usize;
+    let mut zero_signs = Vec::new();
+    for _ in 0..(1usize << logn) {
+        let sign_bit = bit;
+        let mut low = 0u16;
+        for _ in 0..8 {
+            low = (low << 1) | u16::from((body.get(bit / 8)? >> (7 - bit % 8)) & 1);
+            bit += 1;
+        }
+        let mut magnitude = low & 127;
+        loop {
+            let stop = (body.get(bit / 8)? >> (7 - bit % 8)) & 1;
+            bit += 1;
+            if stop != 0 {
+                break;
+            }
+            magnitude += 128;
+            if magnitude > 2047 {
+                return None;
+            }
+        }
+        if magnitude == 0 && low & 128 != 0 {
+            zero_signs.push(sign_bit);
+        }
+    }
+    if bit.div_ceil(8) != body.len() {
+        return None;
+    }
+    let mut canonical = signature.to_vec();
+    for sign in zero_signs {
+        canonical[41 + sign / 8] &= !(1 << (7 - sign % 8));
+    }
+    if !bit.is_multiple_of(8) {
+        *canonical.last_mut()? &= 0xff << (8 - bit % 8);
+    }
+    Some(canonical)
+}
+
+/// Format-only rc3 relay check; malformed full buffers are not classified as
+/// noncanonical legacy encodings. The caller separately verifies signatures.
+pub fn is_noncanonical_legacy_falcon512(signature: &[u8]) -> bool {
+    canonical_falcon(signature, 9).is_some_and(|canonical| canonical != signature)
+}
+
 /// A verification-only post-quantum public key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PqPublicKey {
@@ -33,6 +87,17 @@ impl PqPublicKey {
         let (&prefix, raw) = data.split_first().ok_or(PqError::EmptyData)?;
         let scheme = PqScheme::from_prefix(prefix).ok_or(PqError::UnknownScheme(prefix))?;
         Self::from_scheme_and_bytes(scheme, raw)
+    }
+
+    /// Validates the full encoding as rc3 IsValidPubKey does, without changing
+    /// structural parsing used by consensus signature checks.
+    pub fn is_fully_valid(&self) -> bool {
+        match self.scheme {
+            PqScheme::Falcon512 | PqScheme::Falcon1024 => {
+                VerifyingKeyStandard::decode(&self.data).is_some()
+            }
+            _ => true,
+        }
     }
 
     /// Returns the scheme this key belongs to.
@@ -108,6 +173,13 @@ impl PqSignature {
     fn verify_message(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
         match pk.scheme() {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
+                let logn = if pk.scheme() == PqScheme::Falcon512 { 9 } else { 10 };
+                // rc3 removes PQClean's padded-size exception for both schemes.
+                if !canonical_falcon(self.as_bytes(), logn)
+                    .is_some_and(|canonical| canonical == self.as_bytes())
+                {
+                    return Err(PqError::VerificationFailed);
+                }
                 let vk =
                     VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
                 if vk.verify_falcon(FalconProfile::PqClean, self.as_bytes(), msg) {
@@ -163,7 +235,8 @@ impl PqSignature {
             return self.verify_message(msg, pk);
         }
         let vk = VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-        if vk.verify_falcon(FalconProfile::TidecoinLegacyFalcon512, self.as_bytes(), msg) {
+        let canonical = canonical_falcon(self.as_bytes(), 9).ok_or(PqError::VerificationFailed)?;
+        if vk.verify_falcon(FalconProfile::TidecoinLegacyFalcon512, &canonical, msg) {
             Ok(())
         } else {
             Err(PqError::VerificationFailed)

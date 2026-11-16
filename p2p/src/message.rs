@@ -36,9 +36,59 @@ use crate::{
 /// This limit is not currently enforced by this implementation.
 pub const MAX_INV_SIZE: usize = 50_000;
 
-/// Maximum size, in bytes, of an encoded message
-/// This by necessity should be larger than `MAX_VEC_SIZE`
-pub const MAX_MSG_SIZE: usize = 5_000_000;
+/// Maximum message payload size, matching Tidecoin's `MAX_PROTOCOL_MESSAGE_LENGTH`.
+pub const MAX_MSG_SIZE: usize = 8_000_000;
+
+/// Maximum v2 packet contents, including the long command encoding.
+pub const MAX_V2_CONTENTS_SIZE: usize = MAX_MSG_SIZE + 1 + 12;
+
+/// Count ceiling for a headers reply.
+pub const MAX_HEADERS_RESULTS: usize = 2000;
+
+/// Stop serving after appending the header that reaches this payload size.
+pub const HEADERS_MESSAGE_SIZE_THRESHOLD: usize = 6_000_000;
+
+/// Tracks canonical headers payload size, including the list count and each
+/// header's zero transaction count. Use only after individual header admission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeadersMessageSize {
+    count: usize,
+    size: usize,
+}
+
+impl Default for HeadersMessageSize {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HeadersMessageSize {
+    /// Starts an empty headers reply (one byte for its count).
+    pub const fn new() -> Self {
+        Self { count: 0, size: 1 }
+    }
+
+    /// Includes one serialized header, without its trailing transaction count.
+    pub fn add(&mut self, header_size: usize) {
+        let next_count = self.count.saturating_add(1);
+        self.size = self.size.saturating_add(header_size).saturating_add(1).saturating_add(
+            CompactSizeEncoder::encoded_size(next_count)
+                - CompactSizeEncoder::encoded_size(self.count),
+        );
+        self.count = next_count;
+    }
+
+    /// Complete payload size in bytes.
+    pub const fn size(&self) -> usize {
+        self.size
+    }
+
+    /// Whether serving should stop or a received batch requests continuation.
+    /// The normal count limit is [`MAX_HEADERS_RESULTS`].
+    pub const fn is_full(&self, max_count: usize) -> bool {
+        self.count >= max_count || self.size >= HEADERS_MESSAGE_SIZE_THRESHOLD
+    }
+}
 
 /// Serializer for command string
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -1980,6 +2030,11 @@ impl encoding::Decoder for V2NetworkMessageDecoder {
     type Error = V2NetworkMessageDecoderError;
 
     fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<bool, Self::Error> {
+        // Slice decoding does not consult read_limit(). Enforce the frame cap
+        // here too, before an unknown-message decoder can allocate its payload.
+        if bytes.len() > MAX_V2_CONTENTS_SIZE.saturating_sub(self.read) {
+            return Err(V2NetworkMessageDecoderError);
+        }
         loop {
             match &mut self.state {
                 V2NetworkMessageDecoderState::ShortId => {
@@ -2047,7 +2102,7 @@ impl encoding::Decoder for V2NetworkMessageDecoder {
     }
 
     fn read_limit(&self) -> usize {
-        let frame_limit = MAX_MSG_SIZE.saturating_sub(self.read);
+        let frame_limit = MAX_V2_CONTENTS_SIZE.saturating_sub(self.read);
         match &self.state {
             V2NetworkMessageDecoderState::ShortId => frame_limit.min(1),
             V2NetworkMessageDecoderState::Command(decoder) => frame_limit.min(decoder.read_limit()),

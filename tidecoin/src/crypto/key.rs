@@ -79,7 +79,7 @@ pub enum PqWifFormat {
     /// Tidecoin node's current PQ secret format: `[network_prefix][scheme_prefix][raw_secret]`.
     Prefixed,
     /// Tidecoin node's legacy Falcon-512 format:
-    /// `[network_prefix][raw_falcon512_secret][0x01][prefixed_pubkey]`.
+    /// `[network_prefix][raw_falcon512_secret][0x01][raw_pubkey]`.
     LegacyFalcon512,
 }
 
@@ -153,7 +153,7 @@ impl PqWifKey {
                 debug_assert_eq!(self.secret_key.scheme(), PqScheme::Falcon512);
                 data.extend_from_slice(self.secret_key.as_bytes());
                 data.push(1);
-                data.extend_from_slice(&prefixed_public);
+                data.extend_from_slice(self.public_key.as_bytes());
             }
         }
         fmt.write_str(&base58::encode_check(&data))
@@ -179,15 +179,17 @@ impl PqWifKey {
         let network = parse_wif_network_prefix(network_prefix)?;
 
         let legacy_scheme = PqScheme::Falcon512;
-        let legacy_total_len = legacy_scheme.seckey_len() + 1 + legacy_scheme.prefixed_pubkey_len();
+        let legacy_total_len = legacy_scheme.seckey_len() + 1 + legacy_scheme.pubkey_len();
         if payload.len() == legacy_total_len && payload[legacy_scheme.seckey_len()] == 1 {
             let secret_key =
                 PqSecretKey::decode_slice(&payload[..legacy_scheme.seckey_len()], true)?;
             if secret_key.scheme() != legacy_scheme {
                 return Err(UnsupportedLegacyWifSchemeError { scheme: secret_key.scheme() }.into());
             }
-            let public_key =
-                PqPublicKey::from_prefixed_slice(&payload[legacy_scheme.seckey_len() + 1..])?;
+            let mut prefixed_public = Vec::with_capacity(legacy_scheme.prefixed_pubkey_len());
+            prefixed_public.push(legacy_scheme.prefix());
+            prefixed_public.extend_from_slice(&payload[legacy_scheme.seckey_len() + 1..]);
+            let public_key = PqPublicKey::from_prefixed_slice(&prefixed_public)?;
             let derived = PqPublicKey::from_secret_key(&secret_key)?;
             if public_key != derived {
                 return Err(MismatchedPqPublicKeyError.into());
@@ -200,7 +202,14 @@ impl PqWifKey {
             ));
         }
 
-        let secret_key = PqSecretKey::from_prefixed_slice(payload)?;
+        // DecodeSecret strips the historical compressed marker only when no
+        // scheme prefix is present. Prefixed encodings must consume all bytes.
+        let payload = if PqScheme::from_prefix(payload[0]).is_none() && payload.last() == Some(&1) {
+            &payload[..payload.len() - 1]
+        } else {
+            payload
+        };
+        let secret_key = PqSecretKey::decode_slice(payload, true)?;
         let public_key = PqPublicKey::from_secret_key(&secret_key)?;
         Ok(Self::with_format(secret_key, public_key, network, PqWifFormat::Prefixed))
     }

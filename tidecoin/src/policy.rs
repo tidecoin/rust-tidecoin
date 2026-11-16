@@ -11,9 +11,9 @@ use core::fmt;
 use consensus_core::{
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
     VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
-    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
-    VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
-    VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
+    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_FALCON_CANONICAL, VERIFY_MINIMALDATA,
+    VERIFY_MINIMALIF, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT,
+    VERIFY_SHA512, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
 };
 use encoding::CompactSizeEncoder;
 
@@ -118,7 +118,8 @@ pub fn standard_policy_script_flags(
     params: impl AsRef<Params>,
     next_block_height: BlockHeight,
 ) -> u32 {
-    let mut flags = STANDARD_SCRIPT_VERIFY_FLAGS | VERIFY_DEFINED_HASHTYPE;
+    let mut flags =
+        STANDARD_SCRIPT_VERIFY_FLAGS | VERIFY_DEFINED_HASHTYPE | VERIFY_FALCON_CANONICAL;
     if params.as_ref().auxpow_start_height.is_some_and(|height| next_block_height >= height) {
         flags |= VERIFY_PQ_STRICT | VERIFY_WITNESS_V1_512 | VERIFY_SHA512;
     }
@@ -669,7 +670,8 @@ where
             let Some(redeem_script) = txin.script_sig.redeem_script() else {
                 return false;
             };
-            witness_standard_for_program(redeem_script, &txin.witness)
+            !redeem_script.is_p2wsh512()
+                && witness_standard_for_program(redeem_script, &txin.witness)
         } else {
             witness_standard_for_program(&prevout.script_pubkey, &txin.witness)
         };
@@ -682,8 +684,21 @@ where
     true
 }
 
-/// Returns whether the transaction spends any non-anchor witness program.
-pub fn spends_non_anchor_witness_program<S>(tx: &Transaction, mut spent: S) -> bool
+/// Checks witness dependence under preactivation rules (v0 only).
+/// Use [`spends_non_anchor_witness_program_with_flags`] for an explicit era.
+pub fn spends_non_anchor_witness_program<S>(tx: &Transaction, spent: S) -> bool
+where
+    S: FnMut(&OutPoint) -> Option<TxOut>,
+{
+    spends_non_anchor_witness_program_with_flags(tx, spent, 0)
+}
+
+/// Checks witness dependence under the selected era, including activated native v1.
+pub fn spends_non_anchor_witness_program_with_flags<S>(
+    tx: &Transaction,
+    mut spent: S,
+    flags: u32,
+) -> bool
 where
     S: FnMut(&OutPoint) -> Option<TxOut>,
 {
@@ -696,7 +711,9 @@ where
             continue;
         };
 
-        if prevout.script_pubkey.witness_version() == Some(WitnessVersion::V0) {
+        if prevout.script_pubkey.witness_version() == Some(WitnessVersion::V0)
+            || (prevout.script_pubkey.is_p2wsh512() && flags & VERIFY_WITNESS_V1_512 != 0)
+        {
             return true;
         }
 
@@ -855,7 +872,7 @@ mod tests {
                 witness_program.to_p2sh().unwrap(),
                 1
             ))),
-            expected,
+            expected && !witness_program.is_p2wsh512(),
             "P2SH-wrapped witness program standardness mismatch"
         );
     }
@@ -1811,7 +1828,7 @@ mod tests {
 
     #[test]
     fn standard_policy_script_flags_match_node_auxpow_activation() {
-        let base = STANDARD_SCRIPT_VERIFY_FLAGS | VERIFY_DEFINED_HASHTYPE;
+        let base = STANDARD_SCRIPT_VERIFY_FLAGS | VERIFY_DEFINED_HASHTYPE | VERIFY_FALCON_CANONICAL;
         assert_eq!(standard_policy_script_flags(Params::TESTNET, BlockHeight::from_u32(999)), base);
         assert_eq!(
             standard_policy_script_flags(Params::TESTNET, BlockHeight::from_u32(1000)),

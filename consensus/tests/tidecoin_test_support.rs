@@ -8,9 +8,9 @@ use consensus::{ScriptError as RustScriptError, Utxo};
 use consensus_core::{
     VERIFY_CHECKLOCKTIMEVERIFY, VERIFY_CHECKSEQUENCEVERIFY, VERIFY_CLEANSTACK,
     VERIFY_CONST_SCRIPTCODE, VERIFY_DEFINED_HASHTYPE, VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
-    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_MINIMALDATA, VERIFY_MINIMALIF,
-    VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH, VERIFY_PQ_STRICT, VERIFY_SHA512,
-    VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
+    VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM, VERIFY_FALCON_CANONICAL, VERIFY_MINIMALDATA,
+    VERIFY_MINIMALIF, VERIFY_NONE, VERIFY_NULLDUMMY, VERIFY_NULLFAIL, VERIFY_P2SH,
+    VERIFY_PQ_STRICT, VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
 };
 use encoding::{decode_from_slice, encode_to_vec};
 use node_parity::{fixtures::test_data_path, NodeParityError, ScriptError, TidecoinNodeHarness};
@@ -37,7 +37,8 @@ pub const ALL_TIDECOIN_SCRIPT_FLAGS: u32 = VERIFY_P2SH
     | VERIFY_PQ_STRICT
     | VERIFY_WITNESS_V1_512
     | VERIFY_SHA512
-    | VERIFY_DEFINED_HASHTYPE;
+    | VERIFY_DEFINED_HASHTYPE
+    | VERIFY_FALCON_CANONICAL;
 
 pub const TIDECOIN_SCRIPT_ACTIVATION_FLAGS: u32 = node_parity::SCRIPT_ACTIVATION_FLAGS;
 
@@ -67,6 +68,7 @@ pub fn parse_script_flags(flags: &str) -> u32 {
             "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM" => VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
             "WITNESS_V1_512" => VERIFY_WITNESS_V1_512,
             "CONST_SCRIPTCODE" => VERIFY_CONST_SCRIPTCODE,
+            "FALCON_CANONICAL" => VERIFY_FALCON_CANONICAL,
             "DEFINED_HASHTYPE" => VERIFY_DEFINED_HASHTYPE,
             "PQ_STRICT" => VERIFY_PQ_STRICT,
             other => panic!("unknown Tidecoin verification flag {other}"),
@@ -263,6 +265,7 @@ pub fn map_rust_script_error(err: RustScriptError) -> ScriptError {
         RustScriptError::NegativeLockTime => ScriptError::NegativeLocktime,
         RustScriptError::UnsatisfiedLockTime => ScriptError::UnsatisfiedLocktime,
         RustScriptError::SigHashType => ScriptError::SigHashType,
+        RustScriptError::SigFalconEncoding => ScriptError::SigFalconEncoding,
         RustScriptError::MinimalData => ScriptError::MinimalData,
         RustScriptError::SigPushOnly => ScriptError::SigPushOnly,
         RustScriptError::SigNullDummy => ScriptError::SigNullDummy,

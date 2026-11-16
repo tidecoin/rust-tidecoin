@@ -204,7 +204,11 @@ fn witness_activation_recognition_native_wrapped_and_independent_flags() {
                         &tx,
                         &locking,
                         flags,
-                        if activation == 0 { Some(ScriptError::WitnessUnexpected) } else { None },
+                        if activation == 0 || wrapped {
+                            Some(ScriptError::WitnessUnexpected)
+                        } else {
+                            None
+                        },
                     );
                     tx.inputs[0].witness = Witness::new();
                     check(
@@ -212,7 +216,7 @@ fn witness_activation_recognition_native_wrapped_and_independent_flags() {
                         &tx,
                         &locking,
                         flags,
-                        if activation == 0 {
+                        if activation == 0 || wrapped {
                             None
                         } else {
                             Some(ScriptError::WitnessProgramWitnessEmpty)
@@ -227,7 +231,7 @@ fn witness_activation_recognition_native_wrapped_and_independent_flags() {
                         &tx,
                         &locking,
                         flags,
-                        if activation == 0 {
+                        if activation == 0 || wrapped {
                             None
                         } else if wrapped {
                             Some(ScriptError::WitnessMalleatedP2SH)
@@ -354,7 +358,13 @@ fn scheme_authorization_and_v1_strictness_are_separate_rules() {
                                     &tx,
                                     &locking,
                                     flags,
-                                    if valid { None } else { Some(ScriptError::EvalFalse) },
+                                    if version == 2 && wrapped {
+                                        Some(ScriptError::WitnessUnexpected)
+                                    } else if valid {
+                                        None
+                                    } else {
+                                        Some(ScriptError::EvalFalse)
+                                    },
                                 );
                             }
                         }
@@ -499,14 +509,24 @@ fn activation_preserves_ordinary_boolean_and_unknown_version_rules() {
         let locking = lock_program(&mut tx, &program(&[0x51], true), wrapped);
         tx.inputs[0].witness = Witness::from_slice(&[vec![0x51]]);
         check(&node, &tx, &locking, BASE | VERIFY_CLEANSTACK, Some(ScriptError::CleanStack));
-        check(&node, &tx, &locking, BASE | VERIFY_CLEANSTACK | VERIFY_WITNESS_V1_512, None);
+        check(
+            &node,
+            &tx,
+            &locking,
+            BASE | VERIFY_CLEANSTACK | VERIFY_WITNESS_V1_512,
+            if wrapped { Some(ScriptError::CleanStack) } else { None },
+        );
         tx.inputs[0].witness = Witness::from_slice(&[vec![0]]);
         check(
             &node,
             &tx,
             &locking,
             BASE | VERIFY_WITNESS_V1_512,
-            Some(ScriptError::WitnessProgramMismatch),
+            Some(if wrapped {
+                ScriptError::WitnessUnexpected
+            } else {
+                ScriptError::WitnessProgramMismatch
+            }),
         );
     }
     for last in [0, 0x80] {
@@ -535,13 +555,7 @@ fn activation_preserves_ordinary_boolean_and_unknown_version_rules() {
                     BASE | VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
                     Some(ScriptError::DiscourageUpgradableWitnessProgram),
                 );
-                check(
-                    &node,
-                    &tx,
-                    &locking,
-                    BASE | VERIFY_WITNESS_V1_512,
-                    if version == 1 { Some(ScriptError::WitnessProgramWrongLength) } else { None },
-                );
+                check(&node, &tx, &locking, BASE | VERIFY_WITNESS_V1_512, None);
             }
         }
     }
@@ -578,8 +592,7 @@ fn falcon_padding_profiles_match_node_and_script_activation() {
                 let mut candidate = sig.clone();
                 candidate.resize(size, 0);
                 for legacy in [false, true] {
-                    let expected = size == sig.len()
-                        || (size == padded && (!legacy || scheme == PqScheme::Falcon1024));
+                    let expected = size == sig.len();
                     assert_eq!(
                         node.pq_verify_message(scheme.prefix(), &message, &candidate, &pk, legacy)
                             .unwrap(),
@@ -614,14 +627,155 @@ fn falcon_padding_profiles_match_node_and_script_activation() {
                 tx.inputs[0].witness =
                     Witness::from_slice(&[candidate, prefixed.clone(), vec![0xac]]);
                 for strict in [false, true] {
-                    let valid = (strict || scheme == PqScheme::Falcon512)
-                        && (size == sig.len() || (size == padded && (strict || v1)));
+                    let valid = (strict || scheme == PqScheme::Falcon512) && size == sig.len();
                     check(
                         &node,
                         &tx,
                         &locking,
                         BASE | VERIFY_WITNESS_V1_512 | if strict { VERIFY_PQ_STRICT } else { 0 },
                         if valid { None } else { Some(ScriptError::EvalFalse) },
+                    );
+                }
+            }
+        }
+    }
+}
+
+// Locate coefficient signs and the unused tail in an independently generated
+// original-node signature. This is test data mutation, not a second verifier.
+fn falcon_encoding_positions(signature: &[u8]) -> (Vec<usize>, usize) {
+    let mut pos = 41 * 8;
+    let mut zeros = Vec::new();
+    let bit = |p: usize| (signature[p / 8] >> (7 - p % 8)) & 1;
+    for _ in 0..512 {
+        let sign = pos;
+        pos += 1;
+        let mut value = 0;
+        for _ in 0..7 {
+            value = value * 2 + usize::from(bit(pos));
+            pos += 1;
+        }
+        while bit(pos) == 0 {
+            value += 128;
+            pos += 1;
+        }
+        pos += 1;
+        if value == 0 {
+            zeros.push(sign);
+        }
+    }
+    (zeros, pos)
+}
+
+#[test]
+fn rc3_legacy_falcon_encoding_and_crypto_match_original_node() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let (pk, sk) = node
+        .pq_keypair_from_seed(
+            7,
+            &vec![91; primitives::PqScheme::Falcon512.deterministic_seed_len()],
+            897,
+            1281,
+        )
+        .unwrap();
+    let mut message = [27; 32];
+    let mut selected = None;
+    for attempt in 0..128 {
+        message[0] = attempt;
+        let sig = node.pq_sign_message(7, &message, &sk, 1462, true).unwrap();
+        let (zeros, end) = falcon_encoding_positions(&sig);
+        if !zeros.is_empty() && end % 8 != 0 {
+            selected = Some((sig, zeros, end));
+            break;
+        }
+    }
+    let (sig, zeros, end) =
+        selected.expect("original signer produces zero coefficients and unused tail bits");
+    let key = PqPublicKey::from_scheme_and_bytes(primitives::PqScheme::Falcon512, &pk).unwrap();
+    let mut cases = vec![(sig.clone(), false, true)];
+    for sign in zeros {
+        let mut bytes = sig.clone();
+        bytes[sign / 8] |= 1 << (7 - sign % 8);
+        cases.push((bytes, true, true));
+    }
+    for tail in 1..(1u8 << (8 - end % 8)) {
+        let mut bytes = sig.clone();
+        *bytes.last_mut().unwrap() |= tail;
+        cases.push((bytes, true, true));
+    }
+    let mut combined = cases[1].0.clone();
+    *combined.last_mut().unwrap() |= 1;
+    cases.push((combined, true, true));
+    cases.push(([cases[1].0.clone(), vec![0]].concat(), false, false));
+    cases.push((sig[..sig.len() - 1].to_vec(), false, false));
+    let mut overflow = sig.clone();
+    overflow[41..44].fill(0);
+    cases.push((overflow, false, false));
+    let mut header = sig.clone();
+    header[0] = 0x3a;
+    cases.push((header, false, false));
+    let requests = cases.iter().map(|(b,_,_)| serde_json::json!({"op":"falcon_encoding", "bytes":b.iter().map(|x|format!("{x:02x}")).collect::<String>()})).collect::<Vec<_>>();
+    for ((bytes, noncanonical, valid), result) in
+        cases.iter().zip(node_parity::validation::run(&requests).unwrap())
+    {
+        assert_eq!(result["valid"], *noncanonical);
+        assert_eq!(is_noncanonical_legacy_falcon512(bytes), *noncanonical);
+        assert_eq!(node.pq_verify_message(7, &message, bytes, &pk, true).unwrap(), *valid);
+        let signature = PqSignature::from_slice(bytes);
+        assert_eq!(signature.verify_msg32_legacy(&message, &key).is_ok(), *valid);
+        assert_eq!(signature.verify_msg32_allow_legacy(&message, &key).is_ok(), *valid);
+        assert_eq!(
+            signature.verify_msg32(&message, &key).is_ok(),
+            node.pq_verify_message(7, &message, bytes, &pk, false).unwrap()
+        );
+    }
+}
+
+#[test]
+fn rc3_relay_encoding_checks_run_before_crypto_and_all_multisig_arguments() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    // 512 compressed zero coefficients, with the first encoded as negative zero.
+    let mut sig = vec![0x39];
+    sig.extend([0; 40]);
+    sig.extend([0; 576]);
+    for i in 0..512 {
+        let p = i * 9 + 8;
+        sig[41 + p / 8] |= 1 << (7 - p % 8);
+    }
+    sig[41] |= 0x80;
+    assert!(is_noncanonical_legacy_falcon512(&sig));
+    for multisig in [false, true] {
+        for hashtype in [1, 0] {
+            let mut signature = sig.clone();
+            signature.push(hashtype);
+            // Empty key forces cryptographic failure. MULTISIG has more
+            // signatures than keys remaining after the first failure, so its
+            // second argument must be checked before the verification loop.
+            let script =
+                if multisig { vec![0x52, 0, 0, 0x52, 0xae, 0x91] } else { vec![0, 0xac, 0x91] };
+            let mut tx = tx();
+            let locking = program(&script, false);
+            let items = if multisig {
+                vec![vec![], vec![], signature, script]
+            } else {
+                vec![signature, script]
+            };
+            tx.inputs[0].witness = Witness::from_slice(&items);
+            for canonical in [0, VERIFY_FALCON_CANONICAL] {
+                for strict in [0, VERIFY_PQ_STRICT] {
+                    let expected = if hashtype == 0 {
+                        Some(ScriptError::SigHashType)
+                    } else if canonical != 0 && strict == 0 {
+                        Some(ScriptError::SigFalconEncoding)
+                    } else {
+                        None
+                    };
+                    check(
+                        &node,
+                        &tx,
+                        &locking,
+                        BASE | VERIFY_DEFINED_HASHTYPE | canonical | strict,
+                        expected,
                     );
                 }
             }

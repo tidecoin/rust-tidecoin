@@ -6,7 +6,7 @@ The goal is to make `rust-tidecoin` compatible with the pinned Tidecoin C++ node
 and consolidate a foundation for a future pure Rust node.
 
 - The pinned C++ node implementation is the behavioral authority. The active
-  [migration plan](ai-docs/RC2_MIGRATION_PLAN.md) identifies the target revision.
+  [migration plan](ai-docs/RC3_MIGRATION_PLAN.md) identifies the target revision.
   Upstream Bitcoin changes matter through their adoption in Tidecoin; they do
   not independently override Tidecoin behavior.
 - Preserve the reviewed node behavior. Do not redesign consensus, silently

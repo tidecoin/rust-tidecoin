@@ -4,6 +4,11 @@
 #include <validation.cpp>
 #include <kernel/notifications_interface.h>
 #include <univalue.h>
+#include <key_io.h>
+#include <pq/pqhd_kdf.h>
+#include <pq/pq_api.h>
+#include <policy/policy.h>
+#include <net_processing.h>
 #include <util/signalinterrupt.h>
 #include <iostream>
 #include <iterator>
@@ -91,6 +96,73 @@ static UniValue Run(const UniValue& request, const fs::path& datadir)
     const std::string op = request["op"].get_str();
     const auto& p = params.GetConsensus();
     BlockValidationState state;
+    if (op == "headers_size") {
+        HeadersMessageSize size;
+        for (const auto& value : request["sizes"].getValues()) size.Add(value.getInt<size_t>());
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("size", size.GetSize());
+        out.pushKV("full", size.IsFull(Int(request, "max_count", MAX_HEADERS_RESULTS)));
+        out.pushKV("max_message", MAX_PROTOCOL_MESSAGE_LENGTH);
+        out.pushKV("max_header", MAX_BLOCK_HEADER_SIZE);
+        return out;
+    }
+    if (op == "falcon_encoding" || op == "pubkey_valid") {
+        const auto bytes = ParseHex(request["bytes"].get_str());
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("valid", op == "falcon_encoding" ? pq::IsNonCanonicalLegacyFalcon512(bytes) : pq::IsValidPubKey(bytes));
+        return out;
+    }
+    if (op == "pqhd_path") {
+        std::vector<uint32_t> path;
+        for (const auto& value : request["path"].getValues()) path.push_back(value.getInt<uint32_t>());
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("valid", pqhd::ValidateV1LeafPath(path));
+        if (pqhd::ValidateV1LeafPath(path)) {
+            std::array<uint8_t, 32> seed{};
+            seed.fill(42);
+            const auto master = pqhd::MakeMasterNode(seed);
+            const auto leaf = pqhd::DerivePath(master, path);
+            const auto material = pqhd::DeriveKeygenStreamKey(leaf->node_secret, path);
+            out.pushKV("stream", HexStr(*material));
+        }
+        return out;
+    }
+    if (op == "wif") {
+        SelectParams(Int(request, "network", 2) == 0 ? ChainType::MAIN : Int(request, "network", 2) == 1 ? ChainType::TESTNET : ChainType::REGTEST);
+        const auto key = DecodeSecret(request["wif"].get_str());
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("valid", key.IsValid());
+        if (key.IsValid()) {
+            out.pushKV("legacy", EncodeSecretLegacy(key));
+            out.pushKV("prefixed", EncodeSecret(key));
+        }
+        return out;
+    }
+    if (op == "header_size") {
+        auto header = Header(request["header"]);
+        if (Bool(request, "drop_auxpow", false)) header.auxpow.reset();
+        if (Bool(request, "clear_auxpow_flag", false)) header.SetAuxpowVersion(false);
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("oversized", IsOversizedAuxPowHeader(header));
+        if (!header.IsAuxpow() || header.auxpow) out.pushKV("size", GetSerializeSize(header));
+        return out;
+    }
+    if (op == "witness_policy") {
+        CMutableTransaction mutable_tx;
+        DataStream stream{ParseHex(request["tx"].get_str())};
+        stream >> TX_WITH_WITNESS(mutable_tx);
+        if (!stream.empty()) throw DecodeError("trailing transaction bytes");
+        const CTransaction tx{mutable_tx};
+        CCoinsView base;
+        CCoinsViewCache coins{&base};
+        const auto bytes = ParseHex(request["prev_script"].get_str());
+        const CScript script{bytes.begin(), bytes.end()};
+        for (const auto& input : tx.vin) coins.AddCoin(input.prevout, Coin{CTxOut{1000, script}, 1, false}, false);
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("standard", IsWitnessStandard(tx, coins));
+        out.pushKV("dependent", SpendsNonAnchorWitnessProg(tx, coins, request["flags"].getInt<unsigned int>()));
+        return out;
+    }
     if (op == "params") {
         UniValue out{UniValue::VOBJ};
         out.pushKV("auxpow_start_height", p.nAuxpowStartHeight);

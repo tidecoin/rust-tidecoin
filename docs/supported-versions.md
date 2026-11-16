@@ -4,15 +4,26 @@ This repository is currently maintained as the Tidecoin Rust workspace.
 
 ## Node compatibility
 
-The local `v2` migration passes the protocol-library checkpoint against node
-`v1.0.0rc2` (`7d653be5d24e73b49d101578afb33d8d7a889c1d`). This supersedes the
-incompatible reviewed Rust baseline `9e9b74581b765ad53ad902e3c7c10ea78817d0a7`;
-it is not a published Rust release. The [proof matrix](../ai-docs/NODE_PARITY_PROOF_MATRIX.md)
-bounds the claim, and the [migration plan](../ai-docs/RC2_MIGRATION_PLAN.md)
-records validation and remaining oracle limits. Hosted verification is in
-progress for the pushed `v2` checkpoint. Full-node acceptance and PSBT interoperability are not claimed.
+The active `v2` target is Tidecoin `v1.0.0rc3`
+(`ffed4e92e60ff2de30361648a71cba64531f9077`). This is not a published Rust
+workspace release. The [migration plan](../ai-docs/RC3_MIGRATION_PLAN.md)
+records original-source comparisons, check results and remaining limits.
+Full-node acceptance and PSBT interoperability are not claimed.
 
 ### API migration
+
+- Witness-v1 with a 64-byte program executes only natively after activation.
+  The P2SH-wrapped form stays ordinary script; shorter v1 programs stay reserved.
+- Relay flags include `VERIFY_FALCON_CANONICAL`; consensus flags do not. Use
+  `spends_non_anchor_witness_program_with_flags` when selecting an explicit era.
+- PQHD default descriptors now separate script families and main/test networks.
+  Preserve existing descriptors: explicit supported old paths still derive the
+  same keys; regenerating defaults is not a wallet migration.
+- Legacy Falcon WIF exports carry the raw public key. Historical raw secret
+  imports are accepted; inconsistent embedded key pairs are rejected.
+- Header admission uses `is_oversized_auxpow_header` before duplicate shortcuts;
+  it is separate from proof/context checks. `HeadersMessageSize` in the P2P crate
+  tracks rc3 reply continuation by count and serialized size.
 
 - Non-ANYONECANPAY witness-v1 signing/verification needs all spent `TxOut`s in
   input order. Supply `SpentOutputs` to the shared engine or the complete-context
@@ -56,3 +67,8 @@ version), containing the rc2 verification fixes from source revision
 existing registry 0.4.0 releases; all three share the registry common crate.
 No Git dependency, publishing credential or local Falcon checkout is needed.
 This dependency publication does not publish the rust-tidecoin workspace itself.
+
+The shared Rust facade applies rc3 decoding rules around that registry verifier:
+legacy negative zero and unused final bits are normalized without changing the
+signed coefficients; strict verification rejects all trailing padding. These
+rules and local signing bounds are tested against the pinned original node.

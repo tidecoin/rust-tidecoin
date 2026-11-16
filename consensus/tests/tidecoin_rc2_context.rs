@@ -269,6 +269,31 @@ fn native_and_wrapped_signed_spends_match_node_for_all_modes_and_context_mutatio
                     );
                 }
             }
+            if wrapped {
+                // rc3 leaves wrapped v1-512 as ordinary script in every era.
+                // A populated witness is unexpected, regardless of its signature.
+                for index in 0..2 {
+                    assert!(verify(
+                        &tx,
+                        index,
+                        &outputs[index],
+                        Some(&outputs),
+                        VERIFY_ALL_TIDECOIN
+                    )
+                    .is_err());
+                    assert!(h
+                        .verify_tx_input_with_spent_outputs(
+                            &hex(&tx),
+                            index,
+                            outputs[index].script_pubkey.as_bytes(),
+                            outputs[index].amount.to_sat() as i64,
+                            VERIFY_ALL_TIDECOIN,
+                            &node_outputs(&outputs)
+                        )
+                        .is_err());
+                }
+                continue;
+            }
             verify_transaction_inputs(
                 &tx,
                 SpentOutputs::from_txouts(outputs.to_vec()),
@@ -333,7 +358,8 @@ fn native_and_wrapped_signed_spends_match_node_for_all_modes_and_context_mutatio
                         .into_bytes()
                 };
                 changed_scripts[index].script_pubkey = ScriptPubKeyBuf::from_bytes(alternate);
-                let expected = mode.to_u32() & 0x80 != 0;
+                // Moving native v1 to P2SH removes witness interpretation even for ACP.
+                let expected = false;
                 assert_eq!(
                     verify(
                         &relocked,

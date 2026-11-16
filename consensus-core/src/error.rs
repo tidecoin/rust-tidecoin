@@ -55,6 +55,8 @@ pub enum ScriptError {
     UnsatisfiedLockTime,
     /// Signature hash type was invalid for the current validation path.
     SigHashType,
+    /// Noncanonical historical Falcon signature (relay policy).
+    SigFalconEncoding,
     /// Non-minimal pushdata encoding was used when forbidden.
     MinimalData,
     /// `scriptSig` was not push-only when required.
@@ -114,6 +116,7 @@ impl fmt::Display for ScriptError {
             Self::NegativeLockTime => "NEGATIVE_LOCKTIME",
             Self::UnsatisfiedLockTime => "UNSATISFIED_LOCKTIME",
             Self::SigHashType => "SIG_HASHTYPE",
+            Self::SigFalconEncoding => "SIG_FALCON_ENCODING",
             Self::MinimalData => "MINIMALDATA",
             Self::SigPushOnly => "SIG_PUSHONLY",
             Self::SigNullDummy => "SIG_NULLDUMMY",

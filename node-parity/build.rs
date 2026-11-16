@@ -53,6 +53,7 @@ fn build_stub_bridge(local_c_src: &Path) {
 }
 
 fn main() {
+    println!("cargo:rustc-env=TIDECOIN_NODE_PARITY_TARGET={}", env::var("TARGET").unwrap());
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=TIDECOIN_NODE_REPO");
     println!("cargo:rerun-if-env-changed=TIDECOIN_NODE_PARITY_REQUIRED");

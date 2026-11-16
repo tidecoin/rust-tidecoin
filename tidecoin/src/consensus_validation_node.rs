@@ -118,6 +118,7 @@ fn map_core_script_error(value: consensus_core::ScriptError) -> ScriptError {
         consensus_core::ScriptError::NegativeLockTime => ScriptError::NegativeLocktime,
         consensus_core::ScriptError::UnsatisfiedLockTime => ScriptError::UnsatisfiedLocktime,
         consensus_core::ScriptError::SigHashType => ScriptError::SigHashType,
+        consensus_core::ScriptError::SigFalconEncoding => ScriptError::SigFalconEncoding,
         consensus_core::ScriptError::MinimalData => ScriptError::MinimalData,
         consensus_core::ScriptError::SigPushOnly => ScriptError::SigPushOnly,
         consensus_core::ScriptError::SigNullDummy => ScriptError::SigNullDummy,
@@ -621,6 +622,7 @@ mod tests {
             acc | match word {
                 "P2SH" => VERIFY_P2SH,
                 "DEFINED_HASHTYPE" => VERIFY_DEFINED_HASHTYPE,
+                "FALCON_CANONICAL" => consensus_core::VERIFY_FALCON_CANONICAL,
                 "SIGPUSHONLY" => VERIFY_SIGPUSHONLY,
                 "MINIMALDATA" => VERIFY_MINIMALDATA,
                 "NULLDUMMY" => VERIFY_NULLDUMMY,

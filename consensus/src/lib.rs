@@ -61,6 +61,8 @@ pub const VERIFY_SHA512: c_uint = core_flags::VERIFY_SHA512 as c_uint;
 pub const VERIFY_CONST_SCRIPTCODE: c_uint = core_flags::VERIFY_CONST_SCRIPTCODE as c_uint;
 /// Require defined signature hash bytes (relay-only for legacy/v0).
 pub const VERIFY_DEFINED_HASHTYPE: c_uint = core_flags::VERIFY_DEFINED_HASHTYPE as c_uint;
+/// Relay-only canonical Falcon encoding restriction.
+pub const VERIFY_FALCON_CANONICAL: c_uint = core_flags::VERIFY_FALCON_CANONICAL as c_uint;
 
 /// Tidecoin default verification flags after auxpow-era features are enabled.
 pub const VERIFY_ALL_TIDECOIN: c_uint = core_flags::VERIFY_ALL_TIDECOIN as c_uint;
@@ -1495,21 +1497,20 @@ mod tests {
     }
 
     #[test]
-    fn witness_v1_512_wrong_length_fails_when_enabled() {
+    fn short_witness_v1_remains_reserved_when_extension_enabled() {
         let script_pubkey = Builder::new()
             .push_opcode(all::OP_PUSHNUM_1)
             .push_slice(PushBytesBuf::try_from(vec![0x11; 32]).unwrap())
             .into_script();
 
-        let failure = run_witness_script_with_ctx(
+        run_witness_script_with_ctx(
             Builder::new().into_script(),
             script_pubkey,
             Witness::new(),
             sat(50_000),
             VERIFY_WITNESS | VERIFY_WITNESS_V1_512,
         )
-        .expect_err("enabled witness-v1-512 requires a 64-byte program");
-        assert_eq!(failure.script_error, ScriptError::WitnessProgramWrongLength);
+        .expect("short v1 is reserved even when native v1-512 activates");
     }
 
     #[test]

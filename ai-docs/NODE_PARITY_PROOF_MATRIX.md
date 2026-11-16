@@ -1,15 +1,28 @@
 # Node Parity Proof Matrix
 
-Status: rc2 protocol-library evidence refreshed on 2026-10-20.
+Status: rc3 migration evidence; see the active plan for completed checks.
 
 This matrix is subordinate to [README.md](README.md). It maps stateless and
 caller-context Rust validation to evidence against C++ node
-`7d653be5d24e73b49d101578afb33d8d7a889c1d` (`v1.0.0rc2`). The
-[phase-4 record](RC2_MIGRATION_PLAN.md#phase-4-implementation-evidence-2026-10-20)
+`ffed4e92e60ff2de30361648a71cba64531f9077` (`v1.0.0rc3`). The
+[active migration record](RC3_MIGRATION_PLAN.md)
 owns commands, results and CI status. Passing these cases is a bounded
 compatibility checkpoint, not proof of every possible input.
 
-## rc2-specific evidence
+## rc3 additions
+
+| Surface | Original-source comparison |
+| --- | --- |
+| Legacy Falcon negative zero/final bits, strict padding and relay error order | rc3 cases in `consensus/tests/tidecoin_rc2_rules.rs`; original verifier, classifier and interpreter |
+| PQHD purposes/coin types and KDF, WIF identity, Falcon key encoding, ML-KEM coefficients | `tidecoin/tests/rc3_key_boundaries.rs`; original PQHD, key I/O and cryptography |
+| Witness dependence, native/wrapped sigops and policy | `tidecoin/tests/rc3_witness_context.rs`; original interpreter and policy functions |
+| AuxPoW header size, reply size/count, message constants | rc3 header test in `rc2_original_validation.rs`, `rc3_witness_context.rs`; original admission and size tracker |
+| P2P payload/frame boundary enforcement | `p2p/tests/rc3_message_limits.rs`; slice and incremental decoding |
+
+## Retained and updated differential suites
+
+Historical `rc2` filenames retain regression provenance; required runs now use
+the rc3 pin and updated source-derived expectations.
 
 | Surface | Evidence | Oracle boundary |
 | --- | --- | --- |

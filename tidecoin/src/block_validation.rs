@@ -18,6 +18,18 @@ use crate::pow::{self, AuxPowValidationError, PowValidationError};
 use crate::{BlockTime, CompactTarget, Transaction, Weight};
 use units::absolute::LOCK_TIME_THRESHOLD;
 
+/// rc3 maximum complete header size, without a witness discount.
+pub const MAX_BLOCK_HEADER_SIZE: usize = Weight::MAX_BLOCK.to_wu() as usize / 4;
+
+/// rc3 header-admission size check, before duplicate-header shortcuts.
+/// This is separate from proof validity and contextual header checks. Buffered
+/// headers whose proof was already checked may omit their AuxPoW payload.
+pub fn is_oversized_auxpow_header(header: &Header) -> bool {
+    header.version.is_auxpow()
+        && header.auxpow.is_some()
+        && header.serialized_len() > MAX_BLOCK_HEADER_SIZE
+}
+
 /// Maximum timestamp rollback allowed on BIP94 difficulty-adjustment blocks.
 pub const MAX_TIMEWARP_SECONDS: u32 = 600;
 
