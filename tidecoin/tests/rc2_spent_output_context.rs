@@ -32,7 +32,7 @@ fn rc2_product_multi_input_verification_retains_spent_output_context() {
         },
         TxOut {
             amount: Amount::from_sat_u32(2000),
-            script_pubkey: ScriptPubKeyBuf::from_bytes(program.clone()),
+            script_pubkey: ScriptPubKeyBuf::from_bytes(program),
         },
     ];
     for mode in [

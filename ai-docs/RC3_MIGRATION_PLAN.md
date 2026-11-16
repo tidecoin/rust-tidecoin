@@ -123,12 +123,17 @@ compensated for or redesigned.
 - Required workspace and product gates above: pass against the rc3 pin.
 - Stable workspace no-default-features and independent no-std checks on MSRV
   1.94.1: pass, including product/P2P serde without default features.
-- Clippy: passes; existing advisory warnings remain. New-code warnings addressed.
+- Stable Clippy passes with existing advisory warnings. The pinned nightly
+  all-targets/all-features Clippy gate also passes with `-D warnings` after
+  simplifying the Falcon rejection predicate and removing one test-only clone.
 - Script-runtime fuzz smoke: 5,000 runs with stable libFuzzer, no sanitizer; pass.
   This is bounded smoke coverage, not a fuzzing/security certification.
 - Regenerated policy provenance (33 cases) and script metadata (30 cases) exactly
   match the committed artifacts. Existing fixture/source hash gates pass.
 - Formatting, diff whitespace, actionlint and shell syntax checks: pass.
+- Workspace documentation builds; product doctests pass (15 passed, one
+  pre-existing ignored example). Product and P2P no-std builds also pass on
+  `thumbv7m-none-eabi`.
 - AArch64 cross-runner configuration regression: all five tests pass under QEMU.
   Hosted full cross/feature jobs remain the integration gate.
 
@@ -159,3 +164,10 @@ The standalone oracle includes complete unmodified `validation.cpp`; added
 adapters call original key, policy, KDF and header-size functions. It is not a
 copy of those rules. Historical `rc2` test filenames preserve provenance while
 running against the active pin. External node/docs checkouts were not modified.
+
+### Hosted validation
+
+Initial rc3 run: [43851939268](https://github.com/tidecoin/rust-tidecoin/actions/runs/43851939268)
+at `740b2ba`. Its lint failure was reproduced with the exact nightly command
+and fixed without changing the rules. The follow-up commit re-runs hosted gates;
+final results are not inferred from local passes or from unfinished jobs.

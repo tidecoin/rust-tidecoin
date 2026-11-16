@@ -175,8 +175,8 @@ impl PqSignature {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
                 let logn = if pk.scheme() == PqScheme::Falcon512 { 9 } else { 10 };
                 // rc3 removes PQClean's padded-size exception for both schemes.
-                if !canonical_falcon(self.as_bytes(), logn)
-                    .is_some_and(|canonical| canonical == self.as_bytes())
+                if canonical_falcon(self.as_bytes(), logn)
+                    .is_none_or(|canonical| canonical != self.as_bytes())
                 {
                     return Err(PqError::VerificationFailed);
                 }
