@@ -356,12 +356,538 @@ fn witness_program_recognition_matches_original_execution() {
                                         script_pubkey: ScriptPubKeyBuf::from_bytes(locking),
                                     }],
                                     flags: bits,
+                                    eval: vec![],
                                 },
                             );
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn opcode_results_match_original_eval_script() {
+    use tidecoin_fuzz::differential::compare_eval_only;
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    // Verdicts alone miss wrong results (a misordered ROT usually leaves a
+    // true top element). Run every opcode on stacks whose exact contents show
+    // ordering, arithmetic and encoding mistakes, and compare whole stacks.
+    let values: Vec<Vec<u8>> = vec![
+        vec![],     // 0 / false
+        vec![0x00], // non-minimal zero
+        vec![0x80], // negative zero
+        vec![0x01],
+        vec![0x02],
+        vec![0x81],                         // -1
+        vec![0x7f],                         // 127
+        vec![0xff],                         // -127
+        vec![0x80, 0x00],                   // 128
+        vec![0x01, 0x00],                   // non-minimal 1
+        vec![0xff, 0xff, 0xff, 0x7f],       // i32::MAX
+        vec![0xff, 0xff, 0xff, 0xff],       // -i32::MAX
+        vec![0x00, 0x00, 0x00, 0x80, 0x00], // 5 bytes: 2^31
+        vec![0xab; 20],                     // non-numeric data
+    ];
+    let small = &values[..6];
+    let mut stacks: Vec<Vec<Vec<u8>>> = vec![vec![]];
+    stacks.extend(values.iter().map(|a| vec![a.clone()]));
+    for a in &values {
+        for b in &values {
+            stacks.push(vec![a.clone(), b.clone()]);
+        }
+    }
+    for a in small {
+        for b in small {
+            for c in small {
+                stacks.push(vec![a.clone(), b.clone(), c.clone()]);
+            }
+        }
+    }
+    // Distinct items expose any misordering by the stack-shuffling opcodes.
+    let distinct: Vec<Vec<u8>> = (1..=7u8).map(|i| vec![0x10 + i]).collect();
+    // Every depth from 1 to 7, so each opcode sees exactly its minimum depth.
+    stacks.extend((1..=distinct.len()).map(|depth| distinct[..depth].to_vec()));
+    for index in [vec![], vec![0x01], vec![0x02], vec![0x05], vec![0x06], vec![0x07], vec![0x81]] {
+        let mut stack = distinct.clone();
+        stack.push(index);
+        stacks.push(stack);
+    }
+    for bits in [0, consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_MINIMALDATA] {
+        for opcode in 0u8..=0xff {
+            for stack in &stacks {
+                compare_eval_only(&node, &[opcode], stack, bits);
+            }
+        }
+    }
+}
+
+/// Minimal script-number encoding of `value`.
+fn script_num(value: i64) -> Vec<u8> {
+    let mut magnitude = value.unsigned_abs();
+    let mut out = Vec::new();
+    while magnitude > 0 {
+        out.push(magnitude as u8);
+        magnitude >>= 8;
+    }
+    if let Some(last) = out.last_mut() {
+        if *last & 0x80 != 0 {
+            out.push(if value < 0 { 0x80 } else { 0 });
+        } else if value < 0 {
+            *last |= 0x80;
+        }
+    }
+    out
+}
+
+/// Pushes `value` the way MINIMALDATA requires.
+fn push_num(value: i64) -> Vec<u8> {
+    match value {
+        0 => vec![0x00],
+        -1 => vec![0x4f],
+        1..=16 => vec![0x50 + value as u8],
+        _ => tidecoin_fuzz::differential::push(&script_num(value)),
+    }
+}
+
+/// Every encoding of `data` the script format can express: direct, PUSHDATA1/2/4.
+fn push_encodings(data: &[u8]) -> Vec<Vec<u8>> {
+    let mut out = Vec::new();
+    if data.len() < 76 {
+        out.push([vec![data.len() as u8], data.to_vec()].concat());
+    }
+    if data.len() <= 255 {
+        out.push([vec![0x4c, data.len() as u8], data.to_vec()].concat());
+    }
+    if data.len() <= 65535 {
+        out.push([vec![0x4d], (data.len() as u16).to_le_bytes().to_vec(), data.to_vec()].concat());
+    }
+    out.push([vec![0x4e], (data.len() as u32).to_le_bytes().to_vec(), data.to_vec()].concat());
+    out
+}
+
+#[test]
+fn witness_stack_depth_is_checked_only_by_execution() {
+    use tidecoin_fuzz::differential::compare;
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    // The original witness path checks element sizes before execution, but
+    // stack depth only after each executed opcode.
+    for mode in 2..6 {
+        for depth in [998, 999, 1000, 1001, 1002] {
+            // Empty script, NOP, 2DROP, DROP, DEPTH.
+            for script in [vec![], vec![0x61], vec![0x6d], vec![0x75], vec![0x74]] {
+                for bits in [consensus_core::VERIFY_ALL_TIDECOIN, u32::MAX] {
+                    compare(&node, &script_case(mode, script.clone(), vec![vec![]; depth], bits));
+                }
+            }
+        }
+        for size in [8191, 8192, 8193] {
+            compare(
+                &node,
+                &script_case(
+                    mode,
+                    vec![0x75],
+                    vec![vec![1; size]],
+                    consensus_core::VERIFY_ALL_TIDECOIN,
+                ),
+            );
+        }
+    }
+}
+
+#[test]
+fn lock_time_and_sequence_boundaries_match_original_node() {
+    use tidecoin::{absolute::LockTime, Sequence, TransactionVersion};
+    use tidecoin_fuzz::differential::compare;
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let threshold = 500_000_000i64;
+    let cltv_args = [0, 1, threshold - 1, threshold, threshold + 1, u32::MAX as i64, 1 << 32, -1];
+    let tx_locks =
+        [0u32, 1, threshold as u32 - 1, threshold as u32, threshold as u32 + 1, u32::MAX];
+    let csv_args = [
+        0i64,
+        1,
+        0xffff,
+        0x1_0000,
+        1 << 22,
+        (1 << 22) | 1,
+        (1 << 22) | 0xffff,
+        1 << 31,
+        (1 << 31) | 1,
+        u32::MAX as i64,
+        1 << 32,
+        -1,
+    ];
+    let tx_sequences = [
+        0u32,
+        1,
+        0xffff,
+        0x1_0000,
+        1 << 22,
+        (1 << 22) | 1,
+        (1 << 22) | 2,
+        1 << 31,
+        u32::MAX - 1,
+        u32::MAX,
+    ];
+    for mode in [0, 2] {
+        for bits in [0, consensus_core::VERIFY_ALL_TIDECOIN] {
+            for arg in cltv_args {
+                for lock in tx_locks {
+                    for sequence in [0, u32::MAX - 1, u32::MAX] {
+                        let mut case =
+                            script_case(mode, [push_num(arg), vec![0xb1]].concat(), vec![], bits);
+                        case.tx.lock_time = LockTime::from_consensus(lock);
+                        case.tx.inputs[0].sequence = Sequence::from_consensus(sequence);
+                        compare(&node, &case);
+                    }
+                }
+            }
+            for arg in csv_args {
+                for sequence in tx_sequences {
+                    for version in [1u32, 2, 3, u32::MAX] {
+                        let mut case =
+                            script_case(mode, [push_num(arg), vec![0xb2]].concat(), vec![], bits);
+                        case.tx.version = TransactionVersion::maybe_non_standard(version);
+                        case.tx.inputs[0].sequence = Sequence::from_consensus(sequence);
+                        compare(&node, &case);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn push_encodings_and_signature_removal_match_original_node() {
+    use tidecoin_fuzz::differential::{compare, compare_eval_only};
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let flag_sets = [
+        0,
+        consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_MINIMALDATA,
+        consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_CONST_SCRIPTCODE,
+    ];
+    let mut data: Vec<Vec<u8>> = vec![vec![]];
+    data.extend((0x00..=0x11).chain([0x4f, 0x80, 0x81, 0xff]).map(|b| vec![b]));
+    data.extend([2usize, 75, 76, 77, 255, 256, 257, 520].map(|len| vec![0x5a; len]));
+    // MINIMALDATA over every encoding of every boundary length and value.
+    for item in &data {
+        for script in push_encodings(item) {
+            for bits in flag_sets {
+                compare_eval_only(&node, &script, &[], bits);
+            }
+        }
+    }
+    // FindAndDelete removes only the explicit push encoding of the signature,
+    // walking the script by instruction; CONST_SCRIPTCODE reports any match.
+    let pubkey = vec![0x07; 33];
+    let tails: [&[u8]; 5] =
+        [&[], &[0x4c], &[0x4d, 0x05], &[0x4e, 0x01, 0x00, 0x00], &[0x4c, 0x05, 0x01]];
+    for len in [1usize, 2, 75, 76, 77, 255, 256, 300] {
+        let mut sig = vec![0x5a; len];
+        *sig.last_mut().unwrap() = 0x01;
+        let mut patterns = push_encodings(&sig);
+        // The pattern inside another push must not match.
+        patterns.push(tidecoin_fuzz::differential::push(
+            &[vec![0xaa], tidecoin_fuzz::differential::push(&sig), vec![0xbb]].concat(),
+        ));
+        patterns.push(
+            [tidecoin_fuzz::differential::push(&sig), tidecoin_fuzz::differential::push(&sig)]
+                .concat(),
+        );
+        for pattern in &patterns {
+            for tail in tails {
+                let script = [
+                    pattern.clone(),
+                    vec![0x6d, 0x51], // 2DROP leaves the signature under OP_1 on short patterns
+                    tidecoin_fuzz::differential::push(&pubkey),
+                    vec![0xac],
+                    tail.to_vec(),
+                ]
+                .concat();
+                for mode in [0, 1] {
+                    for bits in flag_sets {
+                        compare(
+                            &node,
+                            &script_case(
+                                mode,
+                                script.clone(),
+                                vec![sig.clone(), sig.clone()],
+                                bits,
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn multisig_counts_and_operation_limit_match_original_node() {
+    use tidecoin_fuzz::differential::{compare, compare_eval_only};
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let bits_all = consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_NULLFAIL;
+    for keys in 0..=3usize {
+        for sigs in 0..=keys + 1 {
+            for missing in 0..=2usize {
+                for sig in [vec![], vec![0x01], vec![0x00], vec![0xaa, 0x01]] {
+                    // Bottom to top: dummy, signatures, count, keys, count.
+                    let mut stack = vec![vec![]];
+                    stack.extend(std::iter::repeat_n(sig.clone(), sigs));
+                    stack.push(script_num(sigs as i64));
+                    stack.extend((0..keys).map(|i| vec![0x02 + i as u8; 33]));
+                    stack.push(script_num(keys as i64));
+                    let stack = stack[missing.min(stack.len())..].to_vec();
+                    for bits in [0, bits_all] {
+                        compare_eval_only(&node, &[0xae], &stack, bits);
+                        compare_eval_only(&node, &[0xaf], &stack, bits);
+                    }
+                }
+            }
+        }
+    }
+    // OP_1..OP_16 are not counted toward the 201 operation limit.
+    for nops in [199, 200, 201, 202] {
+        for last in [0x00, 0x4f, 0x51, 0x60, 0x61] {
+            let script = [vec![0x61; nops], vec![0x60, last]].concat();
+            for mode in 0..4 {
+                compare(&node, &script_case(mode, script.clone(), vec![], bits_all));
+            }
+        }
+    }
+}
+
+#[test]
+fn script_code_follows_code_separator_and_executing_script() {
+    use consensus_core::{SighashCache, SpentOutputs, TxSighashType};
+    use tidecoin::{
+        script::{ScriptPubKeyBuf, ScriptSigBuf},
+        PqScheme, PqSchemeCryptoExt, PqSignature, Witness,
+    };
+    use tidecoin_fuzz::differential::{compare, push};
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    // Two signature checks in one input whose script codes differ. Reusing the
+    // first script code for the second check fails the second signature.
+    let (pk, sk) = PqScheme::Falcon512
+        .generate_keypair_from_seed(&vec![41; PqScheme::Falcon512.deterministic_seed_len()])
+        .unwrap();
+    let key = push(&pk.to_prefixed_bytes());
+    let bits = (consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_NULLFAIL)
+        & !consensus_core::VERIFY_CONST_SCRIPTCODE;
+    // Locking script with a code separator between the two checks.
+    let separated = [key.clone(), vec![0xad, 0xab], key.clone(), vec![0xac]].concat();
+    let after_separator = [key.clone(), vec![0xac]].concat();
+    let sign = |case: &tidecoin_fuzz::differential::Case, code: &[u8], kind: u8| {
+        let mut cache = SighashCache::new_with_spent_outputs(
+            &case.tx,
+            SpentOutputs::from_txouts(case.spent.clone()),
+        )
+        .unwrap();
+        let amount = case.spent[0].amount;
+        let mut sig = match kind {
+            0 => PqSignature::sign_msg32(
+                &cache.legacy_signature_hash(0, code, 1).unwrap().to_byte_array(),
+                &sk,
+            ),
+            1 => PqSignature::sign_msg32(
+                &cache
+                    .p2wsh_signature_hash(0, code, amount, TxSighashType::All)
+                    .unwrap()
+                    .to_byte_array(),
+                &sk,
+            ),
+            _ => PqSignature::sign_msg64(
+                &cache
+                    .p2wsh512_signature_hash(0, code, amount, TxSighashType::All)
+                    .unwrap()
+                    .to_byte_array(),
+                &sk,
+            ),
+        }
+        .unwrap()
+        .as_bytes()
+        .to_vec();
+        sig.push(0x01);
+        sig
+    };
+    let check = |case: &tidecoin_fuzz::differential::Case| {
+        compare(&node, case);
+        consensus_core::verify_transaction_inputs(
+            &case.tx,
+            SpentOutputs::from_txouts(case.spent.clone()),
+            case.flags,
+        )
+        .unwrap();
+    };
+
+    // Legacy: the first check signs the whole script without separators.
+    let mut case = script_case(0, separated.clone(), vec![], bits);
+    let stripped = [key.clone(), vec![0xad], key.clone(), vec![0xac]].concat();
+    let (first, second) = (sign(&case, &stripped, 0), sign(&case, &after_separator, 0));
+    case.tx.inputs[0].script_sig = ScriptSigBuf::from_bytes([push(&second), push(&first)].concat());
+    case.eval.clear();
+    check(&case);
+
+    // Legacy: the first check runs in the signature script, the second in the
+    // locking script, both from offset zero.
+    let mut case = script_case(0, after_separator.clone(), vec![], bits);
+    let second = sign(&case, &after_separator, 0);
+    let first = sign(&case, &[push(&second), key.clone(), vec![0xad]].concat(), 0);
+    case.tx.inputs[0].script_sig =
+        ScriptSigBuf::from_bytes([push(&second), push(&first), key, vec![0xad]].concat());
+    case.spent[0].script_pubkey = ScriptPubKeyBuf::from_bytes(after_separator.clone());
+    case.eval.clear();
+    check(&case);
+
+    // Witness v0 and v1_512 keep separators and start after the last one executed.
+    for (mode, kind) in [(2u8, 1u8), (3, 2)] {
+        let mut case = script_case(mode, separated.clone(), vec![], bits);
+        let (first, second) = (sign(&case, &separated, kind), sign(&case, &after_separator, kind));
+        case.tx.inputs[0].witness = Witness::from(vec![second, first, separated.clone()]);
+        case.eval.clear();
+        check(&case);
+    }
+}
+
+#[test]
+fn instruction_boundaries_match_original_node() {
+    use tidecoin::script::ScriptSigBuf;
+    use tidecoin_fuzz::differential::{compare, push};
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    // Original GetOp walks instruction by instruction. A Rust length or offset
+    // mistake in a PUSHDATA form lands the walk inside a payload, where these
+    // payloads hold the signature pattern behind OP_0 padding. Signature
+    // removal (with CONST_SCRIPTCODE) and the P2SH push-only check both show it.
+    let mut state = 0x2545_f491_4f6c_dd1du64;
+    let mut next = move |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % bound as u64) as usize
+    };
+    let encode = |data: &[u8], form: usize| {
+        let forms = push_encodings(data);
+        forms[form % forms.len()].clone()
+    };
+    let pubkey = vec![0x07; 33];
+    let flag_sets = [
+        consensus_core::VERIFY_ALL_TIDECOIN,
+        consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_CONST_SCRIPTCODE,
+        consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_SIGPUSHONLY,
+    ];
+    for _ in 0..400 {
+        let mut sig = vec![0x5a; [1, 2, 3, 76, 256][next(5)]];
+        *sig.last_mut().unwrap() = 0x01;
+        let pattern = push(&sig);
+        let mut region = Vec::new();
+        for _ in 0..1 + next(4) {
+            let payload = match next(4) {
+                0 => pattern.clone(),
+                1 => [vec![0; next(6)], pattern.clone(), vec![0; next(3)]].concat(),
+                2 => [vec![0; next(6)], pattern.clone(), vec![0; 0x51 + next(16)]].concat(),
+                _ => vec![0; next(90)],
+            };
+            region.extend(encode(&payload, next(4)));
+            if next(3) == 0 {
+                region.extend(pattern.clone());
+            }
+        }
+        // OP_0 IF <region> ENDIF: the region is walked but not executed.
+        let script = [vec![0x00, 0x63], region, vec![0x68], push(&pubkey), vec![0xac]].concat();
+        for mode in [0, 1] {
+            for bits in flag_sets {
+                let mut case = script_case(mode, script.clone(), vec![sig.clone()], bits);
+                // Signature-script pushes in every encoding, for the push-only checks.
+                let mut script_sig = encode(&sig, next(4));
+                if mode == 1 {
+                    script_sig.extend(encode(&script, next(4)));
+                }
+                case.tx.inputs[0].script_sig = ScriptSigBuf::from_bytes(script_sig);
+                compare(&node, &case);
+            }
+        }
+    }
+}
+
+#[test]
+fn signed_multisig_matches_original_node() {
+    use consensus_core::{SighashCache, SpentOutputs, TxSighashType};
+    use tidecoin::{script::ScriptSigBuf, PqScheme, PqSchemeCryptoExt, PqSignature, Witness};
+    use tidecoin_fuzz::differential::{compare, push};
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let keys: Vec<_> = (0..3u8)
+        .map(|i| {
+            PqScheme::Falcon512
+                .generate_keypair_from_seed(&vec![
+                    50 + i;
+                    PqScheme::Falcon512.deterministic_seed_len()
+                ])
+                .unwrap()
+        })
+        .collect();
+    let bits = consensus_core::VERIFY_ALL_TIDECOIN | consensus_core::VERIFY_NULLFAIL;
+    // (required, key count, signing keys in order, verifies)
+    let layouts: [(usize, usize, &[usize], bool); 8] = [
+        (1, 1, &[0], true),
+        (1, 2, &[0], true),
+        (1, 2, &[1], true),
+        (2, 2, &[0, 1], true),
+        (2, 3, &[0, 2], true),
+        (2, 3, &[1, 2], true),
+        (2, 2, &[1, 0], false),
+        (2, 3, &[2, 0], false),
+    ];
+    for (required, count, signers, valid) in layouts {
+        let script = [
+            vec![0x50 + required as u8],
+            keys[..count].iter().flat_map(|(pk, _)| push(&pk.to_prefixed_bytes())).collect(),
+            vec![0x50 + count as u8, 0xae],
+        ]
+        .concat();
+        for mode in [0u8, 2] {
+            let mut case = script_case(mode, script.clone(), vec![], bits);
+            let amount = case.spent[0].amount;
+            let mut cache = SighashCache::new_with_spent_outputs(
+                &case.tx,
+                SpentOutputs::from_txouts(case.spent.clone()),
+            )
+            .unwrap();
+            let hash = if mode == 0 {
+                cache.legacy_signature_hash(0, &script, 1).unwrap().to_byte_array()
+            } else {
+                cache
+                    .p2wsh_signature_hash(0, &script, amount, TxSighashType::All)
+                    .unwrap()
+                    .to_byte_array()
+            };
+            let mut items = vec![vec![]];
+            for &signer in signers {
+                let mut sig =
+                    PqSignature::sign_msg32(&hash, &keys[signer].1).unwrap().as_bytes().to_vec();
+                sig.push(0x01);
+                items.push(sig);
+            }
+            if mode == 0 {
+                case.tx.inputs[0].script_sig =
+                    ScriptSigBuf::from_bytes(items.iter().flat_map(|item| push(item)).collect());
+            } else {
+                items.push(script.clone());
+                case.tx.inputs[0].witness = Witness::from(items);
+            }
+            case.eval.clear();
+            compare(&node, &case);
+            let result = consensus_core::verify_transaction_inputs(
+                &case.tx,
+                SpentOutputs::from_txouts(case.spent.clone()),
+                case.flags,
+            );
+            assert_eq!(
+                result.is_ok(),
+                valid,
+                "{required}-of-{count} signers={signers:?} mode={mode}"
+            );
         }
     }
 }

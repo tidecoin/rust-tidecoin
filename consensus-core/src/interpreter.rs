@@ -86,10 +86,14 @@ impl ScriptFlags {
     }
 }
 
+/// Script execution version, as original `SigVersion`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum SigVersion {
+pub enum SigVersion {
+    /// Bare scripts and P2SH redeem scripts (`SigVersion::BASE`).
     Base,
+    /// Witness v0 scripts (`SigVersion::WITNESS_V0`).
     WitnessV0,
+    /// Native witness v1 SHA-512 scripts (`SigVersion::WITNESS_V1_512`).
     WitnessV1_512,
 }
 
@@ -139,11 +143,12 @@ impl ScriptStack {
         Self { items: Vec::new() }
     }
 
-    /// Builds a stack from raw items after enforcing script-element limits.
+    /// Builds a stack from raw items after enforcing the script-element size limit.
+    ///
+    /// Stack depth is not checked here: like original `ExecuteWitnessScript`,
+    /// execution enforces it after each opcode, so a deep starting stack with an
+    /// empty script fails later (for example with `CLEANSTACK`), not with `STACK_SIZE`.
     pub fn from_items(items: Vec<Vec<u8>>) -> Result<Self, ScriptError> {
-        if items.len() > MAX_STACK_SIZE {
-            return Err(ScriptError::StackSize);
-        }
         for item in &items {
             if item.len() > MAX_SCRIPT_ELEMENT_SIZE {
                 return Err(ScriptError::PushSize);
@@ -188,6 +193,11 @@ impl ScriptStack {
     /// Returns whether the stack is empty.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+
+    /// Borrows all elements, bottom first.
+    pub fn as_slice(&self) -> &[Vec<u8>] {
+        &self.items
     }
 }
 
@@ -395,6 +405,25 @@ impl<'tx, 'script> Interpreter<'tx, 'script> {
         }
 
         Ok(())
+    }
+
+    /// Executes one script on `stack`, as original `EvalScript`.
+    ///
+    /// Signature checks use this interpreter's transaction, input, spent
+    /// outputs and flags. `VerifyScript` steps are not applied: no scriptSig
+    /// execution, P2SH or witness dispatch, CLEANSTACK, or initial-stack
+    /// limits. As in the original, `stack` is modified in place; after a
+    /// failure its contents are unspecified and only the error is meaningful.
+    pub fn eval_script(
+        &mut self,
+        stack: &mut ScriptStack,
+        script: &[u8],
+        sigversion: SigVersion,
+    ) -> Result<(), TidecoinValidationError> {
+        self.last_error = ScriptError::Ok;
+        self.script_code_cache = None;
+        let result = self.run_script(stack, script, sigversion);
+        self.track_script_error(result)
     }
 
     /// Returns the most recent script error recorded by the interpreter.
@@ -2119,6 +2148,64 @@ mod tests {
         let _ =
             interpreter.execute_witness_program(0, &program, &tx_ctx.tx().inputs[0].witness, false);
         assert_eq!(interpreter.sigops, 1);
+    }
+
+    #[test]
+    fn accurate_multisig_sigops_use_the_key_count() {
+        for (count, expected) in [(1u8, 1), (3, 3), (16, 16)] {
+            let script = [0x51, 0x50 + count, all::OP_CHECKMULTISIG.to_u8()];
+            assert_eq!(count_sigops_bytes(&script, true).unwrap(), expected);
+            assert_eq!(count_sigops_bytes(&script, false).unwrap(), 20);
+        }
+        // Without a preceding OP_1..OP_16 the accurate count falls back to 20.
+        for previous in [all::OP_PUSHNUM_NEG1, all::OP_NOP, all::OP_DUP] {
+            let script = [previous.to_u8(), all::OP_CHECKMULTISIG.to_u8()];
+            assert_eq!(count_sigops_bytes(&script, true).unwrap(), 20);
+        }
+    }
+
+    #[test]
+    fn missing_amount_is_rejected_only_for_witness_spends() {
+        // Witness signature hashes commit to the amount; other spends may omit it.
+        let witness_script = Builder::new().push_opcode(all::OP_PUSHNUM_1).into_script();
+        let program = sha256::Hash::hash(witness_script.as_bytes()).to_byte_array();
+        let p2wsh = [vec![0x00, 0x20], program.to_vec()].concat();
+        let op_true = vec![all::OP_PUSHNUM_1.to_u8()];
+        for (spent, witness, flags, expected) in [
+            (
+                &p2wsh,
+                vec![witness_script.as_bytes().to_vec()],
+                VERIFY_WITNESS | VERIFY_P2SH,
+                Err(TidecoinValidationError::AmountRequired),
+            ),
+            (&p2wsh, vec![witness_script.as_bytes().to_vec()], 0, Ok(())),
+            (&op_true, vec![], VERIFY_WITNESS | VERIFY_P2SH, Ok(())),
+            (&op_true, vec![], 0, Ok(())),
+        ] {
+            let tx = Transaction {
+                version: TransactionVersion::TWO,
+                lock_time: LockTime::ZERO,
+                inputs: vec![TxIn {
+                    previous_output: dummy_outpoint(),
+                    script_sig: ScriptSigBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::from(witness),
+                }],
+                outputs: vec![TxOut {
+                    amount: Amount::ZERO,
+                    script_pubkey: ScriptPubKeyBuf::new(),
+                }],
+            };
+            let tx_ctx = TransactionContext::new(&tx);
+            let mut interpreter = Interpreter::new(
+                &tx_ctx,
+                0,
+                SpendContext::new(spent, None, 0, false),
+                ScriptFlags::from_bits(flags).expect("flags"),
+            )
+            .expect("interpreter");
+            assert_eq!(interpreter.verify(), expected, "flags={flags:#x} spent={spent:x?}");
+        }
     }
 
     #[test]

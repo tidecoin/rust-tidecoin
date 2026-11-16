@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: CC0-1.0
 
-use std::ffi::CString;
+use std::ffi::{c_int, CString};
 use std::path::{Path, PathBuf};
 
 use crate::error::{NodeParityError, ScriptError};
 use crate::ffi::{
-    tidecoin_node_check_transaction, tidecoin_node_mlkem512_decaps,
+    tidecoin_node_check_transaction, tidecoin_node_eval_script, tidecoin_node_mlkem512_decaps,
     tidecoin_node_mlkem512_encaps_deterministic, tidecoin_node_mlkem512_keypair_from_coins,
     tidecoin_node_parse_script_asm, tidecoin_node_permitted_difficulty_transition,
     tidecoin_node_pq_compute_public_key, tidecoin_node_pq_keygen_from_seed,
@@ -35,6 +35,22 @@ fn native_outputs(outputs: &[SpentOutput<'_>]) -> Vec<crate::ffi::NodeSpentOutpu
             script_len: out.script_pubkey.len(),
         })
         .collect()
+}
+
+/// Decodes the bridge stack format: per item, u32 LE length then bytes.
+fn decode_stack(mut bytes: &[u8]) -> Option<Vec<Vec<u8>>> {
+    let mut stack = Vec::new();
+    while !bytes.is_empty() {
+        let (len, rest) = bytes.split_first_chunk::<4>()?;
+        let len = usize::try_from(u32::from_le_bytes(*len)).ok()?;
+        if rest.len() < len {
+            return None;
+        }
+        let (item, rest) = rest.split_at(len);
+        stack.push(item.to_vec());
+        bytes = rest;
+    }
+    Some(stack)
 }
 
 /// Shared byte-oriented handle for Tidecoin node-backed parity calls.
@@ -325,6 +341,61 @@ impl TidecoinNodeHarness {
             flags,
             &[],
         )
+    }
+
+    /// Runs original `EvalScript` on `stack` with the transaction checker used by
+    /// [`Self::verify_tx_input_with_spent_outputs`]. Returns the final stack,
+    /// bottom first. `sigversion` is 0 (base), 1 (witness v0) or 2 (witness v1).
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_script(
+        &self,
+        tx_hex: &str,
+        input_index: usize,
+        amount_sat: i64,
+        flags: u32,
+        spent_outputs: &[SpentOutput<'_>],
+        script: &[u8],
+        stack: &[Vec<u8>],
+        sigversion: u8,
+    ) -> Result<Vec<Vec<u8>>, NodeParityError> {
+        const NAME: &str = "tidecoin_node_eval_script";
+        let tx_hex = CString::new(tx_hex).map_err(|_| NodeParityError::InvalidCString("tx hex"))?;
+        let outputs = native_outputs(spent_outputs);
+        let items: Vec<*const u8> = stack.iter().map(|item| item.as_ptr()).collect();
+        let lens: Vec<usize> = stack.iter().map(Vec::len).collect();
+        let mut out = vec![0u8; stack.iter().map(|item| 4 + item.len()).sum::<usize>() + 1024];
+        loop {
+            let mut out_len = out.len();
+            let mut script_error = 0;
+            let rc = unsafe {
+                tidecoin_node_eval_script(
+                    tx_hex.as_ptr(),
+                    input_index,
+                    amount_sat,
+                    flags,
+                    outputs.as_ptr(),
+                    outputs.len(),
+                    script.as_ptr(),
+                    script.len(),
+                    items.as_ptr(),
+                    lens.as_ptr(),
+                    stack.len(),
+                    c_int::from(sigversion),
+                    out.as_mut_ptr(),
+                    &mut out_len,
+                    &mut script_error,
+                )
+            };
+            match rc {
+                2 if out_len > out.len() => out.resize(out_len, 0),
+                1 | 0 => {
+                    Self::script_verdict(rc, script_error, NAME)?;
+                    return decode_stack(&out[..out_len])
+                        .ok_or(NodeParityError::BridgeFailure(NAME));
+                }
+                _ => return Err(NodeParityError::BridgeFailure(NAME)),
+            }
+        }
     }
 
     /// Verifies with all previous outputs in input order. Empty means unavailable;

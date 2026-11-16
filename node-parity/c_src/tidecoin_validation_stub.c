@@ -252,6 +252,23 @@ int tidecoin_node_verify_tx_input(
     return -1;
 }
 
+int tidecoin_node_eval_script(
+    const char* tx_hex, size_t input_index, int64_t amount, uint32_t flags,
+    const TidecoinSpentOutput* spent_outputs, size_t spent_output_count,
+    const uint8_t* script, size_t script_len, const uint8_t* const* stack_items,
+    const size_t* stack_lens, size_t stack_count, int sigversion, uint8_t* out,
+    size_t* out_len, int* script_error_out)
+{
+    (void)tx_hex; (void)input_index; (void)amount; (void)flags;
+    (void)spent_outputs; (void)spent_output_count; (void)script; (void)script_len;
+    (void)stack_items; (void)stack_lens; (void)stack_count; (void)sigversion;
+    (void)out; (void)out_len;
+    if (script_error_out != NULL) {
+        *script_error_out = 1;
+    }
+    return -1;
+}
+
 int tidecoin_node_signature_hash_512(
     const char* tx_hex, size_t input_index, const uint8_t* script, size_t script_len,
     int64_t amount, int32_t hash_type, const TidecoinSpentOutput* spent_outputs,

@@ -46,6 +46,26 @@ unsafe extern "C" {
         script_error_out: *mut c_int,
     ) -> c_int;
 
+    /// Calls node `EvalScript`; 1 success with serialized stack, 0 script failure,
+    /// 2 output buffer too small, -1 invalid arguments.
+    pub fn tidecoin_node_eval_script(
+        tx_hex: *const c_char,
+        input_index: usize,
+        amount: i64,
+        flags: u32,
+        spent_outputs: *const NodeSpentOutput,
+        spent_output_count: usize,
+        script: *const u8,
+        script_len: usize,
+        stack_items: *const *const u8,
+        stack_lens: *const usize,
+        stack_count: usize,
+        sigversion: c_int,
+        out: *mut u8,
+        out_len: *mut usize,
+        script_error_out: *mut c_int,
+    ) -> c_int;
+
     /// Calls node `SignatureHash512`; 0 means unavailable digest, -1 invalid arguments.
     pub fn tidecoin_node_signature_hash_512(
         tx_hex: *const c_char,

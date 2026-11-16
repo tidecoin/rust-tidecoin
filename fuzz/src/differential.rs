@@ -71,6 +71,19 @@ pub struct Case {
     pub tx: Transaction,
     pub spent: Vec<TxOut>,
     pub flags: u32,
+    /// Scripts to also run through original `EvalScript`, comparing final stacks.
+    pub eval: Vec<EvalCase>,
+}
+
+/// One script and starting stack for an input of [`Case::tx`]. Verdicts alone
+/// miss wrong intermediate values (a misordered `ROT` usually leaves a true
+/// top element), so the whole resulting stack is compared under every
+/// sigversion.
+#[derive(Clone, Debug)]
+pub struct EvalCase {
+    pub input: usize,
+    pub script: Vec<u8>,
+    pub stack: Vec<Vec<u8>>,
 }
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -135,6 +148,7 @@ pub fn push(bytes: &[u8]) -> Vec<u8> {
 
 /// Base, P2SH, native v0/v1, and wrapped v0/v1 contexts for the same script.
 pub fn script_case(mode: u8, script: Vec<u8>, arguments: Vec<Vec<u8>>, bits: u32) -> Case {
+    let eval = vec![EvalCase { input: 0, script: script.clone(), stack: arguments.clone() }];
     let mut witness = Vec::new();
     let (sig, locking) = match mode % 6 {
         0 => (arguments.iter().flat_map(|item| push(item)).collect(), script),
@@ -176,6 +190,7 @@ pub fn script_case(mode: u8, script: Vec<u8>, arguments: Vec<Vec<u8>>, bits: u32
             script_pubkey: ScriptPubKeyBuf::from_bytes(locking),
         }],
         flags: flags(bits),
+        eval,
     }
 }
 
@@ -254,6 +269,88 @@ pub fn compare(node: &TidecoinNodeHarness, case: &Case) {
                 engine.verify().map_err(|_| map_rust_script_error(engine.last_script_error()));
             assert_eq!(result, node_result, "repeat={attempt} index={index} case={case:?}");
         }
+    }
+    for eval in &case.eval {
+        compare_eval(node, case, &tx_hex, &outputs, eval);
+    }
+}
+
+/// Runs only the `EvalScript` comparison for `script` on `stack`, in a minimal
+/// one-input transaction. Cheaper than [`compare`] for large opcode matrices.
+pub fn compare_eval_only(node: &TidecoinNodeHarness, script: &[u8], stack: &[Vec<u8>], bits: u32) {
+    let case = script_case(0, script.to_vec(), stack.to_vec(), bits);
+    let tx_hex = hex(&encoding::encode_to_vec(&case.tx));
+    let outputs: Vec<_> = case
+        .spent
+        .iter()
+        .map(|o| SpentOutput {
+            amount: o.amount.to_sat() as i64,
+            script_pubkey: o.script_pubkey.as_bytes(),
+        })
+        .collect();
+    compare_eval(node, &case, &tx_hex, &outputs, &case.eval[0]);
+}
+
+/// Compares original `EvalScript` with `Interpreter::eval_script`: the error on
+/// failure, and every stack element on success.
+fn compare_eval(
+    node: &TidecoinNodeHarness,
+    case: &Case,
+    tx_hex: &str,
+    outputs: &[SpentOutput<'_>],
+    eval: &EvalCase,
+) {
+    // The Rust stack type enforces the element size limit on construction;
+    // the original checks it before EvalScript, not inside it. Oversized
+    // elements are covered by the verdict comparison above.
+    let Ok(start) = core::ScriptStack::from_items(eval.stack.clone()) else { return };
+    let output = &case.spent[eval.input];
+    let ctx = core::TransactionContext::new(&case.tx);
+    for (code, sigversion) in [
+        (0, core::SigVersion::Base),
+        (1, core::SigVersion::WitnessV0),
+        (2, core::SigVersion::WitnessV1_512),
+    ] {
+        let node_result = node
+            .eval_script(
+                tx_hex,
+                eval.input,
+                output.amount.to_sat() as i64,
+                case.flags,
+                outputs,
+                &eval.script,
+                &eval.stack,
+                code,
+            )
+            .map_err(|err| match err {
+                NodeParityError::Script(err) => err,
+                err => panic!("unexpected Tidecoin-node harness failure: {err}"),
+            });
+        let spend = core::SpendContext::new(
+            output.script_pubkey.as_bytes(),
+            Some(core::SpentOutputs::from_txouts(case.spent.clone())),
+            output.amount.to_sat(),
+            true,
+        );
+        let mut engine = core::Interpreter::new(
+            &ctx,
+            eval.input,
+            spend,
+            core::ScriptFlags::from_bits(case.flags).unwrap(),
+        )
+        .unwrap();
+        let mut stack = start.clone();
+        let rust_result = engine
+            .eval_script(&mut stack, &eval.script, sigversion)
+            .map(|()| stack.as_slice().to_vec())
+            .map_err(|_| map_rust_script_error(engine.last_script_error()));
+        assert_eq!(
+            rust_result,
+            node_result,
+            "eval sigversion={sigversion:?} script={} stack={:?} case={case:?}",
+            hex(&eval.script),
+            eval.stack.iter().map(|item| hex(item)).collect::<Vec<_>>()
+        );
     }
 }
 
@@ -415,6 +512,8 @@ pub fn signed_cases(node: &TidecoinNodeHarness) -> Vec<Case> {
             case.spent[index].amount = Amount::from_sat_u32(100 + index as u32);
             case.tx.outputs.push(case.tx.outputs[0].clone());
         }
+        // Each input's script with its real signature: a successful CHECKSIG.
+        case.eval.clear();
         for index in 0..3 {
             let mut cache = core::SighashCache::new_with_spent_outputs(
                 &case.tx,
@@ -449,6 +548,11 @@ pub fn signed_cases(node: &TidecoinNodeHarness) -> Vec<Case> {
                 PqSignature::sign_msg32(&hash, &keys[index].1).unwrap().as_bytes().to_vec()
             };
             signature.push(mode.to_u32() as u8);
+            case.eval.push(EvalCase {
+                input: index,
+                script: scripts[index].clone(),
+                stack: vec![signature.clone()],
+            });
             if index == 0 {
                 case.tx.inputs[index].script_sig = ScriptSigBuf::from_bytes(push(&signature));
             } else {

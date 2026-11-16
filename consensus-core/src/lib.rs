@@ -45,7 +45,7 @@ pub use self::flags::{
     VERIFY_PQ_STRICT, VERIFY_SHA512, VERIFY_SIGPUSHONLY, VERIFY_WITNESS, VERIFY_WITNESS_V1_512,
 };
 #[doc(inline)]
-pub use self::interpreter::{Interpreter, ScriptFlags, ScriptStack, SpendContext};
+pub use self::interpreter::{Interpreter, ScriptFlags, ScriptStack, SigVersion, SpendContext};
 #[doc(inline)]
 pub use self::pq::{is_noncanonical_legacy_falcon512, PqError, PqPublicKey, PqSignature};
 #[doc(inline)]

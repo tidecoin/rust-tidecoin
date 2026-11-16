@@ -8,6 +8,7 @@
 #include <consensus/tx_check.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <crypto/common.h>
 #include <crypto/scrypt.h>
 #include <crypto/yespower/tidecoin_pow.h>
 #include <hash.h>
@@ -628,6 +629,82 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_pq_verify_message(
                 : false;
         return ok ? 1 : 0;
     } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+// Calls original EvalScript on a caller-supplied stack, with the same
+// transaction checker as tidecoin_node_verify_tx_input. Returns 1 when the
+// script succeeds (out holds the final stack: per item, u32 LE length then
+// bytes, bottom first), 0 when it fails (script_error_out holds the error),
+// 2 when out is too small (out_len holds the required size), -1 on invalid
+// arguments. No VerifyScript steps are applied.
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_eval_script(const char* tx_hex,
+                                                     size_t input_index,
+                                                     int64_t amount,
+                                                     uint32_t flags,
+                                                     const TidecoinSpentOutput* spent_outputs,
+                                                     size_t spent_output_count,
+                                                     const uint8_t* script,
+                                                     size_t script_len,
+                                                     const uint8_t* const* stack_items,
+                                                     const size_t* stack_lens,
+                                                     size_t stack_count,
+                                                     int sigversion,
+                                                     uint8_t* out,
+                                                     size_t* out_len,
+                                                     int* script_error_out)
+{
+    if (out_len == nullptr || script_error_out == nullptr) return -1;
+    if (script == nullptr && script_len != 0) return -1;
+    if (stack_count != 0 && (stack_items == nullptr || stack_lens == nullptr)) return -1;
+    SigVersion version;
+    switch (sigversion) {
+    case 0: version = SigVersion::BASE; break;
+    case 1: version = SigVersion::WITNESS_V0; break;
+    case 2: version = SigVersion::WITNESS_V1_512; break;
+    default: return -1;
+    }
+    try {
+        CMutableTransaction decoded;
+        if (!DecodeTxHex(decoded, tx_hex)) return -1;
+        const CTransaction tx(decoded);
+        if (input_index >= tx.vin.size()) return -1;
+        std::vector<CTxOut> outputs;
+        if (!ReadSpentOutputs(spent_outputs, spent_output_count, tx.vin.size(), outputs)) return -1;
+        std::vector<std::vector<unsigned char>> stack;
+        stack.reserve(stack_count);
+        for (size_t i = 0; i < stack_count; ++i) {
+            if (stack_items[i] == nullptr && stack_lens[i] != 0) return -1;
+            stack.emplace_back(stack_items[i], stack_items[i] + stack_lens[i]);
+        }
+        const bool allow_legacy = !(flags & SCRIPT_VERIFY_PQ_STRICT);
+        PrecomputedTransactionData txdata;
+        txdata.Init(tx, std::move(outputs));
+        const TransactionSignatureChecker checker(
+            &tx, static_cast<unsigned int>(input_index), amount, txdata,
+            MissingDataBehavior::FAIL, allow_legacy);
+        ScriptError script_error{SCRIPT_ERR_OK};
+        const bool ok = EvalScript(stack, CScript(script, script + script_len), flags, checker,
+                                   version, &script_error);
+        *script_error_out = static_cast<int>(script_error);
+        if (!ok) return 0;
+        size_t needed = 0;
+        for (const auto& item : stack) needed += 4 + item.size();
+        if (out == nullptr || *out_len < needed) {
+            *out_len = needed;
+            return 2;
+        }
+        uint8_t* cursor = out;
+        for (const auto& item : stack) {
+            WriteLE32(cursor, static_cast<uint32_t>(item.size()));
+            cursor += 4;
+            cursor = std::copy(item.begin(), item.end(), cursor);
+        }
+        *out_len = needed;
+        return 1;
+    } catch (const std::exception&) {
+        *script_error_out = static_cast<int>(SCRIPT_ERR_UNKNOWN_ERROR);
         return -1;
     }
 }

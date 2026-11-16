@@ -267,6 +267,7 @@ None is a node defect.
 | Disabled/invalid opcode checks ran before the opcode-count limit | Wrong error when both apply. | Order follows original `EvalScript`. Same MINIMALIF/opcode test. |
 | `PICK`, `ROLL`, binary numeric opcodes and `WITHIN` decoded operands before checking stack depth | `UNKNOWN_ERROR` instead of `INVALID_STACK_OPERATION`. | Depth is checked first. `numeric_opcode_depth_precedes_scriptnum_errors` (crash-8e940121) |
 | The legacy `FindAndDelete` search pattern used minimal push encoding | For a 1-byte signature 1–16 or `0x81`, Rust searched for `OP_1`…`OP_16`/`OP_1NEGATE` instead of `CScript() << vchSig` (`01 xx`). It removed the wrong bytes and reported `SIG_FINDANDDELETE` incorrectly. Under standard flags both reject with different errors. Consensus outcome is unchanged because such a signature cannot verify. With `CONST_SCRIPTCODE` but not `NULLFAIL`, Rust rejected spends rc3 accepts. | Length-prefixed push, as in the original `AppendDataSize`. `legacy_signature_removal_uses_explicit_push_encoding` (crash-bf928ece) and `signature_pattern_uses_explicit_push_encoding` |
+| Witness stacks deeper than 1,000 items were rejected before execution | `STACK_SIZE` instead of the original error, for example `CLEANSTACK` with an empty witness script. Original `ExecuteWitnessScript` checks only element sizes before `EvalScript`, which checks depth after each opcode. Both reject: the 201-operation limit cannot reduce such a stack to one item. | `ScriptStack::from_items` checks element sizes only. `witness_stack_depth_is_checked_only_by_execution` |
 
 The P2SH-witness check that the scriptSig is exactly one push of the redeem
 script uses the same helper. It also matches the original
@@ -307,11 +308,56 @@ pull request, and 30 minutes on schedule or manual dispatch.
   2,000 corpus entries.
 - Required original-node workspace gate: **1,811 passed / 109 targets**.
 - Product gate: **372 passed / 9 targets**.
-- `node_oracle`: 8 passed. No failures or ignored tests.
+- `node_oracle`: 16 passed (8 at the first checkpoint). No failures or ignored tests.
 - The oracle executable was rebuilt from the pinned rc3 checkout for these runs.
 - Pinned nightly all-features/all-targets Clippy with `-D warnings`,
   no-default-features workspace check, MSRV 1.94.1 no-default checks and
   formatting pass.
+
+**Mutation testing (2026-11-17).** cargo-mutants 27.1.0 changed
+`consensus-core/src/interpreter.rs` one operator or return value at a time and
+ran the comparison suite against each change. A surviving change marks behavior
+that no test pins down.
+
+- The first run compared verdicts only and missed 358 of 804 changes. Many
+  survivors left a wrong value on the stack under a true top element.
+- `tidecoin_node_eval_script` was added to the bridge. It runs original
+  `EvalScript` on a given script, starting stack and sigversion.
+  `compare_eval` now checks the complete resulting stack, or the exact error,
+  under BASE, WITNESS_V0 and WITNESS_V1_512. `opcode_results_match_original_eval_script`
+  runs all 256 opcodes over stacks of chosen values, distinct items and every
+  depth up to 7. With this, 778 changes gave 595 caught, 7 timeouts and 157 missed.
+- 76 changes survived both this suite and the regular unit tests. Targeted
+  comparisons were added for them:
+  - `lock_time_and_sequence_boundaries_match_original_node`: CLTV/CSV across
+    lock time, sequence and version boundaries
+  - `push_encodings_and_signature_removal_match_original_node`: MINIMALDATA over
+    every push form, and FindAndDelete over PUSHDATA1/2/4 and truncated scripts
+  - `instruction_boundaries_match_original_node`: PUSHDATA payloads holding the
+    signature pattern, so that a length or offset mistake would shift the
+    instruction walk; it also exercises the P2SH and SIGPUSHONLY push-only checks
+  - `multisig_counts_and_operation_limit_match_original_node` and
+    `signed_multisig_matches_original_node`: valid and invalid m-of-n
+  - `script_code_follows_code_separator_and_executing_script`: signed spends
+    whose two signature checks use different script codes
+  - `witness_stack_depth_is_checked_only_by_execution`, which found the
+    discrepancy in the last table row
+
+  Rerunning the affected changes confirmed these tests catch them. Two unit
+  tests cover Rust-only behavior: a missing amount is rejected only for witness
+  spends, and accurate multisig sigop counts.
+- The remaining survivors were reviewed one by one and cannot change a result:
+  - flag masks whose bits do not overlap (`|` and `^` are equal)
+  - the script-code cache always refreshing
+  - boundaries that execution cannot reach: a code separator at the script
+    end, a direct push over 8,192 bytes, `PUSHDATA4` data over 65,535 bytes,
+    FindAndDelete on a script no longer than the pattern
+  - `OP_MIN`, `OP_MAX`, `OP_ABS` at equal or zero operands
+  - a multisig key-depth check whose failure the next pop reports identically
+  - the redundant final stack check and the P2SH stack copy in `verify`
+  - error bookkeeping for internal failures that execution cannot produce
+  - the interpreter's sigop total, which verification never exposes
+  - minimal-push enforcement in a test-only instruction walker
 
 **Limits.** Fuzzing samples inputs; a clean campaign does not prove that no
 mismatch remains. The comparison covers script verification with
