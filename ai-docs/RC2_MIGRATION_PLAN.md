@@ -1,5 +1,9 @@
 # Tidecoin rc2 migration plan
 
+Historical checkpoint. The active node target and implementation status are in
+[RC3_MIGRATION_PLAN.md](RC3_MIGRATION_PLAN.md); rc2 behavior below is retained as
+migration evidence, not a current rule definition.
+
 Status: phases 1–4 validated locally. Required rc2 CI is configured; hosted
 execution and branch protection remain unverified. Phase 5 is next.
 The corrected Falcon verifier uses a pinned public Git revision.

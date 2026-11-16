@@ -1,6 +1,7 @@
 # rc3 compatibility migration
 
-Status: local protocol-library gate passes (2026-11-16); hosted CI pending.
+Status: local protocol-library gate and main hosted CI pass (2026-11-16).
+The separate Miri workflow is still running at this checkpoint.
 This is a bounded compatibility checkpoint, not full-node or PSBT parity.
 
 ## Authority and baseline
@@ -29,7 +30,7 @@ states are not substituted for the final tagged source.
 | PQHD | pqhd_params.h, ValidateV1LeafPath, descriptor.cpp | Script-family purposes and network coin types; explicit path compatibility and independent node derivation vectors | Complete locally |
 | Header and policy APIs | IsOversizedAuxPowHeader, headerssync.cpp, policy.cpp, net_processing.cpp | Individual AuxPoW size limit, era-specific transition screening, witness classification; map serving limits to exposed Rust message APIs | Complete locally |
 | Signing/PSBT inventory | psbt.cpp, psbt.h, script/sign.cpp | Map selected-era eligibility, finals/UTXO validation and inactive partial handling to existing Rust surfaces; record absent PSBT APIs without claiming interoperability | Complete locally |
-| Integration | node script assets, feature matrix, CI | Source-derived negative cases, full original-node differential gate, no-std, stable/MSRV, cross tests, docs and CI | Local checks pass; hosted CI pending |
+| Integration | node script assets, feature matrix, CI | Source-derived negative cases, full original-node differential gate, no-std, stable/MSRV, cross tests, docs and CI | Local checks and main hosted CI pass; separate Miri pending |
 
 This is a protocol-library migration, not an implementation of node chainstate,
 wallet database, RPC server, peer scheduling or absent PSBT machinery. Changes
@@ -114,6 +115,13 @@ PSBT specification. No complete Rust PSBT/signing-provider surface exists to
 upgrade in this checkpoint. Wallet persistence, RPC concurrency and deferred node
 design choices are likewise outside the protocol-library implementation.
 
+The rc3 F12/F13 transport changes were also traced through `net.cpp` and
+`crypto/hkdf_sha256_32.cpp`. Rust's `pq_v2_transport` is a packet cipher, not the
+node handshake/session state machine. Its key schedule and packet vectors remain
+unchanged. It borrows the shared secret; the caller owns that buffer's lifetime.
+Existing Rust erasure helpers are not proof that every compiler-created temporary
+is erased, and wire parity does not establish identical memory-cleanup guarantees.
+
 No clear node logic defect with a concrete funds-at-risk path was found. Rust
 parity failures were fixed against original source; no node behavior was silently
 compensated for or redesigned.
@@ -135,7 +143,7 @@ compensated for or redesigned.
   pre-existing ignored example). Product and P2P no-std builds also pass on
   `thumbv7m-none-eabi`.
 - AArch64 cross-runner configuration regression: all five tests pass under QEMU.
-  Hosted full cross/feature jobs remain the integration gate.
+  Hosted full AArch64/s390x and feature jobs also pass.
 
 The retained CI fixes correct child-test execution through Cargo's cross runner,
 assert that configuration-rejection tests actually entered the child, repair a
@@ -169,5 +177,17 @@ running against the active pin. External node/docs checkouts were not modified.
 
 Initial rc3 run: [43851939268](https://github.com/tidecoin/rust-tidecoin/actions/runs/43851939268)
 at `740b2ba`. Its lint failure was reproduced with the exact nightly command
-and fixed without changing the rules. The follow-up commit re-runs hosted gates;
-final results are not inferred from local passes or from unfinished jobs.
+and fixed without changing the rules.
+
+The final code commit `a479c9085ef13e8518ff5b18373cd509eed53363` passed
+[main CI run 43852925990](https://github.com/tidecoin/rust-tidecoin/actions/runs/43852925990).
+This includes required original-node rc3 parity, stable/MSRV/nightly tests,
+AArch64/s390x, 32-bit, WASM, embedded, ASAN, lint, formatting, documentation,
+prerelease, bench, repository policy and Kani code generation. The mutation job
+was skipped by the workflow's existing push-event condition; this is not a
+mutation-testing result.
+
+[Miri run 43852926078](https://github.com/tidecoin/rust-tidecoin/actions/runs/43852926078)
+is still executing at the time of this record. No Miri pass is claimed. The final
+documentation checkpoint changes only prose and a test module's introductory
+comment; executable code remains identical to the successfully tested commit.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: CC0-1.0
-//! Source-derived activation and signature-rule matrices against pinned rc2.
+//! Source-derived activation and signature-rule matrices against the pinned node.
 use consensus_core::*;
 use hashes::{hash160, sha256, sha512};
 use node_parity::{NodeParityError, SpentOutput, TidecoinNodeHarness};
