@@ -1,7 +1,8 @@
 # rc3 compatibility migration
 
-Status: local protocol-library gate and main hosted CI pass (2026-11-16).
-The separate Miri workflow is still running at this checkpoint.
+Status: initial rc3 checkpoint passed local and main hosted CI (2026-11-16).
+The signing/fee follow-up below passes local gates; its hosted CI is pending.
+Initial Miri status is recorded with its run link below.
 This is a bounded compatibility checkpoint, not full-node or PSBT parity.
 
 ## Authority and baseline
@@ -191,3 +192,60 @@ mutation-testing result.
 is still executing at the time of this record. No Miri pass is claimed. The final
 documentation checkpoint changes only prose and a test module's introductory
 comment; executable code remains identical to the successfully tested commit.
+
+
+### Signing and fee-estimation follow-up (2026-11-16)
+
+The earlier statement about conservative predictions was incomplete: the node's
+`script/sign.cpp` exposes both `DUMMY_SIGNATURE_CREATOR` (local signing bound)
+and `DUMMY_MAXIMUM_SIGNATURE_CREATOR`. Rust now exposes this choice through
+`PqSignatureSize::{LocalSigning, Maximum}` and all four existing PQ input
+prediction families' `_with_mode` methods. Existing helpers retain maximum mode.
+The unknown-key dummy size uses the largest known scheme in either mode, matching
+the original creator. These modes are estimates, not verification acceptance rules.
+
+For a mixed transaction, choose the mode separately for each input, aggregate
+with `predict_weight`, then round the total weight to virtual bytes. Apply
+`FeeRate::mul_by_vsize` to that total (or the policy-adjusted virtual size when
+applicable). Do not round each input separately. Local mode requires every
+contributing signer to obey the rc3 bound. Finalized transactions use actual
+serialized weight. Dust policy continues to use its original maximum-size proxies.
+
+This follow-up found and repaired two Rust arithmetic discrepancies missed by the
+initial checkpoint: dust thresholds rounded down instead of following original
+`CFeeRate::GetFee` upward rounding; `FeeRate::mul_by_weight` prematurely rounded
+the rate down to integer sat/kwu. Multiplication now preserves the represented
+rate with a wide intermediate, rounds once, and checks `Amount::MAX_MONEY`.
+`mul_by_weight` still prices exact weight; the new `mul_by_vsize` prices integer
+virtual bytes. Negative node fee rates are outside Rust's unsigned `FeeRate` API.
+
+`rc3_fee_estimation.rs` calls original dummy creators, C++ transaction serialization,
+`GetVirtualTransactionSize`, `CFeeRate::GetFee`, `GetDustThreshold` and `CScript`
+push serialization. It compares 2,410 sizing cases across all five schemes and
+both modes, including unknown-key fallback, native/wrapped v0, native witness
+script forms, count/length CompactSize boundaries and fractional fee rates.
+Another 170 cases cover fee, dust and PUSHDATA boundaries. Witness-v1 size tests
+do not authorize wrapped v1 or bypass activation/signing eligibility.
+
+The actual registry dependencies reviewed are `tide-fn-dsa-sign 0.4.0` (scalar
+and AVX2 paths) and `fips204 0.4.6`, compared with node `pq_api.h`, Falcon wrappers
+and ML-DSA signing. No new randomness algorithm or nonce construction is introduced.
+Default signing uses `OsRng`; caller RNGs must be cryptographically secure and
+advance across calls. The shared bounded Falcon retry helper never resets the RNG,
+never truncates a valid signature, and returns an error after 10,000 completed
+attempts fail the local bound. Backend-internal sampling retries are separate.
+Tests force a completed retry through the real signer, inspect nonce freshness,
+exercise empty/oversized/error attempts and exhaustion, and check repeated
+Falcon/ML-DSA signatures against original C++ with wrong-message controls.
+
+Entropy failures produce no signature: ML-DSA propagates an error; the current
+Falcon dependency uses infallible RNG calls and can panic. This behavior is now
+documented and tested, not described as uniformly returning `PqError`. Debug
+cryptography tests use the existing 32 MiB stack convention. These checks do not
+prove constant-time behavior or complete erasure of compiler-created temporaries.
+
+Validation: required original-node workspace gate **1,808 passed / 107 targets**;
+product gate **371 passed / 9 targets**, no failures or ignored tests. Pinned
+nightly all-features/all-targets Clippy with `-D warnings`, MSRV 1.94.1 no-default
+product check, formatting and public documentation builds pass. Hosted results
+for this follow-up must be checked separately from the initial rc3 run above.

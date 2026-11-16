@@ -2034,6 +2034,42 @@ mod tests {
     }
 
     #[test]
+    fn repeated_bounded_signatures_match_node_and_reject_changed_messages() {
+        require_node_harness!();
+        run_with_large_stack("pq-bounded-signatures", || {
+            for scheme in PqScheme::KNOWN {
+                let (pk, sk) = deterministic_keypair(scheme, 0x91);
+                for legacy in [false, true] {
+                    // Only Falcon-512 has a legacy backend; other schemes use strict.
+                    if legacy && scheme != PqScheme::Falcon512 {
+                        continue;
+                    }
+                    let mut previous = None;
+                    for _ in 0..4 {
+                        let sig = if legacy {
+                            PqSignature::sign_msg64_legacy_with_rng(
+                                &[0x57; 64],
+                                &sk,
+                                &mut rand_core::OsRng,
+                            )
+                            .unwrap()
+                        } else {
+                            PqSignature::sign_msg64(&[0x57; 64], &sk).unwrap()
+                        };
+                        assert!(sig.len() <= scheme.local_signing_max_sig_len());
+                        assert!(node_verify_message(scheme, &[0x57; 64], &sig, &pk, legacy));
+                        assert!(!node_verify_message(scheme, &[0x58; 64], &sig, &pk, legacy));
+                        if let Some(prior) = previous {
+                            assert_ne!(sig, prior);
+                        }
+                        previous = Some(sig);
+                    }
+                }
+            }
+        });
+    }
+
+    #[test]
     fn pqhd_keygen_from_stream_key_matches_node_for_all_schemes() {
         require_node_harness!();
 

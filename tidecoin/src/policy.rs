@@ -365,7 +365,7 @@ pub(crate) fn dust_threshold(
         size = size.checked_add(32 + 4 + script_sig_size + 4)?;
     }
 
-    Amount::from_sat((dust_relay_fee.to_sat_per_kvb_ceil()).checked_mul(size as u64)? / 1000).ok()
+    dust_relay_fee.mul_by_vsize(size as u64).ok()
 }
 
 fn classify_multisig(script_pubkey: &ScriptPubKey) -> Option<(u8, u8)> {

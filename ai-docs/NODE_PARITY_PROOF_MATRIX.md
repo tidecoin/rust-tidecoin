@@ -19,6 +19,13 @@ compatibility checkpoint, not proof of every possible input.
 | AuxPoW header size, reply size/count, message constants | rc3 header test in `rc2_original_validation.rs`, `rc3_witness_context.rs`; original admission and size tracker |
 | P2P payload/frame boundary enforcement | `p2p/tests/rc3_message_limits.rs`; slice and incremental decoding |
 
+The signing/fee follow-up adds `tidecoin/tests/rc3_fee_estimation.rs`: original
+C++ dummy creators in both modes, serialized transaction weights, rounded fees,
+dust thresholds and push lengths (2,580 cases). It fixes earlier dust rounding
+and fractional rate precision gaps. Signing tests also cover nonce freshness,
+forced completed retries, exhaustion, entropy failure and repeated original-node
+verification. See the follow-up in [the migration plan](RC3_MIGRATION_PLAN.md).
+
 ## Retained and updated differential suites
 
 Historical `rc2` filenames retain regression provenance; required runs now use

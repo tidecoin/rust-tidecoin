@@ -8,6 +8,8 @@
 #include <pq/pqhd_kdf.h>
 #include <pq/pq_api.h>
 #include <policy/policy.h>
+#include <script/sign.h>
+#include <script/signingprovider.h>
 #include <net_processing.h>
 #include <util/signalinterrupt.h>
 #include <iostream>
@@ -96,6 +98,57 @@ static UniValue Run(const UniValue& request, const fs::path& datadir)
     const std::string op = request["op"].get_str();
     const auto& p = params.GetConsensus();
     BlockValidationState state;
+    if (op == "pq_estimate") {
+        const auto bytes = ParseHex(request["pubkey"].get_str());
+        const CPubKey pubkey{bytes};
+        FlatSigningProvider provider;
+        if (pubkey.IsValid() && !Bool(request, "unknown", false)) provider.pubkeys.emplace(pubkey.GetID(), pubkey);
+        const auto& creator = Bool(request, "maximum", false)
+            ? DUMMY_MAXIMUM_SIGNATURE_CREATOR : DUMMY_SIGNATURE_CREATOR;
+        std::vector<unsigned char> sig;
+        if (!creator.CreateSig(provider, sig, pubkey.GetID(), CScript{}, SigVersion::BASE))
+            throw std::runtime_error("dummy signing failed");
+        CTxIn input;
+        const auto kind = request["kind"].get_str();
+        if (kind == "pkh") {
+            input.scriptSig = CScript{} << sig << bytes;
+        } else if (kind == "wpkh" || kind == "sh-wpkh") {
+            input.scriptWitness.stack = {sig, bytes};
+            if (kind == "sh-wpkh") {
+                const CScript redeem = CScript{} << OP_0 << std::vector<unsigned char>(20);
+                input.scriptSig = CScript{} << std::vector<unsigned char>(redeem.begin(), redeem.end());
+            }
+        } else if (kind == "wsh" || kind == "wsh512") {
+            const CScript witness = CScript{} << bytes << OP_CHECKSIG;
+            input.scriptWitness.stack = {sig, {witness.begin(), witness.end()}};
+        } else throw std::runtime_error("unknown estimate kind");
+        CMutableTransaction tx;
+        tx.vin.assign(Int(request, "inputs", 1), input);
+        tx.vout.assign(Int(request, "outputs", 1), CTxOut{1, CScript{}});
+        for (auto& output : tx.vout) output.scriptPubKey.resize(Int(request, "output_len", 1));
+        const CTransaction transaction{tx};
+        const auto weight = GetTransactionWeight(transaction);
+        const auto vsize = GetVirtualTransactionSize(transaction);
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("sig_len", sig.size());
+        out.pushKV("weight", weight);
+        out.pushKV("vsize", vsize);
+        out.pushKV("fee", CFeeRate{Int(request, "rate", 1000)}.GetFee(vsize));
+        return out;
+    }
+    if (op == "fee" || op == "dust" || op == "script_push") {
+        UniValue out{UniValue::VOBJ};
+        if (op == "fee") {
+            out.pushKV("fee", CFeeRate{Int(request, "rate", 0)}.GetFee(Int(request, "vsize", 0)));
+        } else if (op == "dust") {
+            const auto bytes = ParseHex(request["script"].get_str());
+            out.pushKV("dust", GetDustThreshold(CTxOut{0, CScript(bytes.begin(), bytes.end())}, CFeeRate{Int(request, "rate", 0)}));
+        } else {
+            const CScript script = CScript{} << std::vector<unsigned char>(Int(request, "size", 0), 0x42);
+            out.pushKV("size", script.size());
+        }
+        return out;
+    }
     if (op == "headers_size") {
         HeadersMessageSize size;
         for (const auto& value : request["sizes"].getValues()) size.Add(value.getInt<size_t>());

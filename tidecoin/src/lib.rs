@@ -188,7 +188,7 @@ pub use crate::{
     crypto::pq::{
         MlKem512Ciphertext, MlKem512Keypair, MlKem512PublicKey, MlKem512SecretKey,
         MlKem512SharedSecret, PqError, PqPublicKey, PqScheme, PqSchemeCryptoExt, PqSecretKey,
-        PqSignature,
+        PqSignature, PqSignatureSize,
     },
     key_expression::{
         KeyExpressionError, KeyIndex, PqhdDescriptor, PqhdKeyExpression, PqhdKeyPathInfo,

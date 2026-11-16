@@ -211,11 +211,26 @@ impl FeeRate {
     /// fee is a non-integer amount, the amount is rounded up, ensuring that the transaction fee is
     /// enough instead of falling short if rounded down.
     pub const fn mul_by_weight(self, weight: Weight) -> NumOpResult<Amount> {
-        let wu = weight.to_wu();
-        if let Some(fee_kwu) = self.to_sat_per_kwu_floor().checked_mul(wu) {
-            let fee = fee_kwu.div_ceil(1_000);
-            if let Ok(fee_amount) = Amount::from_sat(fee) {
-                return NumOpResult::Valid(fee_amount);
+        self.mul_ratio_ceil(weight.to_wu(), 4_000_000)
+    }
+
+    /// Fee for an integer virtual size, rounded up like the node's `CFeeRate::GetFee`.
+    ///
+    /// For transaction fee estimates, first round the total transaction weight up
+    /// to virtual bytes, then call this method. This differs from multiplying an
+    /// unrounded weight with [`Self::mul_by_weight`]. Negative rates are not
+    /// representable by this type. Returns an error above [`Amount::MAX_MONEY`].
+    pub const fn mul_by_vsize(self, vbytes: u64) -> NumOpResult<Amount> {
+        self.mul_ratio_ceil(vbytes, 1_000_000)
+    }
+
+    const fn mul_ratio_ceil(self, size: u64, denominator: u128) -> NumOpResult<Amount> {
+        // The product of two u64 values fits u128. Preserve fractional rate
+        // precision until the final rounding, including rates below one sat/kwu.
+        let fee = ((self.to_sat_per_mvb() as u128) * (size as u128)).div_ceil(denominator);
+        if fee <= Amount::MAX_MONEY.to_sat() as u128 {
+            if let Ok(amount) = Amount::from_sat(fee as u64) {
+                return NumOpResult::Valid(amount);
             }
         }
         NumOpResult::Error(E::while_doing(MathOp::Mul))
@@ -441,6 +456,26 @@ mod tests {
 
         let fee_rate = FeeRate::from_sat_per_kwu(10).checked_div(0);
         assert!(fee_rate.is_none());
+    }
+
+    #[test]
+    fn fractional_rates_and_virtual_size_rounding() {
+        let rate = FeeRate::from_sat_per_kvb(1);
+        assert_eq!(rate.to_fee(Weight::from_wu(1)), Amount::from_sat_u32(1));
+        assert_eq!(rate.mul_by_vsize(1001).unwrap(), Amount::from_sat_u32(2));
+        assert_eq!(
+            FeeRate::from_sat_per_mvb(1).to_fee(Weight::from_wu(4_000_001)),
+            Amount::from_sat_u32(2)
+        );
+        let rate = FeeRate::from_sat_per_vb(10);
+        assert_eq!(rate.to_fee(Weight::from_wu(5)), Amount::from_sat_u32(13));
+        assert_eq!(
+            rate.mul_by_vsize(Weight::from_wu(5).to_vbytes_ceil()).unwrap(),
+            Amount::from_sat_u32(20)
+        );
+        assert!(FeeRate::MAX.mul_by_vsize(u64::MAX).is_error());
+        assert_eq!(FeeRate::ZERO.mul_by_vsize(u64::MAX).unwrap(), Amount::ZERO);
+        assert_eq!(FeeRate::MAX.to_fee(Weight::MAX), Amount::MAX);
     }
 
     #[test]

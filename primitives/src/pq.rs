@@ -22,6 +22,42 @@ pub enum PqScheme {
     MlDsa87 = 0x0B,
 }
 
+/// Signature sizing used by the node's dummy signature creators.
+///
+/// This selects an estimation bound, not a consensus verification rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PqSignatureSize {
+    /// Bound guaranteed by the rc3 local signer. Use only when every signer
+    /// contributing to the estimate obeys that bound.
+    LocalSigning,
+    /// The node's maximum-size dummy-signature mode, including external signers.
+    Maximum,
+}
+
+impl PqSignatureSize {
+    /// Signature size including the sighash byte. An unknown scheme uses the
+    /// largest known maximum in either mode, as the node's dummy creators do.
+    pub const fn signature_len_in_script(self, scheme: Option<PqScheme>) -> usize {
+        if let Some(scheme) = scheme {
+            match self {
+                Self::LocalSigning => scheme.local_signing_max_sig_len() + 1,
+                Self::Maximum => scheme.max_sig_len_in_script(),
+            }
+        } else {
+            let mut maximum = 0;
+            let mut i = 0;
+            while i < PqScheme::KNOWN.len() {
+                let size = PqScheme::KNOWN[i].max_sig_len_in_script();
+                if size > maximum {
+                    maximum = size;
+                }
+                i += 1;
+            }
+            maximum
+        }
+    }
+}
+
 impl PqScheme {
     /// All PQ signature schemes currently known to Tidecoin policy and consensus code.
     pub const KNOWN: [Self; 5] =

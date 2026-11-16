@@ -38,7 +38,7 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::network::Params;
 use crate::prelude::Vec;
 
-pub use primitives::PqScheme;
+pub use primitives::{PqScheme, PqSignatureSize};
 
 const TIDECOIN_LEGACY_FALCON512_SIG_MAX: usize =
     1 + FALCON_NONCE_LEN + TIDECOIN_LEGACY_FALCON512_SIG_BODY_MAX;
@@ -479,6 +479,28 @@ pub struct PqSignature {
     data: Vec<u8>,
 }
 
+// Bound completed-signature retries separately from the backend's sampling loop.
+// A retry invokes the signer again with the same advancing RNG, never a reset seed.
+const FALCON_SIGN_MAX_ATTEMPTS: usize = 10_000;
+
+fn bounded_falcon_signature(
+    buffer_len: usize,
+    max_len: usize,
+    mut sign: impl FnMut(&mut [u8]) -> Option<usize>,
+) -> Result<PqSignature, PqError> {
+    let mut sig = vec![0u8; buffer_len];
+    for _ in 0..FALCON_SIGN_MAX_ATTEMPTS {
+        if let Some(len) = sign(&mut sig) {
+            if len > 0 && len <= max_len && len <= sig.len() {
+                // Discard unused buffer capacity, never bytes of a signature.
+                sig.truncate(len);
+                return Ok(PqSignature { data: sig });
+            }
+        }
+    }
+    Err(PqError::BackendFailure)
+}
+
 impl PqSignature {
     /// Wraps raw signature bytes.
     pub fn from_slice(data: &[u8]) -> Self {
@@ -512,7 +534,12 @@ impl PqSignature {
         Self::sign_msg64_with_rng(msg, sk, &mut rand_core::OsRng)
     }
 
-    /// Signs a 32-byte message digest with caller-provided randomness.
+    /// Signs a 32-byte message digest with caller-provided cryptographic randomness.
+    ///
+    /// The RNG must remain securely seeded and advance across calls and retries.
+    /// Do not reset it to a fixed seed or derive its seed from public data.
+    /// Falcon's backend uses infallible RNG methods: entropy failure can panic
+    /// rather than returning `PqError`. No signature is returned on that failure.
     pub fn sign_msg32_with_rng<R>(
         msg: &[u8; 32],
         sk: &PqSecretKey,
@@ -525,6 +552,7 @@ impl PqSignature {
     }
 
     /// Signs a 64-byte message digest with caller-provided randomness.
+    /// See [`Self::sign_msg32_with_rng`] for RNG requirements and failure behavior.
     pub fn sign_msg64_with_rng<R>(
         msg: &[u8; 64],
         sk: &PqSecretKey,
@@ -560,6 +588,7 @@ impl PqSignature {
 
     /// Signs a 32-byte message digest using caller-provided randomness and the node's
     /// Falcon-512 legacy format when applicable.
+    /// See [`Self::sign_msg32_with_rng`] for RNG requirements and failure behavior.
     pub fn sign_msg32_legacy_with_rng<R>(
         msg: &[u8; 32],
         sk: &PqSecretKey,
@@ -573,6 +602,7 @@ impl PqSignature {
 
     /// Signs a 64-byte message digest using caller-provided randomness and the node's
     /// Falcon-512 legacy format when applicable.
+    /// See [`Self::sign_msg32_with_rng`] for RNG requirements and failure behavior.
     pub fn sign_msg64_legacy_with_rng<R>(
         msg: &[u8; 64],
         sk: &PqSecretKey,
@@ -628,18 +658,11 @@ impl PqSignature {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
                 let mut signing_key =
                     SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
-                let mut sig = vec![0u8; sk.scheme().max_sig_len()];
-                for _ in 0..10_000 {
-                    if let Ok(sig_len) =
-                        signing_key.sign_falcon(rng, FalconProfile::PqClean, msg, &mut sig)
-                    {
-                        if sig_len > 0 && sig_len <= sk.scheme().local_signing_max_sig_len() {
-                            sig.truncate(sig_len);
-                            return Ok(Self::from_slice(&sig));
-                        }
-                    }
-                }
-                return Err(PqError::BackendFailure);
+                return bounded_falcon_signature(
+                    sk.scheme().max_sig_len(),
+                    sk.scheme().local_signing_max_sig_len(),
+                    |sig| signing_key.sign_falcon(rng, FalconProfile::PqClean, msg, sig).ok(),
+                );
             }
             PqScheme::MlDsa44 => {
                 let sk_arr =
@@ -684,18 +707,13 @@ impl PqSignature {
         }
         let mut signing_key =
             SigningKeyStandard::decode(sk.as_bytes()).ok_or(PqError::BackendFailure)?;
-        let mut sig = vec![0u8; TIDECOIN_LEGACY_FALCON512_SIG_MAX];
-        for _ in 0..10_000 {
-            if let Ok(sig_len) =
-                signing_key.sign_falcon(rng, FalconProfile::TidecoinLegacyFalcon512, msg, &mut sig)
-            {
-                if sig_len > 0 && sig_len <= sk.scheme().local_signing_max_sig_len() {
-                    sig.truncate(sig_len);
-                    return Ok(Self { data: sig });
-                }
-            }
-        }
-        Err(PqError::BackendFailure)
+        bounded_falcon_signature(
+            TIDECOIN_LEGACY_FALCON512_SIG_MAX,
+            sk.scheme().local_signing_max_sig_len(),
+            |sig| {
+                signing_key.sign_falcon(rng, FalconProfile::TidecoinLegacyFalcon512, msg, sig).ok()
+            },
+        )
     }
 
     fn as_consensus_signature(&self) -> ConsensusPqSignature {
@@ -1078,6 +1096,9 @@ impl std::error::Error for PqError {}
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    extern crate std;
+
     use alloc::string::ToString;
 
     use super::*;
@@ -1102,6 +1123,181 @@ mod tests {
 
     fn test_rng(tag: u64) -> DeterministicTestRng {
         DeterministicTestRng::new(tag)
+    }
+
+    fn with_signing_test_stack(f: impl FnOnce() + Send + 'static) {
+        // Debug builds keep large Falcon/ML-DSA temporaries and RNG wrappers on
+        // the stack. Match the existing original-node PQ test stack allowance.
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::Builder::new().stack_size(32 << 20).spawn(f).unwrap().join().unwrap();
+        #[cfg(target_arch = "wasm32")]
+        f();
+    }
+
+    #[test]
+    fn bounded_signer_rejects_invalid_attempts_and_exhausts_without_signature() {
+        let mut calls = 0;
+        let signature = bounded_falcon_signature(10, 6, |output| {
+            calls += 1;
+            output.fill(calls);
+            match calls {
+                1 => None,
+                2 => Some(0),
+                3 => Some(7),
+                4 => Some(11),
+                _ => Some(6),
+            }
+        })
+        .unwrap();
+        assert_eq!(calls, 5);
+        assert_eq!(signature.as_bytes(), &[5; 6]);
+        let mut attempts = 0;
+        assert!(bounded_falcon_signature(10, 6, |_| {
+            attempts += 1;
+            Some(7)
+        })
+        .is_err());
+        assert_eq!(attempts, FALCON_SIGN_MAX_ATTEMPTS);
+    }
+
+    #[test]
+    fn completed_falcon_retry_advances_randomness_and_returns_a_valid_signature() {
+        with_signing_test_stack(|| {
+            for (scheme, profile) in [
+                (PqScheme::Falcon512, FalconProfile::PqClean),
+                (PqScheme::Falcon1024, FalconProfile::PqClean),
+                (PqScheme::Falcon512, FalconProfile::TidecoinLegacyFalcon512),
+            ] {
+                let (pk, sk) = deterministic_keypair(scheme, 0x96);
+                let mut key = SigningKeyStandard::decode(sk.as_bytes()).unwrap();
+                let mut rng = test_rng(0x419a);
+                let mut nonces = Vec::new();
+                let bound = scheme.local_signing_max_sig_len();
+                let signature = bounded_falcon_signature(
+                    TIDECOIN_LEGACY_FALCON512_SIG_MAX.max(scheme.max_sig_len()),
+                    bound,
+                    |output| {
+                        let len = key.sign_falcon(&mut rng, profile, &[0x67; 64], output).unwrap();
+                        nonces.push(output[1..1 + FALCON_NONCE_LEN].to_vec());
+                        // Force rejection of the first completed attempt through the
+                        // production retry helper, then use the actual backend lengths.
+                        Some(if nonces.len() == 1 { bound + 1 } else { len })
+                    },
+                )
+                .unwrap();
+                assert!(nonces.len() >= 2);
+                assert!(nonces.windows(2).all(|pair| pair[0] != pair[1]));
+                assert_eq!(&signature.as_bytes()[1..1 + FALCON_NONCE_LEN], nonces.last().unwrap());
+                assert!(signature.len() <= bound);
+                if profile == FalconProfile::TidecoinLegacyFalcon512 {
+                    signature.verify_msg64_legacy(&[0x67; 64], &pk).unwrap();
+                } else {
+                    signature.verify_msg64(&[0x67; 64], &pk).unwrap();
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn repeated_signing_consumes_fresh_randomness_for_every_scheme() {
+        with_signing_test_stack(|| {
+            struct RecordingRng {
+                rng: DeterministicTestRng,
+                nonces: Vec<Vec<u8>>,
+                bytes: usize,
+            }
+            impl RngCore for RecordingRng {
+                fn next_u32(&mut self) -> u32 {
+                    self.rng.next_u32()
+                }
+                fn next_u64(&mut self) -> u64 {
+                    self.rng.next_u64()
+                }
+                fn fill_bytes(&mut self, dest: &mut [u8]) {
+                    self.rng.fill_bytes(dest);
+                    self.bytes += dest.len();
+                    if dest.len() == FALCON_NONCE_LEN {
+                        self.nonces.push(dest.to_vec());
+                    }
+                }
+                fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+                    self.fill_bytes(dest);
+                    Ok(())
+                }
+            }
+            impl CryptoRng for RecordingRng {}
+            for scheme in PqScheme::KNOWN {
+                let (pk, sk) = deterministic_keypair(scheme, 0x97);
+                for legacy in [false, true] {
+                    let mut rng =
+                        RecordingRng { rng: test_rng(0x5ec), nonces: Vec::new(), bytes: 0 };
+                    let mut previous = None;
+                    for _ in 0..4 {
+                        let consumed = rng.bytes;
+                        let sig = if legacy {
+                            PqSignature::sign_msg64_legacy_with_rng(&[0x34; 64], &sk, &mut rng)
+                                .unwrap()
+                        } else {
+                            PqSignature::sign_msg64_with_rng(&[0x34; 64], &sk, &mut rng).unwrap()
+                        };
+                        assert!(rng.bytes > consumed);
+                        assert!(sig.len() <= scheme.local_signing_max_sig_len());
+                        if let Some(prior) = previous {
+                            assert_ne!(sig, prior);
+                        }
+                        if matches!(scheme, PqScheme::Falcon512 | PqScheme::Falcon1024) {
+                            assert_eq!(
+                                &sig.as_bytes()[1..1 + FALCON_NONCE_LEN],
+                                rng.nonces.last().unwrap()
+                            );
+                        }
+                        if legacy {
+                            sig.verify_msg64_legacy(&[0x34; 64], &pk).unwrap();
+                        } else {
+                            sig.verify_msg64(&[0x34; 64], &pk).unwrap();
+                        }
+                        previous = Some(sig);
+                    }
+                    assert!(rng.nonces.windows(2).all(|pair| pair[0] != pair[1]));
+                }
+            }
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn entropy_failure_never_returns_a_signature() {
+        struct FailedRng;
+        impl RngCore for FailedRng {
+            fn next_u32(&mut self) -> u32 {
+                panic!("entropy unavailable")
+            }
+            fn next_u64(&mut self) -> u64 {
+                panic!("entropy unavailable")
+            }
+            fn fill_bytes(&mut self, _: &mut [u8]) {
+                panic!("entropy unavailable")
+            }
+            fn try_fill_bytes(&mut self, _: &mut [u8]) -> Result<(), rand_core::Error> {
+                Err(core::num::NonZeroU32::new(rand_core::Error::CUSTOM_START).unwrap().into())
+            }
+        }
+        impl CryptoRng for FailedRng {}
+        with_signing_test_stack(|| {
+            for scheme in PqScheme::KNOWN {
+                let (_, sk) = deterministic_keypair(scheme, 0x98);
+                for legacy in [false, true] {
+                    let result = std::panic::catch_unwind(|| {
+                        if legacy {
+                            PqSignature::sign_msg32_legacy_with_rng(&[0; 32], &sk, &mut FailedRng)
+                        } else {
+                            PqSignature::sign_msg32_with_rng(&[0; 32], &sk, &mut FailedRng)
+                        }
+                    });
+                    assert!(!matches!(result, Ok(Ok(_))));
+                }
+            }
+        });
     }
 
     #[test]

@@ -72,3 +72,12 @@ The shared Rust facade applies rc3 decoding rules around that registry verifier:
 legacy negative zero and unused final bits are normalized without changing the
 signed coefficients; strict verification rejects all trailing padding. These
 rules and local signing bounds are tested against the pinned original node.
+
+
+PQ input estimates support `PqSignatureSize::LocalSigning` and `Maximum` through
+`InputWeightPrediction`'s `_with_mode` helpers. Existing helpers retain maximum
+mode. Choose local mode only when all corresponding signers enforce rc3's local
+limits; this does not select consensus flags. For node-style fees, round the total
+predicted weight to virtual bytes, then call `FeeRate::mul_by_vsize`. Dust now
+rounds fees upward like rc3, and weight-based fee arithmetic preserves fractional
+rates instead of truncating them before multiplication.

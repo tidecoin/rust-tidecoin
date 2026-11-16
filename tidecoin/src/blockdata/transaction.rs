@@ -18,7 +18,7 @@ use encoding::CompactSizeEncoder;
 use internals::{const_casts, write_err, ToU64};
 
 use super::Weight;
-use crate::crypto::pq::PqScheme;
+use crate::crypto::pq::{PqScheme, PqSignatureSize};
 #[cfg(test)]
 use crate::locktime::absolute;
 use crate::locktime::absolute::{Height, MedianTimePast};
@@ -743,6 +743,18 @@ pub const fn predict_weight_from_slices(
 /// This helper type collects information about an input to be used in [`predict_weight`] function.
 /// It can only be created using the [`new`](InputWeightPrediction::new) function or using other
 /// associated constants/methods.
+///
+/// PQ helpers without a mode retain maximum-size estimates. Use their `_with_mode`
+/// variants with [`PqSignatureSize::LocalSigning`] only for signers that guarantee
+/// the rc3 local bounds; use [`PqSignatureSize::Maximum`] otherwise. For mixed
+/// inputs, choose a mode per input. This predicts size, not signing eligibility.
+///
+/// Aggregate inputs and outputs with [`predict_weight`] before rounding to virtual
+/// bytes. For the node's nonnegative fee-rate calculation use
+/// `fee_rate.mul_by_vsize(weight.to_vbytes_ceil())`; do not round each input's
+/// virtual size separately. Relay sigop adjustments, when applicable, use
+/// [`crate::policy::get_virtual_tx_size`]. A completed transaction should use its
+/// actual serialized weight instead of a dummy-signature prediction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct InputWeightPrediction {
     script_size: u32,
@@ -814,15 +826,30 @@ impl InputWeightPrediction {
             + pubkey_len
     }
 
-    /// Input prediction for a native P2WPKH spend using the selected Tidecoin PQ scheme.
+    /// Maximum-size prediction for a native PQ P2WPKH spend.
+    /// See [`Self::pq_p2wpkh_with_mode`] for the smaller local-signing bound.
     pub const fn pq_p2wpkh(scheme: PqScheme) -> Self {
-        Self::pq_p2wpkh_for_sizes(scheme.max_sig_len_in_script(), scheme.prefixed_pubkey_len())
+        Self::pq_p2wpkh_with_mode(scheme, PqSignatureSize::Maximum)
     }
 
-    /// Input prediction for a P2SH-wrapped P2WPKH spend using the selected Tidecoin PQ scheme.
+    /// Native PQ P2WPKH prediction using the selected node dummy-signature mode.
+    pub const fn pq_p2wpkh_with_mode(scheme: PqScheme, mode: PqSignatureSize) -> Self {
+        Self::pq_p2wpkh_for_sizes(
+            mode.signature_len_in_script(Some(scheme)),
+            scheme.prefixed_pubkey_len(),
+        )
+    }
+
+    /// Maximum-size prediction for a P2SH-wrapped PQ P2WPKH spend.
+    /// See [`Self::pq_nested_p2wpkh_with_mode`] for the local-signing bound.
     pub const fn pq_nested_p2wpkh(scheme: PqScheme) -> Self {
+        Self::pq_nested_p2wpkh_with_mode(scheme, PqSignatureSize::Maximum)
+    }
+
+    /// Wrapped PQ P2WPKH prediction using the selected node dummy-signature mode.
+    pub const fn pq_nested_p2wpkh_with_mode(scheme: PqScheme, mode: PqSignatureSize) -> Self {
         Self::pq_nested_p2wpkh_for_sizes(
-            scheme.max_sig_len_in_script(),
+            mode.signature_len_in_script(Some(scheme)),
             scheme.prefixed_pubkey_len(),
         )
     }
@@ -844,8 +871,18 @@ impl InputWeightPrediction {
     /// Tidecoin node dust policy uses this as the conservative non-witness spend proxy for
     /// P2PK, P2PKH, P2SH, and other non-witness script forms.
     pub const fn pq_non_witness_key_spend(scheme: PqScheme) -> Self {
+        Self::pq_non_witness_key_spend_with_mode(scheme, PqSignatureSize::Maximum)
+    }
+
+    /// PQ P2PKH prediction using the selected node dummy-signature mode.
+    /// This is a signature-and-public-key spend, not arbitrary P2SH satisfaction.
+    pub const fn pq_non_witness_key_spend_with_mode(
+        scheme: PqScheme,
+        mode: PqSignatureSize,
+    ) -> Self {
         Self::from_slice(
-            Self::pq_script_sig_len(scheme.max_sig_len_in_script(), scheme.prefixed_pubkey_len()),
+            Self::script_push_len(mode.signature_len_in_script(Some(scheme)))
+                + Self::script_push_len(scheme.prefixed_pubkey_len()),
             &[],
         )
     }
@@ -863,8 +900,17 @@ impl InputWeightPrediction {
     /// The witness script is `<prefixed-pq-pubkey> OP_CHECKSIG`, matching the Tidecoin node policy
     /// proxy for standard script-hash witness outputs.
     pub const fn pq_witness_script_key_spend(scheme: PqScheme) -> Self {
+        Self::pq_witness_script_key_spend_with_mode(scheme, PqSignatureSize::Maximum)
+    }
+
+    /// Native P2WSH/P2WSH-512 key-spend prediction using the selected dummy mode.
+    /// Estimates size only; witness-v1 still requires the active native context.
+    pub const fn pq_witness_script_key_spend_with_mode(
+        scheme: PqScheme,
+        mode: PqSignatureSize,
+    ) -> Self {
         let witness_script_len = Self::script_push_len(scheme.prefixed_pubkey_len()) + 1;
-        Self::from_slice(0, &[scheme.max_sig_len_in_script(), witness_script_len])
+        Self::from_slice(0, &[mode.signature_len_in_script(Some(scheme)), witness_script_len])
     }
 
     /// Computes the prediction for a single input.

@@ -94,7 +94,7 @@ pub use self::{
 #[doc(inline)]
 pub use self::{
     block::{BlockHash, Header as BlockHeader, Version as BlockVersion, WitnessCommitment},
-    pq::PqScheme,
+    pq::{PqScheme, PqSignatureSize},
     transaction::{OutPoint, Txid, Version as TransactionVersion, Wtxid},
 };
 
