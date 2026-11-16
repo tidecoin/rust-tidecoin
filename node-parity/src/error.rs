@@ -140,8 +140,15 @@ pub enum ScriptError {
 
 impl ScriptError {
     /// Maps a raw Tidecoin-node FFI script-error code into the shared enum.
+    /// Codes outside `ScriptError_t` become `UnknownError`; use
+    /// [`Self::try_from_ffi`] where an unexpected code must be detected.
     pub fn from_ffi(code: i32) -> Self {
-        match code {
+        Self::try_from_ffi(code).unwrap_or(Self::UnknownError)
+    }
+
+    /// Maps a raw `ScriptError_t` code, returning `None` outside the known range.
+    pub fn try_from_ffi(code: i32) -> Option<Self> {
+        Some(match code {
             0 => Self::Ok,
             1 => Self::UnknownError,
             2 => Self::EvalFalse,
@@ -184,8 +191,8 @@ impl ScriptError {
             39 => Self::OpCodeSeparator,
             40 => Self::SigFindAndDelete,
             41 => Self::SigFalconEncoding,
-            _ => Self::UnknownError,
-        }
+            _ => return None,
+        })
     }
 
     /// Parses the display-name form used in Tidecoin node JSON fixtures.
@@ -284,5 +291,27 @@ impl fmt::Display for ScriptError {
             Self::OpCodeSeparator => "OP_CODESEPARATOR",
             Self::SigFindAndDelete => "SIG_FINDANDDELETE",
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScriptError;
+
+    /// Original `ScriptError_t` has 42 values, `SCRIPT_ERR_OK = 0` through
+    /// `SCRIPT_ERR_SIG_FALCON_ENCODING = 41`; `SCRIPT_ERR_ERROR_COUNT` is 42.
+    #[test]
+    fn ffi_codes_cover_exactly_the_original_enum() {
+        let mut seen = Vec::new();
+        for code in 0..42 {
+            let error = ScriptError::try_from_ffi(code).expect("known code");
+            assert!(!seen.contains(&error), "code {code} reuses {error}");
+            assert_eq!(ScriptError::from_name(&error.to_string()), Some(error), "code {code}");
+            seen.push(error);
+        }
+        for code in [-1, 42, i32::MAX] {
+            assert_eq!(ScriptError::try_from_ffi(code), None);
+            assert_eq!(ScriptError::from_ffi(code), ScriptError::UnknownError);
+        }
     }
 }

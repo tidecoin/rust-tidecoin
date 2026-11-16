@@ -354,11 +354,7 @@ impl TidecoinNodeHarness {
                 &mut script_error,
             )
         };
-        match rc {
-            1 => Ok(()),
-            0 => Err(NodeParityError::Script(Self::script_error_or_unknown(script_error))),
-            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_verify_tx_input")),
-        }
+        Self::script_verdict(rc, script_error, "tidecoin_node_verify_tx_input")
     }
 
     /// Calls the original node CountWitnessSigOps, with explicit candidate flags.
@@ -445,11 +441,7 @@ impl TidecoinNodeHarness {
                 &mut script_error,
             )
         };
-        match rc {
-            1 => Ok(()),
-            0 => Err(NodeParityError::Script(Self::script_error_or_unknown(script_error))),
-            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_verify_script_case")),
-        }
+        Self::script_verdict(rc, script_error, "tidecoin_node_verify_script_case")
     }
 
     /// Parses script assembly using Tidecoin node helpers.
@@ -701,10 +693,15 @@ impl TidecoinNodeHarness {
         }
     }
 
-    fn script_error_or_unknown(code: i32) -> ScriptError {
-        match ScriptError::from_ffi(code) {
-            ScriptError::Ok => ScriptError::UnknownError,
-            other => other,
+    /// Original `VerifyScript` reports `SCRIPT_ERR_OK` exactly when it accepts.
+    /// Any other combination, or an unknown code, is a bridge fault. It must
+    /// not be read as a script verdict: mapping it to `UNKNOWN_ERROR` would
+    /// compare equal to a genuine Rust `UNKNOWN_ERROR`.
+    fn script_verdict(rc: i32, code: i32, name: &'static str) -> Result<(), NodeParityError> {
+        match (rc, ScriptError::try_from_ffi(code)) {
+            (1, Some(ScriptError::Ok)) => Ok(()),
+            (0, Some(error)) if error != ScriptError::Ok => Err(NodeParityError::Script(error)),
+            _ => Err(NodeParityError::BridgeFailure(name)),
         }
     }
 }

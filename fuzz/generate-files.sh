@@ -48,16 +48,11 @@ EOF
 
 for targetFile in $(listTargetFiles); do
     targetName=$(targetFileToName "$targetFile")
-    requiredFeatures=""
-    if [ "$targetName" = consensus_node_differential ]; then
-        requiredFeatures='required-features = ["node-oracle"]'
-    fi
     cat >> "$REPO_DIR/fuzz/Cargo.toml" <<EOF
 
 [[bin]]
 name = "$targetName"
 path = "$targetFile"
-$requiredFeatures
 test = false
 doc = false
 bench = false

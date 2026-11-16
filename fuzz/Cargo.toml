@@ -286,7 +286,6 @@ allowed_duplicates = ["block-buffer", "cpufeatures", "crypto-common", "digest", 
 [[bin]]
 name = "consensus_node_differential"
 path = "fuzz_targets/consensus/node_differential.rs"
-required-features = ["node-oracle"]
 test = false
 doc = false
 bench = false
