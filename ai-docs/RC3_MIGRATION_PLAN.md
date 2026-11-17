@@ -305,7 +305,13 @@ pull request, and 30 minutes on schedule or manual dispatch.
 - After the last fix, a 50,000-run campaign (seed 5) found no mismatch.
 - Four parallel 30-minute ASan campaigns (seeds 11–14) completed 4,902,283
   runs with no mismatch. Coverage leveled off at 7,039–7,044 edges and about
-  2,000 corpus entries.
+  2,000 corpus entries. These runs compared verdicts and errors only; they
+  predate the full-stack comparison below.
+- With the full-stack comparison, four parallel 30-minute ASan campaigns
+  (seeds 21–24, 2026-11-17) completed 2,558,595 runs with no mismatch and no
+  sanitizer error. Each case now also runs three `EvalScript` comparisons, so
+  throughput is about half. Coverage reached 7,162–7,181 edges and about 2,250
+  corpus entries.
 - Required original-node workspace gate: **1,811 passed / 109 targets**.
 - Product gate: **372 passed / 9 targets**.
 - `node_oracle`: 16 passed (8 at the first checkpoint). No failures or ignored tests.
@@ -326,7 +332,9 @@ that no test pins down.
   `compare_eval` now checks the complete resulting stack, or the exact error,
   under BASE, WITNESS_V0 and WITNESS_V1_512. `opcode_results_match_original_eval_script`
   runs all 256 opcodes over stacks of chosen values, distinct items and every
-  depth up to 7. With this, 778 changes gave 595 caught, 7 timeouts and 157 missed.
+  depth up to 7. With this, the 778 changes gave 595 caught, 157 missed,
+  19 unviable (the change does not compile) and 7 timeouts (the change made
+  the suite hang; counted separately from assertion failures).
 - 76 changes survived both this suite and the regular unit tests. Targeted
   comparisons were added for them:
   - `lock_time_and_sequence_boundaries_match_original_node`: CLTV/CSV across
@@ -363,3 +371,13 @@ that no test pins down.
 mismatch remains. The comparison covers script verification with
 caller-supplied spent outputs. It does not cover UTXO-backed checks, mempool or
 package policy. Miri and constant-time properties are outside this review.
+
+**Remaining follow-up.** The interpreter-focused work above is complete. Still open:
+
+| Area | Remaining work |
+| --- | --- |
+| Broader script combinations | Structured, valid multi-operation scripts with nested branches, alternate-stack use and several signature checks. The arbitrary-script generator stops at 2,048 bytes; larger boundaries use fixed patterns. |
+| Complete signed transactions | More combinations of schemes, input forms, hash modes and activation context than the current signed templates, with several mutations at once instead of one. Connect serialized weight and fee checks to those transactions. |
+| Block comparisons | Generated combinations of witness commitments, coinbase data, merkle structure, weight, sigops and contextual boundaries against the original-node block oracle. |
+| Decoder and API combinations | Incremental and chunked decoding and every public entry point. The transaction comparison currently decodes complete byte slices. |
+| Mutation testing outside the interpreter | Sighash and context handling, witness recognition, transaction decoding, block checks and fee arithmetic. |
