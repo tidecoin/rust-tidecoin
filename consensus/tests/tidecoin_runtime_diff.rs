@@ -156,11 +156,7 @@ fn compare_script_case(
 
     let tx_bytes =
         build_test_transaction(script_pubkey, script_sig, witness, amount_sat.max(0) as u64);
-    let outputs = [consensus::Utxo {
-        script_pubkey: script_pubkey.as_ptr(),
-        script_pubkey_len: script_pubkey.len().try_into().unwrap(),
-        value: amount_sat,
-    }];
+    let outputs = [consensus::Utxo { script_pubkey, value: amount_sat }];
     let ours = verify_with_flags_detailed(
         script_pubkey,
         amount_sat.max(0) as u64,
@@ -312,11 +308,7 @@ fn tidecoin_runtime_diff_tx_corpora_match_node() {
                 .iter()
                 .map(|input| {
                     let out = prevouts.get(&input.previous_output).expect("previous output");
-                    consensus::Utxo {
-                        script_pubkey: out.script_pubkey.as_ptr(),
-                        script_pubkey_len: out.script_pubkey.len().try_into().unwrap(),
-                        value: out.amount_sat,
-                    }
+                    consensus::Utxo { script_pubkey: &out.script_pubkey, value: out.amount_sat }
                 })
                 .collect();
 

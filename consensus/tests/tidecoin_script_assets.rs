@@ -10,7 +10,7 @@ mod tidecoin_test_support;
 use tidecoin_test_support::{
     all_script_assets_consensus_flags, map_rust_script_error, node_script_result, normalize_flags,
     parse_hex_bytes, parse_prevout_txouts, parse_script_flags, read_fixture_from_path, try_harness,
-    OwnedUtxoSet,
+    BorrowedUtxoSet,
 };
 
 fn parse_asset_variant(variant: &Value) -> (Vec<u8>, Vec<Vec<u8>>) {
@@ -34,7 +34,7 @@ fn apply_asset_variant(tx: &Transaction, index: usize, variant: &Value) -> Trans
 
 fn to_rust_result(
     tx: &Transaction,
-    prevouts: &OwnedUtxoSet,
+    prevouts: &BorrowedUtxoSet<'_>,
     input_index: usize,
     flags: u32,
 ) -> Result<(), consensus::ScriptError> {
@@ -103,7 +103,7 @@ fn tidecoin_script_assets_match_node_subset_superset_semantics() {
             base_tx.inputs.len(),
             "script_assets[{index}] prevout count mismatch"
         );
-        let owned_prevouts = OwnedUtxoSet::from_txouts(&prevout_txouts);
+        let borrowed_prevouts = BorrowedUtxoSet::from_txouts(&prevout_txouts);
         let input_index = row["index"].as_u64().expect("input index") as usize;
         let test_flags = normalize_flags(parse_script_flags(row["flags"].as_str().expect("flags")));
         let is_final = row.get("final").and_then(Value::as_bool).unwrap_or(false);
@@ -114,7 +114,7 @@ fn tidecoin_script_assets_match_node_subset_superset_semantics() {
                 if node_parity::same_script_activation(*flags, test_flags)
                     && (is_final || ((flags & test_flags) == *flags))
                 {
-                    let ours = to_rust_result(&tx, &owned_prevouts, input_index, *flags)
+                    let ours = to_rust_result(&tx, &borrowed_prevouts, input_index, *flags)
                         .map_err(map_rust_script_error);
                     let node = to_node_result(&tx, &prevout_txouts, input_index, *flags);
                     assert_eq!(
@@ -137,7 +137,7 @@ fn tidecoin_script_assets_match_node_subset_superset_semantics() {
                 if node_parity::same_script_activation(*flags, test_flags)
                     && (*flags & test_flags) == test_flags
                 {
-                    let ours = to_rust_result(&tx, &owned_prevouts, input_index, *flags)
+                    let ours = to_rust_result(&tx, &borrowed_prevouts, input_index, *flags)
                         .map_err(map_rust_script_error);
                     let node = to_node_result(&tx, &prevout_txouts, input_index, *flags);
                     assert_eq!(

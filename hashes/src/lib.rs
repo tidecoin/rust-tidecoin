@@ -244,7 +244,7 @@ pub trait Hash:
 }
 
 /// Ensures that a type is an array.
-pub trait IsByteArray: AsRef<[u8]> + sealed::IsByteArray {
+pub trait IsByteArray: AsRef<[u8]> + AsMut<[u8]> + sealed::IsByteArray {
     /// The length of the array.
     const LEN: usize;
 }
@@ -257,25 +257,6 @@ mod sealed {
     pub trait IsByteArray {}
 
     impl<const N: usize> IsByteArray for [u8; N] {}
-}
-
-/// Does a best attempt at erasing the contents of `val` by writing zeros.
-///
-/// The implementation follows the same volatile-zeroing pattern used by
-/// [`zeroize`](https://docs.rs/zeroize)-style erasure helpers.
-///
-/// Note, however, that the compiler is allowed to freely copy or move the contents of `val` to
-/// other places in memory. Preventing this behavior is very subtle. For more discussion on this,
-/// please see the documentation of the [`zeroize`](https://docs.rs/zeroize) crate.
-pub(crate) fn non_secure_erase<T: ?Sized>(val: &mut T) {
-    use core::sync::atomic;
-
-    let ptr = core::ptr::from_mut(val).cast::<u8>();
-    let len = core::mem::size_of_val(val);
-    for i in 0..len {
-        unsafe { core::ptr::write_volatile(ptr.add(i), 0) };
-    }
-    atomic::compiler_fence(atomic::Ordering::SeqCst);
 }
 
 fn incomplete_block_len<H: HashEngine>(eng: &H) -> usize {

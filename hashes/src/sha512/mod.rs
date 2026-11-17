@@ -59,6 +59,14 @@ pub struct HashEngine {
     buffer: [u8; BLOCK_SIZE],
 }
 
+impl zeroize::Zeroize for HashEngine {
+    fn zeroize(&mut self) {
+        self.buffer.zeroize();
+        self.h.zeroize();
+        self.bytes_hashed.zeroize();
+    }
+}
+
 impl HashEngine {
     /// Constructs a new SHA512 hash engine.
     #[rustfmt::skip]

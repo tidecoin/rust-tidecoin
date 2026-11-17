@@ -307,41 +307,33 @@ pub fn parse_prevout_txouts(value: &Value) -> Vec<TxOut> {
         .collect()
 }
 
-pub struct OwnedUtxoSet {
-    scripts: Vec<Vec<u8>>,
-    utxos: Vec<Utxo>,
+pub struct BorrowedUtxoSet<'a> {
+    utxos: Vec<Utxo<'a>>,
 }
 
-impl OwnedUtxoSet {
-    pub fn from_txouts(prevouts: &[TxOut]) -> Self {
-        let scripts: Vec<Vec<u8>> =
-            prevouts.iter().map(|txout| txout.script_pubkey.as_bytes().to_vec()).collect();
-        let utxos = scripts
+impl<'a> BorrowedUtxoSet<'a> {
+    pub fn from_txouts(prevouts: &'a [TxOut]) -> Self {
+        let utxos = prevouts
             .iter()
-            .zip(prevouts.iter())
-            .map(|(script, txout)| Utxo {
-                script_pubkey: script.as_ptr(),
-                script_pubkey_len: script.len().try_into().unwrap(),
+            .map(|txout| Utxo {
+                script_pubkey: txout.script_pubkey.as_bytes(),
                 value: txout.amount.to_sat().try_into().unwrap(),
             })
             .collect();
-        Self { scripts, utxos }
+        Self { utxos }
     }
 
-    pub fn as_slice(&self) -> &[Utxo] {
+    pub fn as_slice(&self) -> &[Utxo<'a>] {
         &self.utxos
     }
-
     pub fn len(&self) -> usize {
-        self.scripts.len()
+        self.utxos.len()
     }
-
     pub fn is_empty(&self) -> bool {
-        self.scripts.is_empty()
+        self.utxos.is_empty()
     }
-
     pub fn script_pubkey(&self, index: usize) -> &[u8] {
-        &self.scripts[index]
+        self.utxos[index].script_pubkey
     }
 }
 

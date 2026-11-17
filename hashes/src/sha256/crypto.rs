@@ -310,7 +310,7 @@ impl HashEngine {
                 && std::is_x86_feature_detected!("sse2")
                 && std::is_x86_feature_detected!("ssse3")
             {
-                for block in blocks.chunks_exact(BLOCK_SIZE) {
+                for block in blocks.as_chunks::<BLOCK_SIZE>().0 {
                     unsafe { Self::process_block_simd_x86_intrinsics(state, block) };
                 }
                 return;
@@ -320,7 +320,7 @@ impl HashEngine {
         #[cfg(all(feature = "cpufeatures", any(target_arch = "x86", target_arch = "x86_64")))]
         {
             if cpuid_sha256_x86::get() {
-                for block in blocks.chunks_exact(BLOCK_SIZE) {
+                for block in blocks.as_chunks::<BLOCK_SIZE>().0 {
                     unsafe { Self::process_block_simd_x86_intrinsics(state, block) };
                 }
                 return;
@@ -330,7 +330,7 @@ impl HashEngine {
         #[cfg(all(feature = "std", target_arch = "aarch64"))]
         {
             if std::arch::is_aarch64_feature_detected!("sha2") {
-                for block in blocks.chunks_exact(BLOCK_SIZE) {
+                for block in blocks.as_chunks::<BLOCK_SIZE>().0 {
                     unsafe { Self::process_block_simd_arm_intrinsics(state, block) };
                 }
                 return;
@@ -340,7 +340,7 @@ impl HashEngine {
         #[cfg(all(feature = "cpufeatures", target_arch = "aarch64"))]
         {
             if cpuid_sha256_aarch64::get() {
-                for block in blocks.chunks_exact(BLOCK_SIZE) {
+                for block in blocks.as_chunks::<BLOCK_SIZE>().0 {
                     unsafe { Self::process_block_simd_arm_intrinsics(state, block) };
                 }
                 return;
@@ -1589,7 +1589,7 @@ impl HashEngine {
     fn software_process_block(state: &mut [u32; 8], blocks: &[u8]) {
         debug_assert!(!blocks.is_empty() && blocks.len().is_multiple_of(BLOCK_SIZE));
 
-        for block in blocks.chunks_exact(BLOCK_SIZE) {
+        for block in blocks.as_chunks::<BLOCK_SIZE>().0 {
             let mut w = [0u32; 16];
             for (w_val, buff_bytes) in w.iter_mut().zip(block.as_nonzero_chunks().0) {
                 *w_val = u32::from_be_bytes(*buff_bytes);

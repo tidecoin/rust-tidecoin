@@ -58,6 +58,14 @@ pub struct HashEngine {
     bytes_hashed: u64,
 }
 
+impl zeroize::Zeroize for HashEngine {
+    fn zeroize(&mut self) {
+        self.buffer.zeroize();
+        self.h.zeroize();
+        self.bytes_hashed.zeroize();
+    }
+}
+
 impl HashEngine {
     /// Constructs a new RIPEMD160 hash engine.
     pub const fn new() -> Self {

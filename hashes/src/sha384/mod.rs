@@ -24,6 +24,12 @@ impl Hash {
 #[derive(Debug, Clone)]
 pub struct HashEngine(sha512::HashEngine);
 
+impl zeroize::Zeroize for HashEngine {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
 impl HashEngine {
     /// Constructs a new SHA384 hash engine.
     pub const fn new() -> Self {

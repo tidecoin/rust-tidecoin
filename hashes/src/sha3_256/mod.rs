@@ -189,6 +189,14 @@ pub struct HashEngine {
     buffer: [u8; RATE],
 }
 
+impl zeroize::Zeroize for HashEngine {
+    fn zeroize(&mut self) {
+        self.h.0.zeroize();
+        self.bytes_hashed.zeroize();
+        self.buffer.zeroize();
+    }
+}
+
 impl Default for HashEngine {
     fn default() -> Self {
         Self::new()
@@ -215,7 +223,7 @@ impl HashEngine {
     fn process_blocks(state: &mut KeccakState, blocks: &[u8]) {
         debug_assert!(!blocks.is_empty() && blocks.len().is_multiple_of(RATE));
 
-        for block in blocks.chunks_exact(RATE) {
+        for block in blocks.as_chunks::<RATE>().0 {
             Self::absorb(state, block);
             keccakf1600(state);
         }

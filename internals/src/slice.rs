@@ -1,5 +1,7 @@
 //! Contains extensions related to slices.
 
+#![forbid(unsafe_code)]
+
 /// Extension trait for slice.
 pub trait SliceExt {
     /// The item type the slice is storing.
@@ -60,17 +62,7 @@ impl<T> SliceExt for [T] {
         #[allow(clippy::let_unit_value)]
         let () = Hack::<N>::IS_NONZERO;
 
-        let chunks_count = self.len() / N;
-        let total_left_len = chunks_count * N;
-        let (left, right) = self.split_at(total_left_len);
-        // SAFETY: we've obtained the pointer from a slice that's still live
-        // we're merely casting, so no aliasing issues here
-        // arrays of T have same alignment as T
-        // the resulting slice points within the obtained slice as was computed above
-        let left = unsafe {
-            core::slice::from_raw_parts(left.as_ptr().cast::<[Self::Item; N]>(), chunks_count)
-        };
-        (left, right)
+        self.as_chunks::<N>()
     }
 
     fn as_nonzero_chunks_mut<const N: usize>(
@@ -79,20 +71,7 @@ impl<T> SliceExt for [T] {
         #[allow(clippy::let_unit_value)]
         let () = Hack::<N>::IS_NONZERO;
 
-        let chunks_count = self.len() / N;
-        let total_left_len = chunks_count * N;
-        let (left, right) = self.split_at_mut(total_left_len);
-        // SAFETY: we've obtained the pointer from a slice that's still live
-        // we're merely casting, so no aliasing issues here
-        // arrays of T have same alignment as T
-        // the resulting slice points within the obtained slice as was computed above
-        let left = unsafe {
-            core::slice::from_raw_parts_mut(
-                left.as_mut_ptr().cast::<[Self::Item; N]>(),
-                chunks_count,
-            )
-        };
-        (left, right)
+        self.as_chunks_mut::<N>()
     }
 
     fn get_array<const ARRAY_LEN: usize>(&self, offset: usize) -> Option<&[Self::Item; ARRAY_LEN]> {

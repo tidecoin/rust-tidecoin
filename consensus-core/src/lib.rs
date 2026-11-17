@@ -15,6 +15,7 @@
 //! `consensus-core` directly when you intentionally need shared validation,
 //! sighash, or lower-level engine building blocks.
 
+#![forbid(unsafe_code)]
 #![no_std]
 #![warn(missing_docs)]
 #![warn(deprecated_in_future)]

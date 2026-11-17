@@ -103,7 +103,7 @@ fn parse_hex_bytes(s: &str) -> Vec<u8> {
     let bytes = s.as_bytes();
     assert!(bytes.len().is_multiple_of(2), "hex literal must have even length");
     let mut out = Vec::with_capacity(bytes.len() / 2);
-    for pair in bytes.chunks_exact(2) {
+    for pair in bytes.as_chunks::<2>().0 {
         out.push((hex_nibble(pair[0]) << 4) | hex_nibble(pair[1]));
     }
     out

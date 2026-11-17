@@ -56,8 +56,8 @@ jobs:
         run: cargo test -p tidecoin --lib --tests --features tidecoin-node-validation
       - name: Original-node script, witness, sighash and wire matrices
         run: cargo test -p tidecoin-fuzz --features node-oracle --test node_oracle
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets
+      - name: Strict Clippy (pinned stable)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: No-default-features workspace
         run: cargo check --workspace --no-default-features
       - name: Independent no-std libraries
@@ -94,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [lint, docs, docsrs, bench]
+        task: [docs, docsrs, bench]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:

@@ -12,7 +12,7 @@ impl HashEngine {
     pub(super) fn process_blocks(state: &mut [u32; 5], blocks: &[u8]) {
         debug_assert!(!blocks.is_empty() && blocks.len().is_multiple_of(BLOCK_SIZE));
 
-        for block in blocks.chunks_exact(BLOCK_SIZE) {
+        for block in blocks.as_chunks::<BLOCK_SIZE>().0 {
             let mut w = [0u32; 80];
             for (w_val, buff_bytes) in w.iter_mut().zip(block.as_nonzero_chunks().0) {
                 *w_val = u32::from_be_bytes(*buff_bytes);

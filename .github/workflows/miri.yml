@@ -1,11 +1,7 @@
 ---   # rust-tidecoin CI: If you edit this file please update README.md
 on:   # yamllint disable-line rule:truthy
-  push:
-    branches:
-      - v2
-      - main
-      - 'test-ci/**'
-  pull_request:
+  # Manual only: run from the Actions tab when wanted (contrib/test-miri.sh).
+  workflow_dispatch:
 
 name: Miri
 

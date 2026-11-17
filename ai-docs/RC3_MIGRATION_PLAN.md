@@ -189,7 +189,17 @@ was skipped by the workflow's existing push-event condition; this is not a
 mutation-testing result.
 
 [Miri run 43852926078](https://github.com/tidecoin/rust-tidecoin/actions/runs/43852926078)
-is still executing at the time of this record. No Miri pass is claimed. The final
+is still executing at the time of this record. No Miri pass is claimed.
+Follow-up (2026-11-17): no Miri run on `v2` has completed; runs failed or were
+cancelled, most at the six-hour job limit. The screening in `contrib/test-miri.sh`
+put `-F unsafe-code` in `RUSTFLAGS`, which also applied it to workspace
+dependencies such as `internals`, so every crate depending on them ran under Miri,
+including the post-quantum signing tests of `tidecoin`, `consensus-core` and
+`consensus`. The screening now forbids unsafe code in the checked crate's library
+only (normal and `cfg(test)` builds), selecting `hashes`, `internals`, `io`,
+`primitives` and `p2p` (`consensus` no longer contains unsafe code; see
+"Borrowed outputs and typed erasure" below). The Miri workflow is now started manually
+instead of on every push. The final
 documentation checkpoint changes only prose and a test module's introductory
 comment; executable code remains identical to the successfully tested commit.
 
@@ -381,3 +391,95 @@ package policy. Miri and constant-time properties are outside this review.
 | Block comparisons | Generated combinations of witness commitments, coinbase data, merkle structure, weight, sigops and contextual boundaries against the original-node block oracle. |
 | Decoder and API combinations | Incremental and chunked decoding and every public entry point. The transaction comparison currently decodes complete byte slices. |
 | Mutation testing outside the interpreter | Sighash and context handling, witness recognition, transaction decoding, block checks and fee arithmetic. |
+
+### Borrowed outputs and typed erasure (2026-11-17)
+
+Two Rust API defects were corrected without changing node validation rules:
+
+- `consensus::Utxo<'a>` borrows `&'a [u8]` instead of exposing a raw pointer
+  and independent length. All active callers now borrow their script storage.
+  Amount, output-count and current-input consistency checks remain in place.
+  The consensus adapter now forbids unsafe code. A compile-fail example checks
+  the lifetime contract; runtime cases cover subslices, empty scripts, amounts,
+  context counts, copying into interpreter-owned storage and all four entry points.
+- Removed arbitrary-object zeroing from `hashes`. HMAC erasure requires
+  `T: zeroize::Zeroize`, and all built-in engines clear their typed state fields.
+  HKDF stores the PRK as a byte array and erases that array on request and drop,
+  rather than overwriting the representation of a caller-defined hash type.
+  Custom-engine regressions use nonzero fields and owned allocations. Explicit
+  erasure still does not guarantee removal of compiler-created copies.
+
+These are source-level API changes; migration details are in the consensus and
+hashes changelogs. Archived migration fixtures retain their historical APIs.
+
+Validation with the required pinned rc3 node and standalone validation oracle:
+`cargo +1.99.1 test --workspace --all-targets --all-features` passed **1,892 tests
+across 111 test targets**, with no failures or ignored tests, including the 16
+original-node differential matrices. Pinned-nightly Miri passed the three erasure
+regressions and the borrowed-output regression. The affected crates' doctests
+passed (9 passed, one existing ignored example), including both compile-fail
+contracts. All-feature workspace Clippy with `-D warnings`, MSRV 1.94.1
+no-default-feature checks for both affected crates, and formatting passed.
+
+
+### Checked conversions and local unsafe-code restrictions (2026-11-17)
+
+- P2P command decoding now uses checked UTF-8 conversion after its existing
+  ASCII check; null-padding and embedded-null handling remain unchanged.
+- `internals::slice` uses safe `as_chunks` / `as_chunks_mut`, available on the
+  project's MSRV. Both zero-sized-chunk compile-fail contracts remain intact.
+- SipHash uses checked slice/index reads. Its existing 64 reference vectors now
+  also cover all 2,080 two-part input splits, including empty intermediate writes.
+- Added `forbid(unsafe_code)` to the P2P, base58, chacha20_poly1305,
+  consensus-core, consensus_encoding, network and units library roots. Together
+  with consensus, eight library roots now carry the restriction. It is also
+  applied locally to the slice and SipHash modules.
+
+The restriction is local, not a claim about dependencies. Expanded all-feature
+code for the eight libraries was inspected: remaining generated low-level code
+comes from compiler derives and standard allocation macros. External wrapper
+macros still emit pointer casts in `tidecoin`, `io` and `primitives`, so those
+libraries are not classified as free of such operations. A compiler control
+confirmed that `tidecoin` can pass `-F unsafe-code` despite casts from external
+macros; lint success alone is therefore insufficient evidence. CPU intrinsics,
+ArrayVec, wrapper conversions, volatile comparison and original-node FFI remain
+separate review boundaries.
+
+Validation: the required rc3 all-target/all-feature workspace run passed
+**1,892 tests / 111 targets**, including all 16 original-node comparison tests.
+Pinned-nightly Clippy with `-D warnings`, MSRV 1.94.1 no-default checks for the
+changed libraries, formatting, and the internals doctests pass. Miri passed
+SipHash's reference-vector and split-input test. The benchmark package's stale
+chacha20 dependency name was corrected and an unused benchmark import removed;
+all benchmark targets now compile. The repository SipHash Criterion benchmark
+ran before and after checked indexing (10 samples, one-second warm-up and
+measurement per case). No statistically significant slowdown was reported in
+its four cases; these short local measurements do not establish a general
+performance improvement. No hashing or node validation rules changed.
+
+
+### Stable lint baseline (2026-11-17)
+
+Clippy now uses the same pinned stable Rust 1.99.1 as normal CI and formatting.
+The required node-parity job runs `cargo clippy --workspace --all-targets
+--all-features -- -D warnings`; the duplicate maintainer-tool nightly lint task
+was removed from the workflow matrix. The MSRV stays 1.94.1 and the specialized
+nightly toolchain stays pinned separately. Local commands must name `+1.99.1`
+when matching this lint gate; the machine's unqualified stable alias was 1.94.1
+at this checkpoint.
+
+The 19 pre-existing default-feature warning locations and one additional
+all-feature node-test location were fixed. Fixed-size block loops use
+`as_chunks`/`as_chunks_mut` with the same handling of full blocks and remainders,
+including the conditional SHA-256 paths. Amount formatting now initializes its
+trailing-zero count from the match expression without changing arithmetic.
+Other changes remove redundant formatting borrows, a single-item loop and an
+explicit error-forwarding match. No lint suppressions or rule changes were added.
+
+Validation: stable 1.99.1 strict Clippy passes with default features and with all
+features. The pinned-node all-target/all-feature workspace run passes **1,892
+tests / 111 targets**, including all 16 original-node matrices. Default-feature
+hash, ChaCha and units tests/doctests pass (644 passed, one existing ignored
+example), covering formatting, block loops and partial-block processing.
+Rust 1.94.1 checks the entire workspace with all targets and all features.
+Formatting, whitespace checks and actionlint for the modified CI workflow pass.

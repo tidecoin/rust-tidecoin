@@ -53,6 +53,7 @@
 //! * `std` - Enables std lib I/O driver functions and `std::error::Error` impls (implies `alloc`).
 //! * `alloc` - Enables [`encode_to_vec`], `Vec`-based decoders, and allocation-based helpers.
 
+#![forbid(unsafe_code)]
 #![no_std]
 // Coding conventions.
 #![warn(missing_docs)]

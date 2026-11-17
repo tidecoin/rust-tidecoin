@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![forbid(unsafe_code)]
 //! Tidecoin byte-oriented consensus verification API.
 //!
 //! The active runtime and proof surface are Tidecoin-native and audited against
@@ -21,7 +22,7 @@ use consensus_core::{SpendContext, SpentOutputs};
 use core::fmt;
 use primitives::{Amount, ScriptPubKeyBuf, Transaction, TxOut};
 
-use crate::types::{c_int64, c_uchar, c_uint};
+use crate::types::{c_int64, c_uint};
 
 /// Do not enable any verification.
 pub const VERIFY_NONE: c_uint = core_flags::VERIFY_NONE as c_uint;
@@ -108,7 +109,7 @@ pub fn verify(
     spent_output: &[u8],
     amount: u64,
     spending_transaction: &[u8],
-    spent_outputs: Option<&[Utxo]>,
+    spent_outputs: Option<&[Utxo<'_>]>,
     input_index: usize,
 ) -> Result<(), Error> {
     let flags = VERIFY_ALL_TIDECOIN;
@@ -121,7 +122,7 @@ pub fn verify_with_details(
     spent_output: &[u8],
     amount: u64,
     spending_transaction: &[u8],
-    spent_outputs: Option<&[Utxo]>,
+    spent_outputs: Option<&[Utxo<'_>]>,
     input_index: usize,
 ) -> Result<(), ScriptFailure> {
     let flags = VERIFY_ALL_TIDECOIN;
@@ -141,7 +142,7 @@ pub fn verify_with_flags(
     spent_output_script: &[u8],
     amount: u64,
     spending_transaction: &[u8],
-    spent_outputs: Option<&[Utxo]>,
+    spent_outputs: Option<&[Utxo<'_>]>,
     input_index: usize,
     flags: u32,
 ) -> Result<(), Error> {
@@ -161,7 +162,7 @@ pub fn verify_with_flags_detailed(
     spent_output_script: &[u8],
     amount: u64,
     spending_transaction: &[u8],
-    spent_outputs: Option<&[Utxo]>,
+    spent_outputs: Option<&[Utxo<'_>]>,
     input_index: usize,
     flags: u32,
 ) -> Result<(), ScriptFailure> {
@@ -179,7 +180,7 @@ fn perform_verification(
     spent_output_script: &[u8],
     amount: u64,
     spending_transaction: &[u8],
-    spent_outputs: Option<&[Utxo]>,
+    spent_outputs: Option<&[Utxo<'_>]>,
     input_index: usize,
     flags: u32,
 ) -> Result<(), ScriptFailure> {
@@ -218,9 +219,7 @@ fn parse_transaction(tx_bytes: &[u8]) -> Result<Transaction, Error> {
     Ok(tx)
 }
 
-fn decode_spent_outputs(expected: usize, raw: &[Utxo]) -> Result<SpentOutputs, Error> {
-    use core::slice;
-
+fn decode_spent_outputs(expected: usize, raw: &[Utxo<'_>]) -> Result<SpentOutputs, Error> {
     if raw.len() != expected {
         return Err(Error::ERR_SPENT_OUTPUTS_MISMATCH);
     }
@@ -230,25 +229,9 @@ fn decode_spent_outputs(expected: usize, raw: &[Utxo]) -> Result<SpentOutputs, E
         if utxo.value < 0 {
             return Err(Error::ERR_AMOUNT_REQUIRED);
         }
-
-        if utxo.script_pubkey_len == 0 && utxo.script_pubkey.is_null() {
-            txouts.push(TxOut {
-                amount: Amount::from_sat(utxo.value as u64)
-                    .map_err(|_| Error::ERR_AMOUNT_REQUIRED)?,
-                script_pubkey: ScriptPubKeyBuf::new(),
-            });
-            continue;
-        }
-
-        if utxo.script_pubkey.is_null() {
-            return Err(Error::ERR_TX_DESERIALIZE);
-        }
-
-        let script_bytes =
-            unsafe { slice::from_raw_parts(utxo.script_pubkey, utxo.script_pubkey_len as usize) };
         txouts.push(TxOut {
             amount: Amount::from_sat(utxo.value as u64).map_err(|_| Error::ERR_AMOUNT_REQUIRED)?,
-            script_pubkey: ScriptPubKeyBuf::from_bytes(script_bytes.to_vec()),
+            script_pubkey: ScriptPubKeyBuf::from_bytes(utxo.script_pubkey.to_vec()),
         });
     }
 
@@ -270,14 +253,25 @@ fn map_validation_error(error: &consensus_core::TidecoinValidationError) -> Erro
     }
 }
 
-/// UTXO struct for the byte-oriented verification API.
-#[repr(C)]
-pub struct Utxo {
-    /// Pointer to the scriptPubkey bytes.
-    pub script_pubkey: *const c_uchar,
-    /// The length of the scriptPubkey.
-    pub script_pubkey_len: c_uint,
-    /// The value in sats.
+/// Borrowed previous output for the byte-oriented verification API.
+///
+/// The script bytes must remain alive while this value is used. Outputs must be
+/// supplied in transaction-input order; these values do not authenticate their
+/// association with outpoints against chain state.
+///
+/// ```compile_fail
+/// use consensus::Utxo;
+/// let output = {
+///     let script = vec![0x51];
+///     Utxo { script_pubkey: &script, value: 0 }
+/// };
+/// assert_eq!(output.script_pubkey, &[0x51]);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct Utxo<'a> {
+    /// Borrowed scriptPubkey bytes, including an empty script when appropriate.
+    pub script_pubkey: &'a [u8],
+    /// The value in sats. Negative or out-of-range values are rejected.
     pub value: c_int64,
 }
 
@@ -1374,19 +1368,52 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_spent_outputs_preserve_bytes_and_validate_context() {
+        let mut script = vec![0x00, 0x51, 0xff];
+        let outputs = [
+            Utxo { script_pubkey: &script[1..2], value: 0 },
+            Utxo { script_pubkey: &[], value: Amount::MAX_MONEY.to_sat() as i64 },
+        ];
+        let decoded = super::decode_spent_outputs(2, &outputs).unwrap();
+        assert_eq!(decoded.txouts()[0].script_pubkey.as_bytes(), &[0x51]);
+        assert!(decoded.txouts()[1].script_pubkey.is_empty());
+        assert_eq!(decoded.txouts()[1].amount, Amount::MAX_MONEY);
+        assert_eq!(
+            super::decode_spent_outputs(1, &outputs).unwrap_err(),
+            Error::ERR_SPENT_OUTPUTS_MISMATCH
+        );
+        // The interpreter context owns a copy, independent of the caller's buffer.
+        script[1] = 0x52;
+        script.resize(1024, 0);
+        assert_eq!(decoded.txouts()[0].script_pubkey.as_bytes(), &[0x51]);
+        for value in [-1, Amount::MAX_MONEY.to_sat() as i64 + 1] {
+            assert_eq!(
+                super::decode_spent_outputs(1, &[Utxo { script_pubkey: &[], value }]).unwrap_err(),
+                Error::ERR_AMOUNT_REQUIRED
+            );
+        }
+
+        let tx = encode_to_vec(&multisig_test_transaction());
+        let outputs = [Utxo { script_pubkey: &[0x51], value: 0 }];
+        verify(&[0x51], 0, &tx, Some(&outputs), 0).unwrap();
+        verify_with_details(&[0x51], 0, &tx, Some(&outputs), 0).unwrap();
+        verify_with_flags(&[0x51], 0, &tx, Some(&outputs), 0, VERIFY_NONE).unwrap();
+        verify_with_flags_detailed(&[0x51], 0, &tx, Some(&outputs), 0, VERIFY_NONE).unwrap();
+    }
+
+    #[test]
     fn spent_output_script_must_match() {
         let spent_script = Builder::new().push_opcode(all::OP_PUSHNUM_1).into_script();
         let wrong_script = Builder::new().push_opcode(all::OP_PUSHNUM_2).into_script();
         let tx = multisig_test_transaction();
         let tx_bytes = encode_to_vec(&tx);
 
-        let (storage, utxo) = make_utxo(&wrong_script, 0);
+        let utxo = make_utxo(&wrong_script, 0);
         let utxos = [utxo];
         let err =
             verify_with_flags(spent_script.as_bytes(), 0, &tx_bytes, Some(&utxos), 0, VERIFY_NONE)
                 .expect_err("mismatched spent output should fail");
         assert_eq!(err, Error::ERR_SPENT_OUTPUTS_MISMATCH);
-        drop(storage);
     }
 
     #[test]
@@ -1408,7 +1435,7 @@ mod tests {
             outputs: vec![TxOut { amount: Amount::ZERO, script_pubkey: ScriptPubKeyBuf::new() }],
         };
         let tx_bytes = encode_to_vec(&tx);
-        let (storage, utxo) = make_utxo(&spent_script, 0);
+        let utxo = make_utxo(&spent_script, 0);
         let utxos = [utxo];
 
         verify_with_flags_detailed(
@@ -1431,7 +1458,6 @@ mod tests {
         )
         .expect_err("reserved witness version should fail when discouraged");
         assert_eq!(failure.script_error, ScriptError::DiscourageUpgradableWitnessProgram);
-        drop(storage);
     }
 
     #[test]
@@ -2142,13 +2168,7 @@ mod tests {
         }
     }
 
-    fn make_utxo(script: &ScriptBuf, value: u64) -> (Vec<u8>, Utxo) {
-        let bytes = script.as_bytes().to_vec();
-        let utxo = Utxo {
-            script_pubkey: bytes.as_ptr(),
-            script_pubkey_len: bytes.len() as u32,
-            value: value as i64,
-        };
-        (bytes, utxo)
+    fn make_utxo(script: &ScriptBuf, value: u64) -> Utxo<'_> {
+        Utxo { script_pubkey: script.as_bytes(), value: value as i64 }
     }
 }

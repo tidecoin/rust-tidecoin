@@ -11,7 +11,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
 
-use crate::{HashEngine, Hmac, HmacEngine, IsByteArray};
+use crate::{Hash, HashEngine, HmacEngine, IsByteArray};
+use zeroize::Zeroize;
 
 /// Output keying material max length multiple.
 const MAX_OUTPUT_BLOCKS: usize = 255;
@@ -35,7 +36,7 @@ impl std::error::Error for MaxLengthError {}
 #[derive(Clone)]
 pub struct Hkdf<T: HashEngine> {
     /// Pseudorandom key based on the extract step.
-    prk: Hmac<T::Hash>,
+    prk: <T::Hash as Hash>::Bytes,
 }
 
 impl<T: HashEngine> Drop for Hkdf<T> {
@@ -53,7 +54,7 @@ impl<T: HashEngine> Hkdf<T> {
     /// of the [`zeroize`](https://docs.rs/zeroize) crate.
     #[inline]
     pub fn non_secure_erase(&mut self) {
-        crate::non_secure_erase(&mut self.prk);
+        self.prk.as_mut().zeroize();
     }
 }
 
@@ -65,7 +66,7 @@ where
     pub fn new(salt: &[u8], ikm: &[u8]) -> Self {
         let mut engine: HmacEngine<T> = HmacEngine::new(salt);
         engine.input(ikm);
-        Self { prk: engine.finalize() }
+        Self { prk: engine.finalize().to_byte_array() }
     }
 
     /// Expand the key to generate output key material in okm.

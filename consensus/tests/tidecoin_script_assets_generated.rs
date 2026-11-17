@@ -20,7 +20,7 @@ mod tidecoin_test_support;
 use tidecoin_test_support::{
     all_script_assets_consensus_flags, map_rust_script_error, node_script_result, normalize_flags,
     parse_hex_bytes, parse_prevout_txouts, parse_script_flags, parse_tx_inputs, read_fixture,
-    try_harness, OwnedUtxoSet, PrevoutData,
+    try_harness, BorrowedUtxoSet, PrevoutData,
 };
 
 const DEFAULT_MIN_GENERATED_CASES: usize = 25;
@@ -191,13 +191,13 @@ fn to_rust_result(
     flags: u32,
 ) -> Result<(), ScriptError> {
     let tx_bytes = encode_to_vec(tx);
-    let owned_prevouts = OwnedUtxoSet::from_txouts(prevouts);
+    let borrowed_prevouts = BorrowedUtxoSet::from_txouts(prevouts);
     let prevout = &prevouts[input_index];
     verify_with_flags_detailed(
         prevout.script_pubkey.as_bytes(),
         prevout.amount.to_sat(),
         &tx_bytes,
-        Some(owned_prevouts.as_slice()),
+        Some(borrowed_prevouts.as_slice()),
         input_index,
         flags,
     )

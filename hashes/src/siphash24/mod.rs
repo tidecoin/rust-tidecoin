@@ -3,6 +3,7 @@
 //! `SipHash` 2-4 implementation.
 
 #![allow(clippy::unreadable_literal)]
+#![forbid(unsafe_code)]
 
 use core::{cmp, mem};
 
@@ -37,16 +38,12 @@ macro_rules! compress {
     }};
 }
 
-/// Loads an integer of the desired type from a byte stream, in LE order. Uses
-/// `copy_nonoverlapping` to let the compiler generate the most efficient way
-/// to load it from a possibly unaligned address.
-///
-/// Unsafe because: unchecked indexing at `i..i+size_of(int_ty)`.
+/// Loads an integer from a checked byte slice, in little-endian order.
 macro_rules! load_int_le {
     ($buf:expr, $i:expr, $int_ty:ident) => {{
         debug_assert!($i + mem::size_of::<$int_ty>() <= $buf.len());
         $int_ty::from_le_bytes(
-            $buf.get_unchecked($i..($i + mem::size_of::<$int_ty>()))
+            $buf[$i..($i + mem::size_of::<$int_ty>())]
                 .try_into()
                 .expect("len is correctly computed using size_of"),
         )
@@ -137,6 +134,20 @@ pub struct HashEngine {
     ntail: usize,      // how many bytes in tail are valid
 }
 
+impl zeroize::Zeroize for HashEngine {
+    fn zeroize(&mut self) {
+        self.k0.zeroize();
+        self.k1.zeroize();
+        self.bytes_hashed.zeroize();
+        self.state.v0.zeroize();
+        self.state.v1.zeroize();
+        self.state.v2.zeroize();
+        self.state.v3.zeroize();
+        self.tail.zeroize();
+        self.ntail.zeroize();
+    }
+}
+
 impl HashEngine {
     /// Constructs a new `SipHash24` engine with keys.
     #[inline]
@@ -190,8 +201,7 @@ impl crate::HashEngine for HashEngine {
 
         if self.ntail != 0 {
             needed = 8 - self.ntail;
-            self.tail |=
-                unsafe { u8to64_le(msg, 0, cmp::min(bytes_hashed, needed)) } << (8 * self.ntail);
+            self.tail |= u8to64_le(msg, 0, cmp::min(bytes_hashed, needed)) << (8 * self.ntail);
             if bytes_hashed < needed {
                 self.ntail += bytes_hashed;
                 return;
@@ -208,7 +218,7 @@ impl crate::HashEngine for HashEngine {
 
         let mut i = needed;
         while i < len - left {
-            let mi = unsafe { load_int_le!(msg, i, u64) };
+            let mi = load_int_le!(msg, i, u64);
 
             self.state.v3 ^= mi;
             Self::c_rounds(&mut self.state);
@@ -217,7 +227,7 @@ impl crate::HashEngine for HashEngine {
             i += 8;
         }
 
-        self.tail = unsafe { u8to64_le(msg, i, left) };
+        self.tail = u8to64_le(msg, i, left);
         self.ntail = left;
     }
 
@@ -232,9 +242,9 @@ impl crate::HashEngine for HashEngine {
 
 /// Loads a u64 using up to 7 bytes of a byte slice.
 ///
-/// Unsafe because: unchecked indexing at `start..start+len`.
+/// Indexing checks that the requested bytes are present.
 #[inline]
-unsafe fn u8to64_le(buf: &[u8], start: usize, len: usize) -> u64 {
+fn u8to64_le(buf: &[u8], start: usize, len: usize) -> u64 {
     debug_assert!(len < 8);
     let mut i = 0; // current byte index (from LSB) in the output u64
     let mut out = 0;
@@ -247,7 +257,7 @@ unsafe fn u8to64_le(buf: &[u8], start: usize, len: usize) -> u64 {
         i += 2;
     }
     if i < len {
-        out |= u64::from(*buf.get_unchecked(start + i)) << (i * 8);
+        out |= u64::from(buf[start + i]) << (i * 8);
         i += 1;
     }
     debug_assert_eq!(i, len);
@@ -342,6 +352,16 @@ mod tests {
             let inc = Hash::from_engine(state_inc.clone());
             assert_eq!(vec, inc, "vec #{}", i);
             state_inc.input(&[i as u8]);
+
+            // Cover every transition from a buffered tail to full input blocks,
+            // including empty writes, against the independent reference vectors.
+            for split in 0..=i {
+                let mut split_state = HashEngine::with_keys(k0, k1);
+                split_state.input(&vin[..split]);
+                split_state.input(&[]);
+                split_state.input(&vin[split..i]);
+                assert_eq!(vec, split_state.finalize(), "vec #{i}, split {split}");
+            }
         }
     }
 }

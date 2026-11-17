@@ -2038,7 +2038,9 @@ mod tests {
     fn hex_bytes(s: &str) -> Vec<u8> {
         assert!(s.len().is_multiple_of(2), "hex string must have an even length");
         s.as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| {
                 let hi = (chunk[0] as char).to_digit(16).expect("valid hex") as u8;
                 let lo = (chunk[1] as char).to_digit(16).expect("valid hex") as u8;

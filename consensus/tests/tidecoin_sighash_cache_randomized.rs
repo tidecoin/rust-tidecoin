@@ -239,7 +239,7 @@ fn random_script(rng: &mut DeterministicRng) -> ScriptBuf {
 
 fn random_txid(rng: &mut DeterministicRng) -> Txid {
     let mut bytes = [0u8; 32];
-    for chunk in bytes.chunks_exact_mut(8) {
+    for chunk in bytes.as_chunks_mut::<8>().0 {
         chunk.copy_from_slice(&rng.next_u64().to_le_bytes());
     }
     Txid::from_byte_array(bytes)

@@ -9,7 +9,7 @@ rust-version = "1.94.1"
 [dependencies]
 tidecoin = { path = "../tidecoin", default-features = false, features = ["std"] }
 tidecoin_hashes = { path = "../hashes" }
-chacha20-poly1305 = { path = "../chacha20_poly1305" }
+chacha20-poly1305 = { package = "tidecoin-chacha20-poly1305", path = "../chacha20_poly1305" }
 encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding" }
 
 criterion = "0.7"

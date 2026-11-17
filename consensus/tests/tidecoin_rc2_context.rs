@@ -92,8 +92,7 @@ fn verify_bytes(
     let raw = outputs.map(|outs| {
         outs.iter()
             .map(|out| consensus::Utxo {
-                script_pubkey: out.script_pubkey.as_bytes().as_ptr(),
-                script_pubkey_len: out.script_pubkey.len() as u32,
+                script_pubkey: out.script_pubkey.as_bytes(),
                 value: out.amount.to_sat() as i64,
             })
             .collect::<Vec<_>>()

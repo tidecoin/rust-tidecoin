@@ -145,6 +145,12 @@ crate::internal_macros::hash_trait_impls!(256, false, T: Tag);
 #[derive(Debug)]
 pub struct HashEngine<T>(sha256::HashEngine, PhantomData<T>);
 
+impl<T> zeroize::Zeroize for HashEngine<T> {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
 impl<T: Tag> Default for HashEngine<T> {
     fn default() -> Self {
         let tagged = T::MIDSTATE.to_engine();

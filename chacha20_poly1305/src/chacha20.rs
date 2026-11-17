@@ -323,8 +323,8 @@ impl ChaCha20 {
         };
 
         // Process full blocks.
-        let mut chunks = remaining_buffer.chunks_exact_mut(CHACHA_BLOCKSIZE);
-        for chunk in &mut chunks {
+        let (chunks, remainder) = remaining_buffer.as_chunks_mut::<CHACHA_BLOCKSIZE>();
+        for chunk in chunks {
             let keystream = self.keystream_at_block(self.block_count);
             for (buffer_byte, keystream_byte) in chunk.iter_mut().zip(keystream.iter()) {
                 *buffer_byte ^= *keystream_byte;
@@ -333,7 +333,6 @@ impl ChaCha20 {
         }
 
         // Handle any remaining bytes as partial block.
-        let remainder = chunks.into_remainder();
         if !remainder.is_empty() {
             let keystream = self.keystream_at_block(self.block_count);
             for (buffer_byte, keystream_byte) in remainder.iter_mut().zip(keystream.iter()) {

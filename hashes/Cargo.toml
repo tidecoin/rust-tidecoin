@@ -23,6 +23,7 @@ hex = ["dep:hex-stable", "internals/hex"]
 small-hash = []
 
 [dependencies]
+zeroize = { version = "1.8", default-features = false }
 internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false }
 encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", version = "0.1.0", default-features = false }
 

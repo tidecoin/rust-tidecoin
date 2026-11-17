@@ -235,7 +235,9 @@ impl encoding::Decoder for CommandStringDecoder {
             return Err(CommandStringDecoderError::NotAscii);
         }
 
-        Ok(CommandString(Cow::Owned(unsafe { String::from_utf8_unchecked(trimmed.to_vec()) })))
+        Ok(CommandString(Cow::Owned(
+            String::from_utf8(trimmed.to_vec()).expect("ASCII command is valid UTF-8"),
+        )))
     }
 
     fn read_limit(&self) -> usize {

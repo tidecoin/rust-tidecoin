@@ -1098,7 +1098,7 @@ mod tests {
             }
 
             let mut next = Vec::with_capacity(hashes.len() / 2);
-            for pair in hashes.chunks_exact(2) {
+            for pair in hashes.as_chunks::<2>().0 {
                 let mut engine = sha256d::Hash::engine();
                 engine.input(&pair[0]);
                 engine.input(&pair[1]);

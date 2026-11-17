@@ -2,6 +2,7 @@
 
 //! Rust Tidecoin Peer to Peer Message Types
 
+#![forbid(unsafe_code)]
 #![no_std]
 // Coding conventions.
 #![warn(missing_docs)]

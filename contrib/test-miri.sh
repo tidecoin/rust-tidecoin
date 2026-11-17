@@ -19,8 +19,13 @@ do
 		continue
 	fi
 
-	# Running miri is expensive and not needed for crates that don't contain unsafe
-	if RUSTFLAGS="-C target-feature=$target_features -F unsafe-code" cargo check -q --manifest-path "$crate/Cargo.toml" --all-features --target x86_64-unknown-linux-gnu 2>/dev/null;
+	# Running miri is expensive and not needed for crates that don't contain unsafe.
+	# Forbid unsafe in this crate only: putting the lint in RUSTFLAGS would also
+	# apply it to workspace dependencies such as internals (which uses unsafe),
+	# so every crate depending on them would fail the check and run under Miri.
+	# The library is checked both normally and with cfg(test) code included.
+	if RUSTFLAGS="-C target-feature=$target_features" cargo rustc -q --manifest-path "$crate/Cargo.toml" --all-features --target x86_64-unknown-linux-gnu --lib --profile check -- -F unsafe-code 2>/dev/null \
+		&& RUSTFLAGS="-C target-feature=$target_features" cargo rustc -q --manifest-path "$crate/Cargo.toml" --all-features --target x86_64-unknown-linux-gnu --lib --profile test -- -F unsafe-code 2>/dev/null;
 	then
 		echo "No unsafe code in $crate, skipping..." >&2
 		continue

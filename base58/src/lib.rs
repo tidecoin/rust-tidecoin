@@ -4,6 +4,7 @@
 //!
 //! This crate can be used in a no-std environment but requires an allocator.
 
+#![forbid(unsafe_code)]
 #![no_std]
 // Experimental features we need.
 #![cfg_attr(bench, feature(test))]

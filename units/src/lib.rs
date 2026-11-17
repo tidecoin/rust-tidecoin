@@ -18,6 +18,7 @@
 //! # Ok::<_, amount::OutOfRangeError>(())
 //! ```
 
+#![forbid(unsafe_code)]
 #![no_std]
 // Coding conventions.
 #![warn(missing_docs)]

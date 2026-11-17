@@ -13,6 +13,7 @@ use core::{convert, fmt, str};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{Hash, HashEngine};
+use zeroize::Zeroize;
 
 /// A hash computed from a RFC 2104 HMAC. Parameterized by the underlying hash function.
 #[derive(Copy, Clone, PartialOrd, Ord, Hash)]
@@ -139,8 +140,8 @@ impl<T: HashEngine> HmacEngine<T> {
         ret.iengine.input(&ipad[..T::BLOCK_SIZE]);
         ret.oengine.input(&opad[..T::BLOCK_SIZE]);
 
-        crate::non_secure_erase(&mut ipad);
-        crate::non_secure_erase(&mut opad);
+        ipad.zeroize();
+        opad.zeroize();
 
         ret
     }
@@ -150,16 +151,35 @@ impl<T: HashEngine> HmacEngine<T> {
         Self { iengine, oengine }
     }
 
-    /// Attempts to erase the contents of the underlying hash engines
+    /// Attempts to erase the contents of the underlying hash engines.
+    ///
+    /// Custom engines must implement [`Zeroize`] to clear their own fields while
+    /// preserving valid values. Erasure does not reinitialize a keyed HMAC.
+    ///
+    /// ```compile_fail
+    /// use tidecoin_hashes::{HashEngine, HmacEngine};
+    /// fn erase_arbitrary_engine<T: HashEngine>(engine: &mut HmacEngine<T>) {
+    ///     engine.non_secure_erase(); // Requires T: zeroize::Zeroize.
+    /// }
+    /// ```
     ///
     /// Note, however, that the compiler is allowed to freely copy or move the
     /// contents of this type to other places in memory. Preventing this behavior
     /// is very subtle. For more discussion on this, please see the documentation
     /// of the [`zeroize`](https://docs.rs/zeroize) crate.
     #[inline]
-    pub fn non_secure_erase(&mut self) {
-        crate::non_secure_erase(&mut self.iengine);
-        crate::non_secure_erase(&mut self.oengine);
+    pub fn non_secure_erase(&mut self)
+    where
+        T: Zeroize,
+    {
+        self.zeroize();
+    }
+}
+
+impl<T: HashEngine + Zeroize> Zeroize for HmacEngine<T> {
+    fn zeroize(&mut self) {
+        self.iengine.zeroize();
+        self.oengine.zeroize();
     }
 }
 

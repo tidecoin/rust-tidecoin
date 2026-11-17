@@ -211,8 +211,7 @@ pub fn compare(node: &TidecoinNodeHarness, case: &Case) {
         .spent
         .iter()
         .map(|o| consensus::Utxo {
-            script_pubkey: o.script_pubkey.as_bytes().as_ptr(),
-            script_pubkey_len: o.script_pubkey.len() as u32,
+            script_pubkey: o.script_pubkey.as_bytes(),
             value: o.amount.to_sat() as i64,
         })
         .collect();

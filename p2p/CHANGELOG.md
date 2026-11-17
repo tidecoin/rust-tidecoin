@@ -4,6 +4,8 @@ All notable Tidecoin-specific changes for peer-to-peer messages are documented h
 
 ## Unreleased
 
+- Replaced unchecked command-string construction with checked UTF-8 conversion,
+  retaining ASCII validation and null-padding behavior. The library forbids unsafe code.
 - Reoriented the crate around Tidecoin peer-to-peer message and transport semantics.
 - Routed message serialization through `tidecoin-consensus-encoding` and shared primitives.
 - Kept transport cryptography in the dedicated local crypto helper crates.

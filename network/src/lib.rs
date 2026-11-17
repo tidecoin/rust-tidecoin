@@ -6,6 +6,7 @@
 //! Tidecoin network we are operating on e.g., testnet, regtest. The terms
 //! "network" and "chain" are often used interchangeably for this concept.
 
+#![forbid(unsafe_code)]
 #![no_std]
 // Coding conventions.
 #![warn(missing_docs)]

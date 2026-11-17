@@ -69,16 +69,19 @@ CI targets `v2`/`main` and pull requests. Its `Required rc3 node parity` job
 checks out `node-parity/NODE_REVISION`, fails on unavailable/mismatched oracle
 configuration, and runs workspace tests, product node parity, Clippy and feature
 checks. Hosted verification is in progress; `v2` currently has no branch
-protection or enforced status checks. See [node compatibility](docs/supported-versions.md) and
+protection or enforced status checks. The `Miri` and `Fuzz` workflows run only
+when started manually from the Actions tab. See [node compatibility](docs/supported-versions.md) and
 the [migration evidence](ai-docs/RC3_MIGRATION_PLAN.md).
 
 Pure-Rust validation is checked against the real Tidecoin node. Consensus-sensitive changes should
 be treated as node-parity-sensitive engineering work and verified with the Tidecoin fixture and
 differential suites, not only with local unit tests.
 
-Normal CI and formatting use Rust **1.99.1**, pinned in `Cargo.toml`. For local
-format checks use `cargo +1.99.1 fmt --all -- --check`. Nightly remains for
-specialized checks and inherited maintainer-tool audits. Building the original
+Normal CI, formatting and strict Clippy use Rust **1.99.1**, pinned in `Cargo.toml`.
+The node-parity job runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+there is no separate nightly Clippy job. Locally, use `cargo +1.99.1 clippy --workspace --all-targets --all-features -- -D warnings`
+and `cargo +1.99.1 fmt --all -- --check`. Nightly remains for specialized checks,
+including Miri and sanitizer-based fuzzing. Building the original
 C++ validation oracle is documented in the
 [migration evidence](ai-docs/RC3_MIGRATION_PLAN.md#validation-commands).
 
