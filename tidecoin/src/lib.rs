@@ -38,6 +38,7 @@
 //! shared engine layer.
 
 #![no_std]
+#![forbid(unsafe_code)]
 // Experimental features we need.
 #![cfg_attr(docsrs, feature(doc_cfg, doc_notable_trait))]
 // Coding conventions.

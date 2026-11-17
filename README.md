@@ -81,7 +81,17 @@ Normal CI, formatting and strict Clippy use Rust **1.99.1**, pinned in `Cargo.to
 The node-parity job runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
 there is no separate nightly Clippy job. Locally, use `cargo +1.99.1 clippy --workspace --all-targets --all-features -- -D warnings`
 and `cargo +1.99.1 fmt --all -- --check`. Nightly remains for specialized checks,
-including Miri and sanitizer-based fuzzing. Building the original
+including Miri, expanded-code screening and sanitizer-based fuzzing.
+`Expanded unsafe-code check` runs on pushes and pull requests. Run it locally with
+`python3 contrib/test-expanded-safety.py` and `python3 contrib/check-expanded-safety.py`.
+It uses the pinned nightly's expanded syntax tree to check the reviewed Miri-exempt
+libraries with default, no-default and all features, plus unit and integration tests
+with all features. It rejects unsafe code emitted by external macros as well as
+handwritten unsafe; compiler-generated derive operations are excluded using compiler
+metadata, not matching source text. Miri uses this same explicit exemption list and
+checks it before skipping any crate. Dependencies, other feature combinations,
+other targets and doctest bodies are outside this expansion claim.
+Building the original
 C++ validation oracle is documented in the
 [migration evidence](ai-docs/RC3_MIGRATION_PLAN.md#validation-commands).
 

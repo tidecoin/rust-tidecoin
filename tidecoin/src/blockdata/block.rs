@@ -14,7 +14,7 @@ use crate::merkle_tree::{TxMerkleNode, WitnessMerkleNode};
 use crate::network::Params;
 use crate::prelude::Vec;
 use crate::script::ScriptIntError;
-use crate::transaction::{Coinbase, Transaction};
+use crate::transaction::{CoinbaseRef, Transaction};
 use crate::{internal_macros, Target, Weight, Work};
 #[cfg(test)]
 use crate::{prelude::Box, BlockTime};
@@ -106,7 +106,7 @@ pub trait BlockCheckedExt: sealed::Sealed {
     ///
     /// This method is infallible for checked blocks because validation ensures
     /// that a valid coinbase transaction is always present.
-    fn coinbase(&self) -> &Coinbase;
+    fn coinbase(&self) -> CoinbaseRef<'_>;
 
     /// Returns the block height encoded in the coinbase transaction.
     fn bip34_block_height(&self) -> Result<u64, Bip34Error>;
@@ -144,9 +144,9 @@ impl BlockCheckedExt for Block<Checked> {
         block.total_size()
     }
 
-    fn coinbase(&self) -> &Coinbase {
+    fn coinbase(&self) -> CoinbaseRef<'_> {
         let first_tx = &self.transactions()[0];
-        Coinbase::assume_coinbase_ref(first_tx)
+        CoinbaseRef::assume_coinbase(first_tx)
     }
 
     /// Returns the block height encoded in the coinbase transaction.

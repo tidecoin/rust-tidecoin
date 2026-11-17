@@ -413,95 +413,87 @@ pub enum AddressData {
     },
 }
 
-internals::transparent_newtype! {
-    /// A Tidecoin address.
-    ///
-    /// # Parsing addresses
-    ///
-    /// When parsing string as an address, one has to pay attention to the network, on which the parsed
-    /// address is supposed to be valid. For the purpose of this validation, `Address` has
-    /// [`is_valid_for_network`](Address<NetworkUnchecked>::is_valid_for_network) method. In order to provide more safety,
-    /// enforced by compiler, `Address` also contains a special marker type, which indicates whether network of the parsed
-    /// address has been checked. This marker type will prevent from calling certain functions unless the network
-    /// verification has been successfully completed.
-    ///
-    /// The result of parsing an address is `Address<NetworkUnchecked>` suggesting that network of the parsed address
-    /// has not yet been verified. To perform this verification, method [`require_network`](Address<NetworkUnchecked>::require_network)
-    /// can be called, providing network on which the address is supposed to be valid. If the verification succeeds,
-    /// `Address<NetworkChecked>` is returned.
-    ///
-    /// The types `Address` and `Address<NetworkChecked>` are synonymous, i.e. they can be used interchangeably.
-    ///
-    /// ```rust,no_run
-    /// use std::str::FromStr;
-    /// use tidecoin::{Address, Network};
-    /// use tidecoin::address::{NetworkUnchecked, NetworkChecked};
-    ///
-    /// // variant 1
-    /// let address: Address<NetworkUnchecked> = "32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf".parse().unwrap();
-    /// let _address: Address<NetworkChecked> = address.require_network(Network::Tidecoin).unwrap();
-    ///
-    /// // variant 2
-    /// let _address: Address = Address::from_str("32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf").unwrap()
-    ///                .require_network(Network::Tidecoin).unwrap();
-    ///
-    /// // variant 3
-    /// let _address: Address<NetworkChecked> = "32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf".parse::<Address<_>>()
-    ///                .unwrap().require_network(Network::Tidecoin).unwrap();
-    /// ```
-    ///
-    /// ### Formatting addresses
-    ///
-    /// To format address into its textual representation, both `Debug` (for usage in programmer-facing,
-    /// debugging context) and `Display` (for user-facing output) can be used, with the following caveats:
-    ///
-    /// 1. `Display` is implemented only for `Address<NetworkChecked>`:
-    ///
-    /// ```no_run
-    /// # use tidecoin::address::{Address, NetworkChecked};
-    /// let address: Address<NetworkChecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
-    ///                .unwrap().assume_checked();
-    /// assert_eq!(address.to_string(), "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM");
-    /// ```
-    ///
-    /// ```compile_fail
-    /// # use tidecoin::address::{Address, NetworkChecked};
-    /// # use tidecoin::address::NetworkUnchecked;
-    /// let address: Address<NetworkUnchecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
-    ///                .unwrap();
-    /// let s = address.to_string(); // does not compile
-    /// ```
-    ///
-    /// 2. `Debug` on `Address<NetworkUnchecked>` does not produce clean address but address wrapped by
-    ///    an indicator that its network has not been checked. This is to encourage programmer to properly
-    ///    check the network and use `Display` in user-facing context.
-    ///
-    /// ```no_run
-    /// # use tidecoin::address::{Address, NetworkUnchecked};
-    /// let address: Address<NetworkUnchecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
-    ///                .unwrap();
-    /// assert_eq!(format!("{:?}", address), "Address<NetworkUnchecked>(132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM)");
-    /// ```
-    ///
-    /// ```no_run
-    /// # use tidecoin::address::{Address, NetworkChecked};
-    /// let address: Address<NetworkChecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
-    ///                .unwrap().assume_checked();
-    /// assert_eq!(format!("{:?}", address), "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM");
-    /// ```
-    ///
-    /// Tidecoin supports P2SH, witness-v0, and Tidecoin witness-v1-512 address forms.
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    // The `#[repr(transparent)]` attribute is used to guarantee the layout of the `Address` struct. It
-    // is an implementation detail and users should not rely on it in their code.
-    pub struct Address<V = NetworkChecked>(PhantomData<V>, AddressInner)
-    where
-        V: NetworkValidation;
-
-    impl<V> Address<V> {
-        fn from_inner_ref(inner: &_) -> &Self;
-    }
-}
+/// A Tidecoin address.
+///
+/// # Parsing addresses
+///
+/// When parsing string as an address, one has to pay attention to the network, on which the parsed
+/// address is supposed to be valid. For the purpose of this validation, `Address` has
+/// [`is_valid_for_network`](Address<NetworkUnchecked>::is_valid_for_network) method. In order to provide more safety,
+/// enforced by compiler, `Address` also contains a special marker type, which indicates whether network of the parsed
+/// address has been checked. This marker type will prevent from calling certain functions unless the network
+/// verification has been successfully completed.
+///
+/// The result of parsing an address is `Address<NetworkUnchecked>` suggesting that network of the parsed address
+/// has not yet been verified. To perform this verification, method [`require_network`](Address<NetworkUnchecked>::require_network)
+/// can be called, providing network on which the address is supposed to be valid. If the verification succeeds,
+/// `Address<NetworkChecked>` is returned.
+///
+/// The types `Address` and `Address<NetworkChecked>` are synonymous, i.e. they can be used interchangeably.
+///
+/// ```rust,no_run
+/// use std::str::FromStr;
+/// use tidecoin::{Address, Network};
+/// use tidecoin::address::{NetworkUnchecked, NetworkChecked};
+///
+/// // variant 1
+/// let address: Address<NetworkUnchecked> = "32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf".parse().unwrap();
+/// let _address: Address<NetworkChecked> = address.require_network(Network::Tidecoin).unwrap();
+///
+/// // variant 2
+/// let _address: Address = Address::from_str("32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf").unwrap()
+///                .require_network(Network::Tidecoin).unwrap();
+///
+/// // variant 3
+/// let _address: Address<NetworkChecked> = "32iVBEu4dxkUQk9dJbZUiBiQdmypcEyJRf".parse::<Address<_>>()
+///                .unwrap().require_network(Network::Tidecoin).unwrap();
+/// ```
+///
+/// ### Formatting addresses
+///
+/// To format address into its textual representation, both `Debug` (for usage in programmer-facing,
+/// debugging context) and `Display` (for user-facing output) can be used, with the following caveats:
+///
+/// 1. `Display` is implemented only for `Address<NetworkChecked>`:
+///
+/// ```no_run
+/// # use tidecoin::address::{Address, NetworkChecked};
+/// let address: Address<NetworkChecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
+///                .unwrap().assume_checked();
+/// assert_eq!(address.to_string(), "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM");
+/// ```
+///
+/// ```compile_fail
+/// # use tidecoin::address::{Address, NetworkChecked};
+/// # use tidecoin::address::NetworkUnchecked;
+/// let address: Address<NetworkUnchecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
+///                .unwrap();
+/// let s = address.to_string(); // does not compile
+/// ```
+///
+/// 2. `Debug` on `Address<NetworkUnchecked>` does not produce clean address but address wrapped by
+///    an indicator that its network has not been checked. This is to encourage programmer to properly
+///    check the network and use `Display` in user-facing context.
+///
+/// ```no_run
+/// # use tidecoin::address::{Address, NetworkUnchecked};
+/// let address: Address<NetworkUnchecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
+///                .unwrap();
+/// assert_eq!(format!("{:?}", address), "Address<NetworkUnchecked>(132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM)");
+/// ```
+///
+/// ```no_run
+/// # use tidecoin::address::{Address, NetworkChecked};
+/// let address: Address<NetworkChecked> = "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM".parse::<Address<_>>()
+///                .unwrap().assume_checked();
+/// assert_eq!(format!("{:?}", address), "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM");
+/// ```
+///
+/// Tidecoin supports P2SH, witness-v0, and Tidecoin witness-v1-512 address forms.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Address<V = NetworkChecked>(PhantomData<V>, AddressInner)
+where
+    V: NetworkValidation;
 
 #[cfg(feature = "serde")]
 struct DisplayUnchecked<'a, N: NetworkValidation>(&'a Address<N>);
@@ -570,11 +562,6 @@ impl<V: NetworkValidation> Address<V> {
 
     fn inner(&self) -> &AddressInner {
         &self.1
-    }
-
-    /// Returns a reference to the address as if it was unchecked.
-    pub fn as_unchecked(&self) -> &Address<NetworkUnchecked> {
-        Address::from_inner_ref(self.inner())
     }
 
     /// Marks the network of this address as unchecked.
@@ -866,13 +853,6 @@ impl Address {
 
 /// Methods that can be called only on `Address<NetworkUnchecked>`.
 impl Address<NetworkUnchecked> {
-    /// Returns a reference to the checked address.
-    ///
-    /// This function is dangerous in case the address is not a valid checked address.
-    pub fn assume_checked_ref(&self) -> &Address {
-        Address::from_inner_ref(self.inner())
-    }
-
     /// Parsed addresses do not always have *one* network. For example, callers may create a
     /// legacy address from [`NetworkKind::Test`], which intentionally canonicalizes to testnet.
     /// When exact network matching matters use this function instead of comparing only
@@ -1261,6 +1241,9 @@ mod tests {
             let addr =
                 address.parse::<Address<_>>().unwrap().require_network(Network::Tidecoin).unwrap();
             assert_eq!(addr.address_type(), expected_type);
+            let unchecked: Address<NetworkUnchecked> = addr.to_unchecked();
+            assert_eq!(unchecked.require_network(Network::Tidecoin).unwrap(), addr);
+            assert_eq!(unchecked.assume_checked().script_pubkey(), addr.script_pubkey());
         }
     }
 
@@ -1279,14 +1262,14 @@ mod tests {
             Address::<NetworkUnchecked>::from_str("p76p8nAKz7uyGorcGP4ShgLAYimASoxSJq").unwrap();
         assert!(p2pkh.is_valid_for_network(Network::Regtest));
         assert!(!p2pkh.is_valid_for_network(Network::Testnet));
-        assert_eq!(p2pkh.assume_checked_ref().to_string(), "p76p8nAKz7uyGorcGP4ShgLAYimASoxSJq");
+        assert_eq!(p2pkh.assume_checked().to_string(), "p76p8nAKz7uyGorcGP4ShgLAYimASoxSJq");
 
         let noncanonical_p2sh =
             Address::<NetworkUnchecked>::from_str("2Htyg1M1ptaatHp24Md8b8LbZtEA3eMfM4t").unwrap();
         assert!(noncanonical_p2sh.is_valid_for_network(Network::Regtest));
         assert!(!noncanonical_p2sh.is_valid_for_network(Network::Testnet));
         assert_eq!(
-            noncanonical_p2sh.assume_checked_ref().to_string(),
+            noncanonical_p2sh.assume_checked().to_string(),
             "r9M4zPwPT2vox56WnmpC6KBDbwfg8X4QD8"
         );
     }

@@ -483,3 +483,48 @@ hash, ChaCha and units tests/doctests pass (644 passed, one existing ignored
 example), covering formatting, block loops and partial-block processing.
 Rust 1.94.1 checks the entire workspace with all targets and all features.
 Formatting, whitespace checks and actionlint for the modified CI workflow pass.
+
+
+### Safe address conversions and borrowed coinbase views (2026-11-17)
+
+The two `transparent_newtype!` reference casts in `tidecoin` were removed.
+Callers of the removed `Address::as_unchecked()` use `to_unchecked()`; callers
+of `assume_checked_ref()` use `assume_checked()` on the Copy address. `BlockCheckedExt::coinbase()` returns
+`CoinbaseRef<'_>`, which stores the transaction reference directly. Owned Coinbase
+methods forward through `as_coinbase_ref()`, keeping the logic in one
+implementation without overlapping the standard `AsRef::as_ref` name.
+Tests check address/script preservation, transaction/input reference identity,
+owned/view results and rejection of a view that outlives its transaction. These
+are Rust API changes; node validation rules and wire formats are unchanged.
+The public changelog records the API migration.
+
+`tidecoin` now forbids unsafe code. The earlier lint-based Miri screening was
+insufficient because external macro expansions escape that lint. The new
+`contrib/check-expanded-safety.py` checks the pinned nightly's expanded AST,
+including dependency macros. Compiler-generated unsafe blocks are identified
+by rustc's `CompilerGenerated` marker; built-in `TrivialClone` implementations
+require a compiler dummy keyword span and the exact generated trait path.
+Handwritten lookalikes, including `automatically_derived` annotations, are not
+excluded. Five compiler-backed regression tests cover built-in derives,
+unsafe blocks/functions/traits/impls/extern declarations/attributes, external
+macros despite `forbid`, cfg(test)-only code and unsupported output formats.
+The pinned compiler's format and exceptions must be reviewed on nightly updates.
+
+The explicit exemption list covers base58, ChaCha, consensus, consensus-core,
+encoding, fuzz, network, P2P, tidecoin and units. The checker expands each library
+with default, no-default and all features, and its unit/integration tests with
+all features. It runs in normal CI and before Miri skips these crates. Miri's
+preflight passes its target and CPU feature settings to the checker. Dependencies,
+other feature combinations/targets, doctest bodies and fuzz binary targets are
+outside the expansion claim. Node-parity retains its separate C++ FFI exemption;
+hashes, internals, io and primitives remain selected for Miri.
+
+Validation: all listed expansion checks and the five checker regression tests
+pass. With the required pinned rc3 oracle, `cargo +1.99.1 test -p tidecoin
+--all-features` passes 351 unit tests, 24 integration tests and 16 doctests
+(one existing ignored doctest). Strict all-target/all-feature workspace Clippy
+passes; Rust 1.94.1 checks all tidecoin targets/features. Formatting, workflow
+validation and shell syntax checks pass.
+The focused `coinbase_assume_methods` Miri test passes (6.88 seconds of test
+execution); the full tidecoin Miri suite was not run. The explicit-target
+expansion path also passes for base58 on x86_64-unknown-linux-gnu.

@@ -12,6 +12,26 @@ name: Continuous integration
 permissions: {}
 
 jobs:
+  ExpandedSafety:
+    name: Expanded unsafe-code check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Read pinned nightly
+        id: rust
+        run: echo "version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["metadata"]["rbmt"]["toolchains"]["nightly"])')" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+      - name: Test expansion checker
+        run: python3 contrib/test-expanded-safety.py
+      - name: Check Miri-exempt crates and their tests
+        run: python3 contrib/check-expanded-safety.py
+
   NodeParity:
     name: Required rc3 node parity
     runs-on: ubuntu-24.04

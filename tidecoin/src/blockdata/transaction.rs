@@ -1002,50 +1002,49 @@ impl InputWeightPrediction {
     }
 }
 
-internals::transparent_newtype! {
-    /// A wrapper type for the coinbase transaction of a block.
-    ///
-    /// This type exists to distinguish coinbase transactions from regular ones at the type level.
-    #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-    pub struct Coinbase(Transaction);
+/// An owned wrapper for the coinbase transaction of a block.
+///
+/// This type distinguishes coinbase transactions from regular ones at the type level.
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct Coinbase(Transaction);
 
-    impl Coinbase {
-        /// Constructs a reference to `Coinbase` from a reference to the inner `Transaction`.
-        ///
-        /// This method does not validate that the transaction is actually a coinbase transaction.
-        /// The caller must ensure that the transaction is indeed a valid coinbase transaction
-        pub fn assume_coinbase_ref(inner: &_) -> &Self;
-    }
-}
+/// A borrowed view of a coinbase transaction, without copying its inputs or outputs.
+///
+/// The view cannot outlive its transaction:
+/// ```compile_fail
+/// use tidecoin::transaction::{CoinbaseRef, Transaction};
+/// fn invalid_view(tx: Transaction) -> CoinbaseRef<'static> {
+///     CoinbaseRef::assume_coinbase(&tx)
+/// }
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct CoinbaseRef<'a>(&'a Transaction);
 
 impl Coinbase {
-    /// Constructs a `Coinbase` wrapper assuming this transaction is a coinbase transaction.
+    /// Wraps a transaction without checking whether it is a valid coinbase.
     ///
-    /// This method does not validate that the transaction is actually a coinbase transaction.
-    /// The caller must ensure that this transaction is indeed a valid coinbase transaction.
+    /// The caller must ensure that it is a valid coinbase transaction.
     pub fn assume_coinbase(tx: Transaction) -> Self {
         Self(tx)
     }
 
-    /// Returns the first input of this coinbase transaction.
-    ///
-    /// This method is infallible because a valid coinbase transaction is guaranteed
-    /// to have exactly one input.
-    pub fn first_input(&self) -> &TxIn {
-        &self.0.inputs[0]
+    /// Borrows this coinbase without copying the transaction.
+    pub const fn as_coinbase_ref(&self) -> CoinbaseRef<'_> {
+        CoinbaseRef::assume_coinbase(&self.0)
     }
 
-    /// Returns a reference to the underlying transaction.
-    ///
-    /// Warning: The coinbase input contains dummy prevouts that should not be treated as real prevouts.
+    /// Returns the first input. Panics if the assumed coinbase has no inputs.
+    pub fn first_input(&self) -> &TxIn {
+        self.as_coinbase_ref().first_input()
+    }
+
+    /// Returns the underlying transaction, whose input contains a dummy prevout.
     #[doc(alias = "as_inner")]
     pub fn as_transaction(&self) -> &Transaction {
-        &self.0
+        self.as_coinbase_ref().as_transaction()
     }
 
-    /// Returns the underlying transaction.
-    ///
-    /// Warning: The coinbase input contains dummy prevouts that should not be treated as real prevouts.
+    /// Returns the underlying transaction, whose input contains a dummy prevout.
     #[doc(alias = "into_inner")]
     pub fn into_transaction(self) -> Transaction {
         self.0
@@ -1053,14 +1052,43 @@ impl Coinbase {
 
     /// Computes the [`Txid`] of this coinbase transaction.
     pub fn compute_txid(&self) -> Txid {
+        self.as_coinbase_ref().compute_txid()
+    }
+
+    /// Returns [`Wtxid::COINBASE`], as required for coinbase transactions.
+    #[doc(alias = "compute_wtxid")]
+    pub const fn wtxid(&self) -> Wtxid {
+        self.as_coinbase_ref().wtxid()
+    }
+}
+
+impl<'a> CoinbaseRef<'a> {
+    /// Borrows a transaction without checking whether it is a valid coinbase.
+    ///
+    /// The caller must ensure that it is a valid coinbase transaction.
+    pub const fn assume_coinbase(tx: &'a Transaction) -> Self {
+        Self(tx)
+    }
+
+    /// Returns the first input. Panics if the assumed coinbase has no inputs.
+    pub fn first_input(self) -> &'a TxIn {
+        &self.0.inputs[0]
+    }
+
+    /// Returns the underlying transaction, whose input contains a dummy prevout.
+    #[doc(alias = "as_inner")]
+    pub const fn as_transaction(self) -> &'a Transaction {
+        self.0
+    }
+
+    /// Computes the [`Txid`] of this coinbase transaction.
+    pub fn compute_txid(self) -> Txid {
         self.0.compute_txid()
     }
 
-    /// Returns the wtxid of this coinbase transaction.
-    ///
-    /// For coinbase transactions, this is always `Wtxid::COINBASE`.
+    /// Returns [`Wtxid::COINBASE`], as required for coinbase transactions.
     #[doc(alias = "compute_wtxid")]
-    pub const fn wtxid(&self) -> Wtxid {
+    pub const fn wtxid(self) -> Wtxid {
         Wtxid::COINBASE
     }
 }
@@ -1881,20 +1909,30 @@ mod tests {
 
     #[test]
     fn coinbase_assume_methods() {
+        use crate::block::BlockCheckedExt as _;
         use crate::constants;
         use crate::network::Network;
 
         let genesis = constants::genesis_block(Network::Tidecoin);
         let coinbase_tx = &genesis.transactions()[0];
 
-        // Test that we can create a Coinbase reference using assume_coinbase_ref
-        let coinbase_ref = Coinbase::assume_coinbase_ref(coinbase_tx);
+        // The view borrows the original transaction and its input.
+        let coinbase_ref = CoinbaseRef::assume_coinbase(coinbase_tx);
         assert_eq!(coinbase_ref.compute_txid(), coinbase_tx.compute_txid());
         assert_eq!(coinbase_ref.wtxid(), Wtxid::COINBASE);
+        assert!(core::ptr::eq(coinbase_ref.as_transaction(), coinbase_tx));
+        assert!(core::ptr::eq(coinbase_ref.first_input(), &coinbase_tx.inputs[0]));
+        assert_eq!(genesis.coinbase(), coinbase_ref);
 
         // Test that we can create a Coinbase using assume_coinbase
         let coinbase_owned = Coinbase::assume_coinbase(coinbase_tx.clone());
         assert_eq!(coinbase_owned.compute_txid(), coinbase_tx.compute_txid());
         assert_eq!(coinbase_owned.wtxid(), Wtxid::COINBASE);
+        assert_eq!(coinbase_owned.as_coinbase_ref(), coinbase_ref);
+        assert!(core::ptr::eq(
+            coinbase_owned.first_input(),
+            &coinbase_owned.as_transaction().inputs[0]
+        ));
+        assert_eq!(coinbase_owned.into_transaction(), *coinbase_tx);
     }
 }
