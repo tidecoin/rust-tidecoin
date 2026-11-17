@@ -16,7 +16,7 @@ node-oracle = ["dep:node_parity", "dep:consensus_core"]
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity", optional = true }
 consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core", optional = true }
 consensus = { path = "../consensus" }
-tidecoin = { path = "../tidecoin", features = [ "serde", "arbitrary" ] }
+tidecoin = { path = "../tidecoin", package = "tidecoin", features = [ "serde", "arbitrary" ] }
 tidecoin_consensus_encoding = { path = "../consensus_encoding", package = "tidecoin-consensus-encoding" }
 p2p = { path = "../p2p", package = "tidecoin-p2p-messages", features = ["arbitrary"] }
 
@@ -32,6 +32,111 @@ unexpected_cfgs = { level = "deny", check-cfg = ['cfg(fuzzing)'] }
 [lints.clippy]
 redundant_clone = "warn"
 use_self = "warn"
+
+[[bin]]
+name = "consensus_node_differential"
+path = "fuzz_targets/consensus/node_differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "consensus_script_runtime"
+path = "fuzz_targets/consensus/script_runtime.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "consensus_encoding_decode_array"
+path = "fuzz_targets/consensus_encoding/decode_array.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "consensus_encoding_decode_byte_vec"
+path = "fuzz_targets/consensus_encoding/decode_byte_vec.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "consensus_encoding_decode_compact_size"
+path = "fuzz_targets/consensus_encoding/decode_compact_size.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "consensus_encoding_decode_decoder2"
+path = "fuzz_targets/consensus_encoding/decode_decoder2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashes_json"
+path = "fuzz_targets/hashes/json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashes_ripemd160"
+path = "fuzz_targets/hashes/ripemd160.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashes_sha1"
+path = "fuzz_targets/hashes/sha1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashes_sha256"
+path = "fuzz_targets/hashes/sha256.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashes_sha512"
+path = "fuzz_targets/hashes/sha512.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hashes_sha512_256"
+path = "fuzz_targets/hashes/sha512_256.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "p2p_arbitrary_addrv2"
+path = "fuzz_targets/p2p/arbitrary_addrv2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "p2p_deserialize_addrv2"
+path = "fuzz_targets/p2p/deserialize_addrv2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "p2p_deserialize_raw_net_msg"
+path = "fuzz_targets/p2p/deserialize_raw_net_msg.rs"
+test = false
+doc = false
+bench = false
 
 [[bin]]
 name = "tidecoin_arbitrary_block"
@@ -153,104 +258,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "consensus_script_runtime"
-path = "fuzz_targets/consensus/script_runtime.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "consensus_encoding_decode_array"
-path = "fuzz_targets/consensus_encoding/decode_array.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "consensus_encoding_decode_byte_vec"
-path = "fuzz_targets/consensus_encoding/decode_byte_vec.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "consensus_encoding_decode_compact_size"
-path = "fuzz_targets/consensus_encoding/decode_compact_size.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "consensus_encoding_decode_decoder2"
-path = "fuzz_targets/consensus_encoding/decode_decoder2.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "hashes_json"
-path = "fuzz_targets/hashes/json.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "hashes_ripemd160"
-path = "fuzz_targets/hashes/ripemd160.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "hashes_sha1"
-path = "fuzz_targets/hashes/sha1.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "hashes_sha256"
-path = "fuzz_targets/hashes/sha256.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "hashes_sha512"
-path = "fuzz_targets/hashes/sha512.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "hashes_sha512_256"
-path = "fuzz_targets/hashes/sha512_256.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "p2p_arbitrary_addrv2"
-path = "fuzz_targets/p2p/arbitrary_addrv2.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "p2p_deserialize_addrv2"
-path = "fuzz_targets/p2p/deserialize_addrv2.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "p2p_deserialize_raw_net_msg"
-path = "fuzz_targets/p2p/deserialize_raw_net_msg.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "units_arbitrary_weight"
 path = "fuzz_targets/units/arbitrary_weight.rs"
 test = false
@@ -279,13 +286,4 @@ doc = false
 bench = false
 
 [package.metadata.rbmt.lint]
-# Inherits the product crypto API families and derive macros listed in tidecoin.
-# Fuzz infrastructure also brings different getrandom APIs and target/build libc copies.
 allowed_duplicates = ["block-buffer", "cpufeatures", "crypto-common", "digest", "getrandom", "keccak", "libc", "rand_core", "sha3", "syn"]
-
-[[bin]]
-name = "consensus_node_differential"
-path = "fuzz_targets/consensus/node_differential.rs"
-test = false
-doc = false
-bench = false
