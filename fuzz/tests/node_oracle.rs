@@ -891,3 +891,132 @@ fn signed_multisig_matches_original_node() {
         }
     }
 }
+
+#[test]
+fn signature_hashes_match_original_node_for_generated_transactions() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    let mut byte = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state >> 24) as u8
+    };
+    for _ in 0..4000 {
+        let input: Vec<u8> = (0..512).map(|_| byte()).collect();
+        tidecoin_fuzz::differential::compare_random_sighashes(&node, &input);
+    }
+}
+
+#[test]
+fn legacy_signature_hash_removes_code_separators_like_original_node() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    let tx = tidecoin_fuzz::differential::transaction(vec![], vec![]);
+    let bytes = tidecoin_consensus_encoding::encode_to_vec(&tx);
+    for script in [
+        vec![0xab],
+        vec![0xab, 0x51, 0xab, 0xab, 0xac],
+        vec![0x51, 0x01, 0xab, 0xab], // separator byte inside a push is kept
+        vec![0x51, 0xab, 0x4c],       // truncated PUSHDATA1 tail
+        vec![0xab, 0x4d, 0x05, 0x00, 0xab], // truncated PUSHDATA2 payload
+        // Same scripts as the consensus-core serializer unit test.
+        vec![0x4c, 0x01, 0xab, 0xab],
+        vec![0x51, 0xab, 0x4c, 0x05, 0x01],
+        vec![0x02, 0xab],
+        vec![0xab, 0x4d, 0x05],
+        vec![0x4e, 0x01, 0x00, 0x00, 0x00, 0xab],
+        vec![0x4e, 0x02, 0x00, 0x00, 0x00, 0xab],
+    ] {
+        for hash_type in [1u32, 2, 3, 0x81, 0, 0xff, 0x8000_0001] {
+            let original = node
+                .signature_hashes(
+                    &bytes,
+                    0,
+                    node_parity::SighashVersion::Legacy,
+                    0,
+                    &[(hash_type as i32, &script)],
+                )
+                .unwrap()[0];
+            let rust = consensus_core::SighashCache::new(&tx)
+                .legacy_signature_hash(0, &script, hash_type)
+                .unwrap();
+            assert_eq!(rust.to_byte_array(), original, "script={script:02x?} {hash_type:#x}");
+        }
+    }
+}
+
+#[test]
+fn witness_encoding_with_invalid_script_sig_is_decoded_exactly() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    // Payload of crash-0d0b65f0 (kind 4). It generates a witness encoding with
+    // no outputs whose second input has an invalid scriptSig. The bridge's former
+    // RPC heuristics rejected that reading and accepted the same bytes as a
+    // zero-input legacy transaction; comparison bridges now decode exactly.
+    let payload = [
+        0x6f, 0x48, 0xc3, 0xe1, 0x5d, 0x64, 0x6b, 0x72, 0x79, 0x80, 0x87, 0x8e, 0x95, 0x9c, 0xa3,
+        0x16, 0x1d, 0x01, 0x00, 0x00, 0xef, 0xff, 0x30, 0xb3, 0x04, 0x24, 0x2b, 0x35, 0x38, 0x40,
+        0x47, 0x4e, 0x55, 0x5c, 0x63, 0x6d, 0x65, 0x5f, 0xd8, 0xdf, 0xe6, 0xed, 0xf4, 0xfb, 0x02,
+        0x09, 0x10, 0x17, 0x6a, 0x71, 0x78, 0x7f, 0x86, 0x8d, 0x94, 0x9b, 0xa2, 0xa9, 0xb0, 0xb7,
+        0xbe, 0xc5, 0xcc, 0xd3, 0xda, 0xe1, 0xe8, 0x76, 0x7d, 0x53, 0x74, 0x31, 0x33, 0x72, 0x17,
+        0x6a, 0x71, 0x78, 0x7f, 0x86, 0x8d, 0x71, 0x78, 0x7f, 0x86, 0x8d, 0x94, 0x9b, 0xa2, 0xa9,
+        0xb0, 0xb7, 0xbe, 0xc5, 0xcc, 0xd3, 0xda, 0xe1, 0xe8, 0xef,
+    ];
+    tidecoin_fuzz::differential::compare_random_sighashes(&node, &payload);
+}
+
+#[test]
+fn signature_before_truncated_push_reaches_the_same_error() {
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    use tidecoin_fuzz::differential::{node_script_result, push};
+    // A signature check precedes a truncated push in the executing script. The
+    // spend is invalid either way, but the digest decides the first error: with
+    // a signature valid for the node digest, CHECKSIGVERIFY succeeds and the
+    // node stops at BAD_OPCODE. Rust previously hashed the whole tail and
+    // reported a signature failure first.
+    let (pk, sk) = node.pq_keypair_from_seed(9, &[46; 32], 1312, 2560).unwrap();
+    for tail in [vec![0x4c], vec![0x4c, 0x05, 0x01], vec![0x02, 0xab], vec![0xab, 0x4d, 0x05]] {
+        let script = [push(&[vec![9], pk.clone()].concat()), vec![0xad], tail.clone()].concat();
+        for mode in [0, 1] {
+            // PQ_STRICT selects the signature rules this signer produces.
+            for bits in [
+                consensus_core::VERIFY_ALL_TIDECOIN,
+                consensus_core::VERIFY_P2SH | consensus_core::VERIFY_PQ_STRICT,
+            ] {
+                // Legacy digests blank every scriptSig, so a placeholder suffices.
+                let unsigned = script_case(mode, script.clone(), vec![vec![0; 8]], bits);
+                let digest = node
+                    .signature_hashes(
+                        &tidecoin_consensus_encoding::encode_to_vec(&unsigned.tx),
+                        0,
+                        node_parity::SighashVersion::Legacy,
+                        0,
+                        &[(1, &script)],
+                    )
+                    .unwrap()[0];
+                let mut sig = node.pq_sign_message(9, &digest, &sk, 2420, false).unwrap();
+                sig.push(1);
+                let case = script_case(mode, script.clone(), vec![sig], bits);
+                compare(&node, &case);
+                let spent = &case.spent[0];
+                let original = node_script_result(node.verify_tx_input_with_spent_outputs(
+                    &tidecoin_fuzz::differential::hex(&tidecoin_consensus_encoding::encode_to_vec(
+                        &case.tx,
+                    )),
+                    0,
+                    spent.script_pubkey.as_bytes(),
+                    spent.amount.to_sat() as i64,
+                    case.flags,
+                    &[node_parity::SpentOutput {
+                        amount: spent.amount.to_sat() as i64,
+                        script_pubkey: spent.script_pubkey.as_bytes(),
+                    }],
+                ));
+                assert_eq!(
+                    original,
+                    Err(node_parity::ScriptError::BadOpcode),
+                    "tail={tail:02x?} mode={mode} flags={bits:#x}"
+                );
+            }
+        }
+    }
+}

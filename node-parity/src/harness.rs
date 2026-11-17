@@ -26,6 +26,15 @@ pub struct SpentOutput<'a> {
     pub script_pubkey: &'a [u8],
 }
 
+/// Signature version for [`TidecoinNodeHarness::signature_hashes`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SighashVersion {
+    /// Legacy (`SigVersion::BASE`) digest.
+    Legacy = 0,
+    /// Witness v0 (`SigVersion::WITNESS_V0`) digest.
+    WitnessV0 = 1,
+}
+
 fn native_outputs(outputs: &[SpentOutput<'_>]) -> Vec<crate::ffi::NodeSpentOutput> {
     outputs
         .iter()
@@ -483,6 +492,49 @@ impl TidecoinNodeHarness {
             1 => Ok(Some(hash)),
             0 => Ok(None),
             _ => Err(NodeParityError::BridgeFailure("tidecoin_node_signature_hash_512")),
+        }
+    }
+
+    /// Computes node `SignatureHash` digests for one input of a wire-encoded
+    /// transaction, in hash serialization order.
+    ///
+    /// Queries are `(raw hash type, script code)` and share one node
+    /// `SigHashCache`, as the node script checker does for one input. The
+    /// bridge also computes each digest without caches and reports an oracle
+    /// error if the node's own results disagree. Legacy script code is passed
+    /// as given: the node removes `OP_CODESEPARATOR` while serializing it.
+    pub fn signature_hashes(
+        &self,
+        tx_bytes: &[u8],
+        input_index: usize,
+        version: SighashVersion,
+        amount_sat: i64,
+        queries: &[(i32, &[u8])],
+    ) -> Result<Vec<[u8; 32]>, NodeParityError> {
+        let hash_types: Vec<i32> = queries.iter().map(|(hash_type, _)| *hash_type).collect();
+        let scripts: Vec<*const u8> = queries.iter().map(|(_, script)| script.as_ptr()).collect();
+        let lens: Vec<usize> = queries.iter().map(|(_, script)| script.len()).collect();
+        let mut hashes = vec![[0u8; 32]; queries.len()];
+        let rc = unsafe {
+            crate::ffi::tidecoin_node_signature_hashes(
+                tx_bytes.as_ptr(),
+                tx_bytes.len(),
+                input_index,
+                version as core::ffi::c_int,
+                amount_sat,
+                hash_types.as_ptr(),
+                scripts.as_ptr(),
+                lens.as_ptr(),
+                queries.len(),
+                hashes.as_mut_ptr().cast::<u8>(),
+            )
+        };
+        match rc {
+            1 => Ok(hashes),
+            -2 => Err(NodeParityError::Oracle(
+                "node SignatureHash cached and uncached digests differ".into(),
+            )),
+            _ => Err(NodeParityError::BridgeFailure("tidecoin_node_signature_hashes")),
         }
     }
 

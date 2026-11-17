@@ -528,3 +528,68 @@ validation and shell syntax checks pass.
 The focused `coinbase_assume_methods` Miri test passes (6.88 seconds of test
 execution); the full tidecoin Miri suite was not run. The explicit-target
 expansion path also passes for base58 on x86_64-unknown-linux-gnu.
+
+### Signature hash comparison (2026-11-18)
+
+Legacy and witness-v0 digests were previously compared with the node only
+through signature verification on fixed transactions, plus the node's
+`sighash.json` vectors after test-side separator removal. The bridge now exposes
+original `SignatureHash` (`tidecoin_node_signature_hashes`). Each query for one
+input is computed with a shared `SigHashCache` and precomputed data, as a script
+checker does, and again without caches; a disagreement between the node's own
+paths is reported as an oracle failure. `compare_random_sighashes` (fuzz kind 4)
+generates 1–5 inputs, 0–5 outputs, boundary versions, lock times, sequences and
+prevout indexes, uncommitted witnesses, spent outputs and up to six queries per
+input. Script code favors `OP_CODESEPARATOR` and truncated pushes. Legacy and v0
+queries use raw hash types (bytes and 32-bit values). Witness v1 rejects undefined
+hash types before hashing, so v1 queries map each value to one of the six defined
+modes. Rust reuses one cache per version across the queries.
+
+The comparison found one Rust discrepancy. `SighashCache::legacy_signature_hash`
+serialized script code unchanged, while node `SignatureHash` serializes it with
+`SerializeScriptCode`: `OP_CODESEPARATOR` at instruction boundaries is removed,
+and at a malformed push the written bytes stop where `GetScriptOp` stops while
+the length prefix still counts the whole script minus removed separators. The
+interpreter already removed separators, so well-formed scripts were unaffected.
+A signer passing raw script code with separators through the public API would
+have produced signatures the node rejects. For script code ending in a malformed
+push the spend is invalid either way, but a signature valid for the node digest
+now passes an earlier signature check and reaches `BAD_OPCODE`, as in the node.
+The Rust serializer now reproduces the node's. This is a Rust defect, not a node
+defect.
+
+The `sighash.json` test now passes the node's raw scripts. New node comparisons
+cover 4,000 generated transactions, fixed separator and malformed-tail scripts
+(also pinned byte-for-byte by a `consensus-core` unit test), and signed bare and
+P2SH spends with a signature check before a truncated push, which return
+`BAD_OPCODE` from both implementations. That signed regression fails with the
+previous serializer.
+
+The first fuzz campaign (seed 31) stopped after 330,809 runs on a harness defect,
+not a digest mismatch: comparison bridges decoded transactions with the RPC hex
+heuristics, which can reread a witness encoding as a different zero-input
+legacy transaction. Script evaluation, input verification, witness sigop
+counting and both digest bridges now decode Rust's encoding exactly; the typed
+`CheckTransaction` comparison uses exact wire status. Fixture and edge tests that
+need the RPC decoder (zero-input transactions) keep it. The input is a seed and an
+exact replay test, which fails with the previous decoder.
+
+Kind 4 uses first byte `0x04`, which previously selected kind 0; 458 of 18,122
+entries in the saved corpus started with it. Campaign 3 used a merged corpus
+with those entries rewritten to `0x00` plus 3,596 new entries (21,718 files).
+
+| Campaign | Corpus | Runs | Result |
+| --- | --- | --- | --- |
+| Seed 31 (stopped) | Fresh seeds | 330,809 | Bridge decoding defect, fixed |
+| Seed 32 (stopped for restart) | Campaign 1 corpus | 182,491 | No mismatch or sanitizer error |
+| Seed 33, 25 minutes | Merged, 21,718 files | 1,080,687 | No mismatch or sanitizer error; coverage 7,681 |
+
+Validation with the required pinned rc3 node and oracle: `cargo +1.99.1 test
+--workspace --all-targets --all-features` passes 1,897 tests, with no failures or
+ignored tests; workspace doctests pass 83 with two ignored. Strict all-feature
+workspace Clippy, formatting, Rust 1.94.1 all-target checks and the
+`consensus-core` no-default-feature build pass.
+
+Limits: this is digest-level coverage of one input per generated transaction.
+Complete signed transactions with modes chosen per input and several changes at
+once remain open, as does mutation testing of `sighash.rs`.

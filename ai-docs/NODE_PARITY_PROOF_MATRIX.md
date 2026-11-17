@@ -38,6 +38,9 @@ tail order, opcode-limit order, numeric stack depth, `FindAndDelete` push
 encoding and witness stack depth before execution. Mutation testing of the
 interpreter guided the targeted comparisons. See
 [the review record](RC3_MIGRATION_PLAN.md#script-witness-and-decoding-review-2026-11-16).
+A later digest comparison found a tenth discrepancy, in legacy script-code
+serialization; see
+[signature hash comparison](RC3_MIGRATION_PLAN.md#signature-hash-comparison-2026-11-18).
 
 ## Retained and updated differential suites
 
@@ -49,6 +52,7 @@ the rc3 pin and updated source-derived expectations.
 | V1 SHA-512 commitments, six modes, ordered spent outputs, missing context, SINGLE boundaries and cache invalidation | `consensus/tests/tidecoin_rc2_context.rs`, `tidecoin/tests/rc2_spent_output_context.rs` | Original `SignatureHash512` and interpreter; independent digest vector in `tidecoin_rc2_oracle.rs`. |
 | Activation, native/wrapped v1, ordinary preactivation scripts, independent flags, scheme eligibility | `consensus/tests/tidecoin_rc2_rules.rs` | Original C++ interpreter and PQ routines. |
 | All 256 legacy/v0 hash bytes, defined v1 modes, error ordering, NULLFAIL and multisig | same rules suite and context suite | Original C++ interpreter; preserves historical legacy/v0 semantics. |
+| Legacy, witness-v0 and witness-v1-512 digests for generated transaction shapes, raw legacy/v0 hash types, separator and malformed script code, shared caches | `compare_random_sighashes` (fuzz kind 4), `fuzz/tests/node_oracle.rs`, `consensus/tests/tidecoin_sighash_vectors.rs` (raw `sighash.json` scripts) | Original `SignatureHash` (cached, precomputed and uncached paths must agree) and `SignatureHash512`; v1 queries use the six defined modes. |
 | Legacy Falcon length and strict/legacy padding profiles | `legacy_falcon_size_and_v1_strictness_match_node_boundaries`, `falcon_padding_profiles_match_node_and_script_activation` | Original node legacy and PQClean verifiers; synthetic boundary fixture has its own generator. |
 | Flag-aware witness sigops | `sigop_cost_uses_candidate_flags_and_matches_node_count_witness_sigops` | Original `CountWitnessSigOps`. |
 | Header activation, versions, chain ID, timestamps, retargets and replaceable proof classification | `tidecoin/tests/rc2_original_validation.rs`, existing block/PoW tests | Original `ContextualCheckBlockHeader` and `CheckBlockHeader`; unmodified node defaults checked separately. |

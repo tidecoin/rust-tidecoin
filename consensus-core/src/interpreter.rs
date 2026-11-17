@@ -1787,9 +1787,11 @@ fn is_minimal_push(opcode: u8, data: &[u8]) -> bool {
 }
 
 fn strip_opcode(script_bytes: &[u8], opcode: Opcode) -> Vec<u8> {
-    // Original CTransactionSignatureSerializer stops GetOp at a malformed
-    // instruction and preserves the remaining bytes. Preparing scriptCode must
-    // not reject a tail before execution reaches it (or before an earlier error).
+    // Removes separators before a malformed instruction and keeps that tail
+    // unchanged. Preparing scriptCode must not reject a tail before execution
+    // reaches it (or before an earlier error). The legacy sighash serializer
+    // reproduces node SerializeScriptCode, which truncates such a tail; applying
+    // it to this output gives the same preimage as applying it to the original.
     let mut stripped = Vec::with_capacity(script_bytes.len());
     let mut pos = 0;
     while let Some(next) = next_instruction_offset(script_bytes, pos) {

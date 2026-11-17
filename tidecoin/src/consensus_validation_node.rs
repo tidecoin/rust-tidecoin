@@ -182,10 +182,16 @@ fn verify_script_input_with_spent_outputs(
 
 #[cfg(test)]
 fn check_transaction_sanity(tx: &Transaction) -> Result<(), TidecoinValidationError> {
-    TidecoinNodeHarness::from_env()
+    // Exact wire decoding of Rust's encoding: the RPC-style hex decoder behind
+    // `check_transaction_hex` can reread a witness encoding as a legacy one.
+    let status = TidecoinNodeHarness::from_env()
         .map_err(map_node_parity_error)?
-        .check_transaction_hex(&encode_consensus_hex(tx))
-        .map_err(map_node_parity_error)
+        .transaction_decode_status(&encoding::encode_to_vec(tx))
+        .map_err(map_node_parity_error)?;
+    match status {
+        2 => Ok(()),
+        _ => Err(map_node_parity_error(NodeParityError::BridgeFailure("invalid transaction"))),
+    }
 }
 
 fn normalize_flags(mut flags: u32) -> u32 {

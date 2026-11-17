@@ -79,6 +79,21 @@ unsafe extern "C" {
         hash_out: *mut u8,
     ) -> c_int;
 
+    /// Calls node `SignatureHash` (0 legacy, 1 witness v0) for `count` queries
+    /// sharing one cache; -1 invalid arguments, -2 node cache inconsistency.
+    pub fn tidecoin_node_signature_hashes(
+        tx_bytes: *const u8,
+        tx_len: usize,
+        input_index: usize,
+        sigversion: c_int,
+        amount: i64,
+        hash_types: *const i32,
+        scripts: *const *const u8,
+        script_lens: *const usize,
+        count: usize,
+        hashes_out: *mut u8,
+    ) -> c_int;
+
     /// Runs Tidecoin node `CheckTransaction` on a serialized transaction.
     pub fn tidecoin_node_check_transaction(tx_hex: *const c_char) -> c_int;
 

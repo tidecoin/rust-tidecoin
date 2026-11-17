@@ -20,7 +20,7 @@ pub mod validation;
 
 pub use crate::error::NodeParityError;
 pub use crate::error::ScriptError;
-pub use crate::harness::{SpentOutput, TidecoinNodeHarness};
+pub use crate::harness::{SighashVersion, SpentOutput, TidecoinNodeHarness};
 
 /// Node activation flags, which must stay fixed when comparing script restrictions.
 /// See the pinned node's `src/test/util/script.cpp::ScriptFlagsForComparison`.

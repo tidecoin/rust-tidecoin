@@ -326,6 +326,13 @@ impl<R: Borrow<Transaction>> SighashCache<R> {
     }
 
     /// Computes a legacy signature hash from raw script bytes.
+    ///
+    /// `script_bytes` is the script code: the executing script after its last
+    /// executed `OP_CODESEPARATOR` (the whole script if none ran). Like node
+    /// `SignatureHash`, any `OP_CODESEPARATOR` remaining in it is removed while
+    /// it is serialized, so callers may pass it with or without them stripped.
+    /// Signature data is not removed: callers that verify signatures apply
+    /// `FindAndDelete` before calling this function.
     pub fn legacy_signature_hash(
         &self,
         input_index: usize,
@@ -355,14 +362,15 @@ impl<R: Borrow<Transaction>> SighashCache<R> {
             let input = &tx.inputs[input_index];
             io::encode_to_writer(&input.previous_output, &mut engine)
                 .expect("hash engine does not fail");
-            encode_script_bytes(script_bytes, &mut engine).expect("hash engine does not fail");
+            encode_legacy_script_code(script_bytes, &mut engine)
+                .expect("hash engine does not fail");
             io::encode_to_writer(&input.sequence, &mut engine).expect("hash engine does not fail");
         } else {
             for (n, input) in tx.inputs.iter().enumerate() {
                 io::encode_to_writer(&input.previous_output, &mut engine)
                     .expect("hash engine does not fail");
                 if n == input_index {
-                    encode_script_bytes(script_bytes, &mut engine)
+                    encode_legacy_script_code(script_bytes, &mut engine)
                         .expect("hash engine does not fail");
                 } else {
                     io::encode_to_writer(ScriptPubKey::new(), &mut engine)
@@ -647,4 +655,108 @@ fn encode_compact_size<W: Write>(len: usize, writer: &mut W) -> Result<(), io::E
 
 fn encode_script_bytes<W: Write>(bytes: &[u8], writer: &mut W) -> Result<(), io::Error> {
     io::encode_to_writer(Script::<()>::from_bytes(bytes), writer)
+}
+
+/// Mirrors node `GetScriptOp`: `Ok(end)` for a complete instruction at `pos`,
+/// otherwise `Err(stop)` where parsing stops, after the opcode and any length
+/// field that was fully present.
+fn legacy_script_op_end(script: &[u8], pos: usize) -> Result<usize, usize> {
+    let opcode = script[pos];
+    let mut at = pos + 1;
+    let size = match opcode {
+        0x00..=0x4b => usize::from(opcode),
+        0x4c..=0x4e => {
+            let width = [1, 2, 4][usize::from(opcode - 0x4c)];
+            let field = script.get(at..at + width).ok_or(at)?;
+            at += width;
+            field.iter().rev().fold(0usize, |size, &byte| (size << 8) | usize::from(byte))
+        }
+        _ => 0,
+    };
+    if script.len() - at < size {
+        return Err(at);
+    }
+    Ok(at + size)
+}
+
+/// Calls `on_separator` for each `OP_CODESEPARATOR` at an instruction boundary
+/// and returns where parsing stopped: the script end or a malformed instruction.
+fn visit_legacy_separators(
+    script: &[u8],
+    mut on_separator: impl FnMut(usize) -> Result<(), io::Error>,
+) -> Result<usize, io::Error> {
+    const OP_CODESEPARATOR: u8 = 0xab;
+    let mut pos = 0;
+    while pos < script.len() {
+        match legacy_script_op_end(script, pos) {
+            Ok(end) => {
+                if script[pos] == OP_CODESEPARATOR {
+                    on_separator(pos)?;
+                }
+                pos = end;
+            }
+            Err(stop) => return Ok(stop),
+        }
+    }
+    Ok(script.len())
+}
+
+/// Serializes legacy script code like node `SerializeScriptCode`.
+///
+/// `OP_CODESEPARATOR` at instruction boundaries is removed. At a malformed
+/// instruction the node stops writing after the bytes `GetScriptOp` consumed,
+/// while its length prefix still counts the whole script minus the removed
+/// separators. Such a preimage only arises for script code that cannot execute
+/// successfully, but the digest must still match the node.
+fn encode_legacy_script_code<W: Write>(script: &[u8], writer: &mut W) -> Result<(), io::Error> {
+    // Two passes, as in the node: count separators, then write the segments.
+    let mut separators = 0;
+    visit_legacy_separators(script, |_| {
+        separators += 1;
+        Ok(())
+    })?;
+    encode_compact_size(script.len() - separators, writer)?;
+    let mut start = 0;
+    let stop = visit_legacy_separators(script, |separator| {
+        writer.write_all(&script[start..separator])?;
+        start = separator + 1;
+        Ok(())
+    })?;
+    writer.write_all(&script[start..stop])
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec::Vec;
+
+    use super::*;
+
+    fn script_code(script: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        encode_legacy_script_code(script, &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn legacy_script_code_matches_node_serialize_script_code() {
+        // Separators at instruction boundaries are removed; bytes inside pushes stay.
+        assert_eq!(script_code(&[]), [0]);
+        assert_eq!(script_code(&[0xab]), [0]);
+        assert_eq!(script_code(&[0xab, 0x51, 0xab, 0xab, 0xac]), [2, 0x51, 0xac]);
+        assert_eq!(script_code(&[0x51, 0x01, 0xab, 0xab]), [3, 0x51, 0x01, 0xab]);
+        assert_eq!(script_code(&[0x4c, 0x01, 0xab, 0xab]), [3, 0x4c, 0x01, 0xab]);
+        // At a malformed push the node stops after the consumed opcode and
+        // complete length field, but its length prefix counts the whole script
+        // minus separators already removed.
+        assert_eq!(script_code(&[0x51, 0xab, 0x4c]), [2, 0x51, 0x4c]);
+        assert_eq!(script_code(&[0x51, 0xab, 0x4c, 0x05, 0x01]), [4, 0x51, 0x4c, 0x05]);
+        assert_eq!(script_code(&[0x02, 0xab]), [2, 0x02]);
+        assert_eq!(script_code(&[0xab, 0x4d, 0x05]), [2, 0x4d]);
+        assert_eq!(script_code(&[0xab, 0x4d, 0x05, 0x00, 0xab]), [4, 0x4d, 0x05, 0x00]);
+        assert_eq!(
+            script_code(&[0x4e, 0x01, 0x00, 0x00, 0x00, 0xab]),
+            [6, 0x4e, 0x01, 0, 0, 0, 0xab]
+        );
+        assert_eq!(script_code(&[0x4e, 0x02, 0x00, 0x00, 0x00, 0xab]), [6, 0x4e, 0x02, 0, 0, 0]);
+    }
 }

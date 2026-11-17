@@ -280,6 +280,16 @@ int tidecoin_node_signature_hash_512(
     return -1;
 }
 
+int tidecoin_node_signature_hashes(
+    const uint8_t* tx_bytes, size_t tx_len, size_t input_index, int sigversion, int64_t amount,
+    const int32_t* hash_types, const uint8_t* const* scripts, const size_t* script_lens,
+    size_t count, uint8_t* hashes_out)
+{
+    (void)tx_bytes; (void)tx_len; (void)input_index; (void)sigversion; (void)amount;
+    (void)hash_types; (void)scripts; (void)script_lens; (void)count; (void)hashes_out;
+    return -1;
+}
+
 int tidecoin_node_parse_script_asm(
     const char* script_asm,
     uint8_t* out,

@@ -480,6 +480,184 @@ pub fn compare_sighashes(node: &TidecoinNodeHarness, data: &[u8]) {
     }
 }
 
+/// Reads fuzz bytes, repeating zero once exhausted.
+struct Bytes<'a>(&'a [u8]);
+
+impl Bytes<'_> {
+    fn byte(&mut self) -> u8 {
+        let (first, rest) = self.0.split_first().map_or((0, &[][..]), |(b, r)| (*b, r));
+        self.0 = rest;
+        first
+    }
+    fn u32(&mut self) -> u32 {
+        u32::from_le_bytes([self.byte(), self.byte(), self.byte(), self.byte()])
+    }
+    fn vec(&mut self, max: usize) -> Vec<u8> {
+        let len = self.byte() as usize % (max + 1);
+        (0..len).map(|_| self.byte()).collect()
+    }
+    /// Boundary-heavy 32-bit value: common consensus values or raw bytes.
+    fn u32_boundary(&mut self) -> u32 {
+        match self.byte() % 8 {
+            0 => 0,
+            1 => u32::MAX,
+            2 => u32::MAX - 1,
+            3 => 1 << 31,
+            4 => 1 << 22,
+            5 => self.byte().into(),
+            _ => self.u32(),
+        }
+    }
+    /// Script code biased towards `OP_CODESEPARATOR`, pushes and truncated pushes.
+    fn script(&mut self) -> Vec<u8> {
+        let len = self.byte() as usize % 24;
+        (0..len)
+            .map(|_| match self.byte() % 8 {
+                0 | 1 => 0xab,
+                2 => self.byte() % 0x4c,
+                3 => 0x4c + self.byte() % 3,
+                _ => self.byte(),
+            })
+            .collect()
+    }
+    /// Raw hash type: every byte value is consensus-valid for legacy and v0.
+    fn hash_type(&mut self) -> u32 {
+        match self.byte() % 4 {
+            0 => [1, 2, 3, 0x81, 0x82, 0x83][self.byte() as usize % 6],
+            1 => self.byte().into(),
+            2 => self.u32(),
+            _ => u32::from(self.byte()) | (u32::from(self.byte()) << 8),
+        }
+    }
+}
+
+/// Transaction shape, input index and spent outputs drawn from fuzz bytes.
+fn sighash_transaction(data: &[u8]) -> (Transaction, Vec<TxOut>, usize, Bytes<'_>) {
+    let mut b = Bytes(data);
+    let inputs = 1 + b.byte() as usize % 5;
+    let outputs = b.byte() as usize % 6;
+    let amount = |b: &mut Bytes<'_>| {
+        let raw = u64::from(b.u32()) << (b.byte() % 26);
+        Amount::from_sat(raw % (Amount::MAX_MONEY.to_sat() + 1)).unwrap()
+    };
+    let tx = Transaction {
+        version: TransactionVersion::maybe_non_standard(b.u32_boundary()),
+        lock_time: absolute::LockTime::from_consensus(b.u32_boundary()),
+        inputs: (0..inputs)
+            .map(|i| TxIn {
+                previous_output: OutPoint {
+                    txid: Txid::from_byte_array([b.byte() ^ i as u8; 32]),
+                    vout: b.u32_boundary(),
+                },
+                script_sig: ScriptSigBuf::from_bytes(b.vec(12)),
+                sequence: Sequence::from_consensus(b.u32_boundary()),
+                // Witnesses are not committed; they only vary the wire encoding.
+                witness: Witness::from((0..b.byte() % 3).map(|_| b.vec(8)).collect::<Vec<_>>()),
+            })
+            .collect(),
+        outputs: (0..outputs)
+            .map(|_| TxOut {
+                amount: amount(&mut b),
+                script_pubkey: ScriptPubKeyBuf::from_bytes(b.vec(40)),
+            })
+            .collect(),
+    };
+    let spent = (0..inputs)
+        .map(|_| TxOut {
+            amount: amount(&mut b),
+            script_pubkey: ScriptPubKeyBuf::from_bytes(b.vec(40)),
+        })
+        .collect();
+    let index = b.byte() as usize % inputs;
+    (tx, spent, index, b)
+}
+
+/// Compares legacy, witness-v0 and witness-v1-512 digests for generated
+/// transaction shapes. Each version reuses one Rust cache across several
+/// script codes and raw hash types, as the node shares one per input.
+pub fn compare_random_sighashes(node: &TidecoinNodeHarness, data: &[u8]) {
+    let (tx, spent, index, mut b) = sighash_transaction(data);
+    let tx_bytes = encoding::encode_to_vec(&tx);
+    let amount = spent[index].amount;
+    let queries: Vec<(u32, Vec<u8>)> =
+        (0..1 + b.byte() % 6).map(|_| (b.hash_type(), b.script())).collect();
+    let node_queries: Vec<(i32, &[u8])> =
+        queries.iter().map(|(t, s)| (*t as i32, s.as_slice())).collect();
+    let context = |version| format!("{version:?} index={index} tx={}", hex(&tx_bytes));
+
+    let legacy = core::SighashCache::new(&tx);
+    let original = node
+        .signature_hashes(&tx_bytes, index, node_parity::SighashVersion::Legacy, 0, &node_queries)
+        .unwrap();
+    for ((hash_type, script), original) in queries.iter().zip(&original) {
+        // Raw script code on both sides: like node SignatureHash, the Rust digest
+        // must remove OP_CODESEPARATOR while serializing legacy script code.
+        let rust = legacy.legacy_signature_hash(index, script, *hash_type).unwrap();
+        assert_eq!(
+            rust.to_byte_array(),
+            *original,
+            "legacy hash_type={hash_type:#x} script={} {}",
+            hex(script),
+            context("legacy")
+        );
+    }
+
+    let mut v0 = core::SighashCache::new(&tx);
+    let original = node
+        .signature_hashes(
+            &tx_bytes,
+            index,
+            node_parity::SighashVersion::WitnessV0,
+            amount.to_sat() as i64,
+            &node_queries,
+        )
+        .unwrap();
+    for ((hash_type, script), original) in queries.iter().zip(&original) {
+        let rust = v0.p2wsh_signature_hash_raw(index, script, amount, *hash_type).unwrap();
+        assert_eq!(
+            rust.to_byte_array(),
+            *original,
+            "v0 hash_type={hash_type:#x} script={} {}",
+            hex(script),
+            context("v0")
+        );
+    }
+
+    // Witness v1 rejects undefined hash types before hashing, so only the six
+    // defined modes reach SignatureHash512.
+    let outputs: Vec<_> = spent
+        .iter()
+        .map(|o| SpentOutput {
+            amount: o.amount.to_sat() as i64,
+            script_pubkey: o.script_pubkey.as_bytes(),
+        })
+        .collect();
+    let tx_hex = hex(&tx_bytes);
+    let mut v1 = core::SighashCache::new_with_spent_outputs(
+        &tx,
+        core::SpentOutputs::from_txouts(spent.clone()),
+    )
+    .unwrap();
+    for (hash_type, script) in &queries {
+        let mode = core::TxSighashType::from_consensus(*hash_type);
+        let rust =
+            v1.p2wsh512_signature_hash(index, script, amount, mode).ok().map(|h| h.to_byte_array());
+        let original = node
+            .signature_hash_512(
+                &tx_hex,
+                index,
+                script,
+                amount.to_sat() as i64,
+                mode.to_u32() as i32,
+                &outputs,
+            )
+            .unwrap_or_else(|e| {
+                panic!("{e} mode={mode:?} script={} {}", hex(script), context("v1"))
+            });
+        assert_eq!(rust, original, "v1 mode={mode:?} script={} {}", hex(script), context("v1"));
+    }
+}
+
 /// Valid mixed legacy/v0/v1 spends reach real cryptography before mutation.
 /// Deterministic key seeds belong only to this test corpus, never production.
 pub fn signed_cases(node: &TidecoinNodeHarness) -> Vec<Case> {
@@ -602,10 +780,17 @@ pub fn mutate_signed(case: &mut Case, data: &[u8]) {
 
 /// Entry point shared by deterministic smoke tests and coverage-guided fuzzing.
 pub fn run(node: &TidecoinNodeHarness, data: &[u8]) {
-    let kind = data.first().copied().unwrap_or(0) % 4;
+    // Kind 4 takes one first-byte value, leaving every other byte's meaning
+    // unchanged. Saved corpora from before kind 4 used 0x04 for kind 0: rewrite
+    // those entries' first byte to 0x00 to keep their coverage.
+    let kind = match data.first().copied().unwrap_or(0) {
+        4 => 4,
+        byte => byte % 4,
+    };
     let payload = data.get(1..).unwrap_or(&[]);
     match kind {
         0 => compare(node, &generated(payload)),
+        4 => compare_random_sighashes(node, payload),
         1 => compare_transaction_bytes(node, payload),
         2 => compare_sighashes(node, payload),
         _ => {

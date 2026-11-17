@@ -178,6 +178,23 @@ bool DecodeTxHex(CMutableTransaction& tx, const char* hex_tx)
     return false;
 }
 
+// Exact wire decoding for comparisons: Rust supplies its own consensus
+// encoding, which is unambiguous for transactions with inputs. DecodeTxHex's
+// RPC heuristics can reread a witness encoding as a different legacy one.
+bool DecodeTxWireHex(CMutableTransaction& tx, const char* hex_tx)
+{
+    if (hex_tx == nullptr) return false;
+    const std::string hex{hex_tx};
+    if (!IsHex(hex)) return false;
+    DataStream stream(ParseHex(hex));
+    try {
+        stream >> TX_WITH_WITNESS(tx);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return stream.empty();
+}
+
 bool DecodeHeaderHex(CBlockHeader& header, const char* hex_header)
 {
     if (hex_header == nullptr) return false;
@@ -667,7 +684,7 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_eval_script(const char* tx_hex,
     }
     try {
         CMutableTransaction decoded;
-        if (!DecodeTxHex(decoded, tx_hex)) return -1;
+        if (!DecodeTxWireHex(decoded, tx_hex)) return -1;
         const CTransaction tx(decoded);
         if (input_index >= tx.vin.size()) return -1;
         std::vector<CTxOut> outputs;
@@ -721,7 +738,7 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_verify_tx_input(const char* tx_hex,
 {
     try {
         CMutableTransaction decoded;
-        if (!DecodeTxHex(decoded, tx_hex)) return -1;
+        if (!DecodeTxWireHex(decoded, tx_hex)) return -1;
         const CTransaction tx(decoded);
         std::vector<CTxOut> outputs;
         if (!ReadSpentOutputs(spent_outputs, spent_output_count, tx.vin.size(), outputs)) return -1;
@@ -743,7 +760,7 @@ TIDECOIN_BRIDGE_EXPORT int64_t tidecoin_node_count_witness_sigops(
 {
     try {
         CMutableTransaction tx;
-        if (!DecodeTxHex(tx, tx_hex) || input_index >= tx.vin.size()) return -1;
+        if (!DecodeTxWireHex(tx, tx_hex) || input_index >= tx.vin.size()) return -1;
         // The original helper asserts this flag dependency.
         if ((flags & SCRIPT_VERIFY_WITNESS) && !(flags & SCRIPT_VERIFY_P2SH)) return -1;
         CScript script(prev_script, prev_script + prev_script_len);
@@ -759,7 +776,7 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_signature_hash_512(
 {
     try {
         CMutableTransaction decoded;
-        if (!DecodeTxHex(decoded, tx_hex) || input_index >= decoded.vin.size()) return -1;
+        if (!DecodeTxWireHex(decoded, tx_hex) || input_index >= decoded.vin.size()) return -1;
         std::vector<CTxOut> outputs;
         if (!ReadSpentOutputs(spent_outputs, spent_output_count, decoded.vin.size(), outputs)) return -1;
         PrecomputedTransactionData data;
@@ -770,6 +787,52 @@ TIDECOIN_BRIDGE_EXPORT int tidecoin_node_signature_hash_512(
                               input_index, hash_type, amount, &data)) return 0;
         std::copy(hash.begin(), hash.end(), hash_out);
         return 1;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+// Calls node SignatureHash for legacy (sigversion 0) or witness-v0 (1) digests.
+// Queries share one SigHashCache and one PrecomputedTransactionData, as a script
+// checker does for one input. Each digest is also computed with no caches; -2
+// means the node's own cached and uncached results disagree. Strict wire decoding.
+TIDECOIN_BRIDGE_EXPORT int tidecoin_node_signature_hashes(
+    const uint8_t* tx_bytes, size_t tx_len, size_t input_index, int sigversion, int64_t amount,
+    const int32_t* hash_types, const uint8_t* const* scripts, const size_t* script_lens,
+    size_t count, uint8_t* hashes_out)
+{
+    if ((tx_bytes == nullptr && tx_len != 0) || (count != 0 && (hash_types == nullptr ||
+        scripts == nullptr || script_lens == nullptr || hashes_out == nullptr))) return -1;
+    SigVersion version;
+    if (sigversion == 0) {
+        version = SigVersion::BASE;
+    } else if (sigversion == 1) {
+        version = SigVersion::WITNESS_V0;
+    } else {
+        return -1;
+    }
+    try {
+        DataStream stream{std::span<const uint8_t>{tx_bytes, tx_len}};
+        CMutableTransaction decoded;
+        stream >> TX_WITH_WITNESS(decoded);
+        if (!stream.empty() || input_index >= decoded.vin.size()) return -1;
+        const CTransaction tx{decoded};
+        PrecomputedTransactionData data;
+        data.Init(tx, {}, true);
+        SigHashCache cache;
+        for (size_t i = 0; i < count; ++i) {
+            if (scripts[i] == nullptr && script_lens[i] != 0) return -1;
+            const CScript script(scripts[i], scripts[i] + script_lens[i]);
+            const uint256 cached = SignatureHash(script, tx, input_index, hash_types[i], amount,
+                                                 version, &data, &cache);
+            const uint256 plain = SignatureHash(script, tx, input_index, hash_types[i], amount,
+                                                version);
+            if (cached != plain) return -2;
+            std::copy(cached.begin(), cached.end(), hashes_out + 32 * i);
+        }
+        return 1;
+    } catch (const std::ios_base::failure&) {
+        return -1;
     } catch (const std::exception&) {
         return -1;
     }

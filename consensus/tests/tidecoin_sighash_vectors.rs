@@ -1,66 +1,13 @@
 use consensus_core::SighashCache;
 use encoding::decode_from_slice;
-use primitives::{opcodes::all, script::ScriptBuf as PrimitiveScriptBuf, Transaction};
+use primitives::Transaction;
 
 mod tidecoin_test_support;
 
 use tidecoin_test_support::{parse_hex_bytes, read_fixture, try_harness};
 
-type ScriptBuf = PrimitiveScriptBuf<()>;
-
 fn to_fixture_hex(bytes: &[u8]) -> String {
     bytes.iter().rev().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn remove_op_codeseparator(script: &ScriptBuf) -> ScriptBuf {
-    let bytes = script.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let start = i;
-        let opcode = bytes[i];
-        i += 1;
-
-        let push_len = if opcode <= 0x4b {
-            Some(opcode as usize)
-        } else if opcode == all::OP_PUSHDATA1.to_u8() {
-            if i >= bytes.len() {
-                break;
-            }
-            let len = bytes[i] as usize;
-            i += 1;
-            Some(len)
-        } else if opcode == all::OP_PUSHDATA2.to_u8() {
-            if i + 1 >= bytes.len() {
-                break;
-            }
-            let len = u16::from_le_bytes([bytes[i], bytes[i + 1]]) as usize;
-            i += 2;
-            Some(len)
-        } else if opcode == all::OP_PUSHDATA4.to_u8() {
-            if i + 3 >= bytes.len() {
-                break;
-            }
-            let len =
-                u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
-            i += 4;
-            Some(len)
-        } else {
-            None
-        };
-
-        if let Some(len) = push_len {
-            let end = i.saturating_add(len).min(bytes.len());
-            out.extend_from_slice(&bytes[start..end]);
-            i = end;
-            continue;
-        }
-
-        if opcode != all::OP_CODESEPARATOR.to_u8() {
-            out.push(opcode);
-        }
-    }
-    ScriptBuf::from_bytes(out)
 }
 
 #[test]
@@ -92,11 +39,12 @@ fn tidecoin_node_sighash_vectors_legacy() {
         let tx_bytes = parse_hex_bytes(raw_tx);
         let tx: Transaction =
             decode_from_slice(&tx_bytes).unwrap_or_else(|e| panic!("invalid tx fixture: {e}"));
-        let script_code =
-            remove_op_codeseparator(&ScriptBuf::from_bytes(parse_hex_bytes(raw_script)));
+        // Raw script code, as the node test passes it to SignatureHash: the
+        // Rust digest removes OP_CODESEPARATOR during serialization too.
+        let script_code = parse_hex_bytes(raw_script);
 
         let got = SighashCache::new(&tx)
-            .legacy_signature_hash(input_index, script_code.as_bytes(), hash_type)
+            .legacy_signature_hash(input_index, &script_code, hash_type)
             .expect("legacy sighash calculation");
 
         assert_eq!(

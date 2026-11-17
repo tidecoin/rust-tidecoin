@@ -19,6 +19,12 @@ tx = bytes.fromhex("0200000001" + "01" * 32 + "0000000000ffffffff010100000000000
 seeds.append(bytes([1]) + tx)
 for length in [0, 4, 5, 40, len(tx) - 1]:
     seeds.append(bytes([1]) + tx[:length])
+# Kind 4: generated transaction shapes for legacy/v0/v1-512 digests. Payload
+# bytes choose counts, boundary values, raw hash types and script code. Saved
+# corpora from before kind 4 used first byte 0x04 for kind 0; rewrite it to
+# 0x00 when importing them.
+for i in range(32):
+    seeds.append(bytes([4]) + bytes((i * 37 + j * (2 * i + 1)) & 0xFF for j in range(256)))
 # Inputs that previously exposed Rust/C++ mismatches (rc3 review, 2026-11-16).
 # Minimized regressions live in fuzz/tests/node_oracle.rs; these keep the
 # original driver inputs in every fuzz run.
@@ -28,6 +34,9 @@ for encoded in [
     "//8DA6F8awAEAVEAAAILUQ==",  # crash-8e940121: depth before CScriptNum
     # crash-bf928ece: FindAndDelete push encoding
     "AAAAEFRUACYLxwAmCwMAAAAAAAAAAAAAVFSsVKJUVFTW9sABVFRUXHp6enp6enp6enp6enr4ZX4Aenp6eiFUAlQAAAAAAAAAAABUAAFRpQAAAAAA+/8BUQ==",
+    # crash-0d0b65f0: witness encoding reread as a zero-input legacy transaction
+    # by the bridge's RPC hex heuristics; comparison bridges now decode exactly.
+    "BG9Iw+FdZGtyeYCHjpWcoxYdAQAA7/8wswQkKzU4QEdOVVxjbWVf2N/m7fT7AgkQF2pxeH+GjZSboqmwt77FzNPa4eh2fVN0MTNyF2pxeH+GjXF4f4aNlJuiqbC3vsXM09rh6O8=",
 ]:
     seeds.append(base64.b64decode(encoded))
 for i, seed in enumerate(seeds):
