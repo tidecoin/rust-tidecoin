@@ -390,7 +390,7 @@ package policy. Miri and constant-time properties are outside this review.
 | Area | Remaining work |
 | --- | --- |
 | Broader script combinations | Structured, valid multi-operation scripts with nested branches, alternate-stack use and several signature checks. The arbitrary-script generator stops at 2,048 bytes; larger boundaries use fixed patterns. |
-| Complete signed transactions | The [mixed-input comparison](#mixed-input-signed-transactions-2026-11-18) covers three-input single-key spends. Other input counts, multisig in mixed transactions and more complex witness scripts remain open. |
+| Complete signed transactions | The [mixed-input comparison](#mixed-input-signed-transactions-2026-11-18) covers three-input single-key spends; [signed shapes](#signed-shapes-input-counts-script-mixes-and-error-order-2026-11-18) add 1, 2 and 4 inputs, SINGLE without a matching output, and multisig with a branched witness script in one transaction. Mixed PQ schemes within these shapes, larger multisig and further script forms remain open. |
 | Block comparisons | Generated combinations of witness commitments, coinbase data, merkle structure, weight, sigops and contextual boundaries against the original-node block oracle. |
 | Decoder and API combinations | Incremental and chunked decoding and every public entry point. The transaction comparison currently decodes complete byte slices. |
 | Mutation testing outside the interpreter | Sighash and context handling, witness recognition, transaction decoding, block checks and fee arithmetic. |
@@ -657,3 +657,88 @@ Mixed runs are a subset of kind 3 and each verifies two complete transactions.
 They received about 2% of runs from this corpus, which is dominated by older
 script-execution entries; a corpus seeded mainly with mixed entries would focus
 a later campaign.
+
+### Signed shapes: input counts, script mixes and error order (2026-11-18)
+
+The mixed-input layouts always have three single-key inputs, so longer runs of
+that generator repeat the same shapes. `fuzz/src/differential/mixed/shapes.rs`
+adds signed transactions of other shapes. Each signature is made over a digest
+from rc3 (`SignatureHash` or `SignatureHash512`), so a matching error in Rust
+digest and verification code cannot make a positive case pass. Keys are
+Falcon-512 test keys; the signing RNG is seeded from the digest.
+
+**SIGHASH_SINGLE without a matching output.** Transactions have one, two or four
+inputs. Earlier inputs are legacy and sign NONE; the last input is legacy, v0 or
+v1 and signs SINGLE, with and without an output at its index (a one-input case
+keeps its output to pass transaction sanity). Rc3 treats the missing output
+three ways, and the fixtures use each: legacy signs the constant-one digest
+(asserted from the node), v0 signs a digest with a zero output hash, and v1 has
+no digest (both implementations decline, asserted), so its signature is the one
+made while the output existed. Only the v1 input fails, with `EVAL_FALSE`; every
+other input passes in both implementations.
+
+**Script types in one transaction.** Four inputs: legacy single-key, v0 2-of-2
+`CHECKMULTISIG`, v1 `IF <A> ELSE <B> ENDIF CHECKSIG`, and v0 single-key, with the
+multisig and branch inputs in both orders and each branch taken. Each order has
+its own valid signatures. These cases use the post-activation flags plus
+`VERIFY_MINIMALIF`, which makes a non-minimal branch selector an error.
+The unedited transaction passes at every input. Edits change one witness item
+each: a non-empty multisig dummy (`SIG_NULLDUMMY`), a non-minimal IF selector
+(`MINIMALIF`), an empty first multisig signature, or the opposite branch
+(`EVAL_FALSE`), alone and combined (48 cases).
+
+**Error order.** Twenty of those cases fail two inputs with different errors
+(`SIG_NULLDUMMY` or `EVAL_FALSE` against `MINIMALIF` or `EVAL_FALSE`), in both
+input orders. Each input is compared with rc3, and the Rust whole-transaction
+verifier must return the first failing input's error in input order.
+
+Pinned expectations were checked to be live: expecting the v1 SINGLE input to
+pass, expecting a different multisig error, or making the whole-transaction
+check take the last failure instead of the first each fails the suite.
+
+The kind-3 fuzz driver gains an `SH` path beside `MX`. It rebuilds one pinned
+shape, checks its expectation, then applies up to two unpinned edits (amount,
+witness or scriptSig bit, sequence, lock time, input swap with its previous
+output, removed or duplicated output, pre-activation flags) and compares the
+result with rc3. The seed script adds 82 entries: every pinned case and 16 with
+edits. Each edit takes five bytes; byte offsets use two of them, so a bit edit
+reaches every byte of a Falcon-512 signature or a script containing a large
+public key (the first version used one byte and reached only the first 256). The
+pre-activation edit keeps the fixtures' extra `VERIFY_MINIMALIF` flag.
+
+A 90-second ASan run from the seeds (seed 46) completed 18,511 runs with no
+mismatch or sanitizer error. The last counter report at run 18,432 recorded
+891 completed `SH` runs.
+
+After the offset change, a 25-minute ASan campaign against the pinned rc3 node
+(seed 47) started from only the 82 `SH` seeds. It completed 297,283 runs with no
+mismatch or sanitizer error, ending at 2,397 corpus files and coverage 12,890.
+The last counter report, 67 runs before the end, recorded 10,709 `SH` runs and
+8,775 mixed runs; the rest were kinds 0–4 (136,886 / 14,205 / 10,925 / 87,251
+including both signed paths / 47,949). Mutations of the first byte move inputs
+to the faster driver kinds, so a seed-only corpus does not keep the campaign on
+this path.
+
+The driver therefore has a focus option. With `TIDECOIN_FUZZ_SIGNED_ONLY` set,
+the first byte chooses the mixed (even) or signed-shape (odd) path and the rest
+is that path's input, so mutations stay on the signed paths;
+`seed-node-corpus.py DIR --signed-only` writes the 24 `MX` and 82 `SH` seeds in
+that layout. Replay focused corpus entries and reproductions with
+`TIDECOIN_FUZZ_SIGNED_ONLY=1`. The option is enabled by the variable's presence,
+including a value of `0`; unset it for the general driver. Keep focused corpora
+and reproductions in their own directories and record the mode alongside them.
+The seed script writes into its destination without clearing existing entries,
+so use a fresh directory when creating a focused starting corpus.
+
+A focused 25-minute ASan campaign against the pinned rc3 node
+(seed 48) started from those 106 seeds and completed 97,436 runs with no
+mismatch or sanitizer error, ending at 348 active corpus entries, 433 saved
+corpus files and coverage 11,081.
+Every run took a signed path: the last counter report, 156 runs before the end,
+recorded 55,462 `SH` and 41,818 mixed runs, about five times each of the
+unfocused campaign above. The workspace still passes 1,901 tests with the
+pinned node after the option was added.
+
+Validation: with the pinned rc3 node and oracle, the workspace passes 1,901
+tests with no failures or ignored tests. Strict workspace Clippy, formatting,
+MSRV 1.94.1 and the fuzz expanded-code check pass.

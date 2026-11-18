@@ -1157,3 +1157,50 @@ fn check_wire_costs() {
         assert_eq!(validation::run(&requests).unwrap(), expected, "layout={layout}");
     }
 }
+
+#[test]
+fn signed_single_without_matching_output_matches_rc3() {
+    use tidecoin_fuzz::differential::mixed::shapes;
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    std::thread::Builder::new()
+        .stack_size(32 << 20)
+        .spawn(move || {
+            // One, two and four inputs; the last input (legacy, v0 or v1) signs
+            // SINGLE, with and without an output at its index.
+            for size in 0..3 {
+                for version in 0..3 {
+                    for remove in [false, true] {
+                        shapes::single_boundary(&node, size, version, remove);
+                    }
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn signed_script_mix_and_first_error_order_match_rc3() {
+    use tidecoin_fuzz::differential::mixed::shapes;
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    std::thread::Builder::new()
+        .stack_size(32 << 20)
+        .spawn(move || {
+            // Legacy single-key, v0 2-of-2 multisig, v1 IF/ELSE branch and v0
+            // single-key inputs, in both multisig/branch orders. Edit bits: 1
+            // multisig dummy, 2 non-minimal IF selector, 4 first multisig
+            // signature, 8 opposite branch. Two failing inputs then carry
+            // different errors, so the first error in input order is visible.
+            for branch_first in [false, true] {
+                for true_branch in [false, true] {
+                    for edit in (0..16).filter(|edit| edit & 0b1010 != 0b1010) {
+                        shapes::script_mix(&node, branch_first, true_branch, edit);
+                    }
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

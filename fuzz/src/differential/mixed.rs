@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: CC0-1.0
 //! Complete three-input spends with independently selectable signed hash modes.
 
+pub mod shapes;
+
 use std::sync::OnceLock;
 
 use super::{compare_each_input, sign_layout, Case};

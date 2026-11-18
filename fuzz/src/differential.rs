@@ -808,6 +808,23 @@ pub fn mutate_signed(case: &mut Case, data: &[u8]) {
 
 /// Entry point shared by deterministic smoke tests and coverage-guided fuzzing.
 pub fn run(node: &TidecoinNodeHarness, data: &[u8]) {
+    // Focused campaigns: with TIDECOIN_FUZZ_SIGNED_ONLY set, the first byte
+    // chooses the mixed (even) or signed-shape (odd) path and the rest is that
+    // path's input, so mutations cannot move inputs to the faster kinds. Seeds
+    // in this layout: `seed-node-corpus.py --signed-only`.
+    static SIGNED_ONLY: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *SIGNED_ONLY.get_or_init(|| std::env::var_os("TIDECOIN_FUZZ_SIGNED_ONLY").is_some()) {
+        let extra = data.get(1..).unwrap_or(&[]);
+        if data.first().copied().unwrap_or(0) & 1 == 0 {
+            mixed::fuzz(node, extra);
+            record_mode(MIXED);
+        } else {
+            mixed::shapes::fuzz(node, extra);
+            record_mode(SHAPES);
+        }
+        record_mode(3);
+        return;
+    }
     // Kind 4 takes one first-byte value, leaving every other byte's meaning
     // unchanged. Saved corpora from before kind 4 used 0x04 for kind 0: rewrite
     // those entries' first byte to 0x00 to keep their coverage.
@@ -830,38 +847,45 @@ pub fn run(node: &TidecoinNodeHarness, data: &[u8]) {
             compare(node, &case);
             // The original kind-3 comparison still runs on every input. Its
             // mutation uses only the first six payload bytes.
-            if let Some(extra) = payload.get(6..).and_then(|tail| tail.strip_prefix(b"MX")) {
+            let tail = payload.get(6..).unwrap_or(&[]);
+            if let Some(extra) = tail.strip_prefix(b"MX") {
                 mixed::fuzz(node, extra);
                 record_mode(MIXED);
+            } else if let Some(extra) = tail.strip_prefix(b"SH") {
+                mixed::shapes::fuzz(node, extra);
+                record_mode(SHAPES);
             }
         }
     }
     record_mode(usize::from(kind));
 }
 
-/// Index of the mixed signed-transaction path in the mode counters.
+/// Indexes of the mixed signed-transaction and signed-shape paths in the mode
+/// counters. Both are subsets of kind 3.
 const MIXED: usize = 5;
+const SHAPES: usize = 6;
 
-/// Completed comparisons per driver kind (0–4) and mixed signed transactions.
+/// Completed comparisons per driver kind (0–4), mixed signed transactions and
+/// signed shapes.
 /// With `TIDECOIN_FUZZ_MODE_STATS` set, every 256 completed runs print one
 /// `mode-stats` line; libFuzzer itself reports only the total across modes.
 fn record_mode(mode: usize) {
     use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
-    static COUNTS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+    static COUNTS: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if !*ENABLED.get_or_init(|| std::env::var_os("TIDECOIN_FUZZ_MODE_STATS").is_some()) {
         return;
     }
     COUNTS[mode].fetch_add(1, Relaxed);
-    if mode == MIXED {
+    if mode >= MIXED {
         return;
     }
     let counts: Vec<u64> = COUNTS.iter().map(|count| count.load(Relaxed)).collect();
     let runs: u64 = counts[..MIXED].iter().sum();
     if runs.is_multiple_of(256) {
         eprintln!(
-            "mode-stats runs={runs} kind0={} kind1={} kind2={} kind3={} kind4={} mixed={}",
-            counts[0], counts[1], counts[2], counts[3], counts[4], counts[MIXED]
+            "mode-stats runs={runs} kind0={} kind1={} kind2={} kind3={} kind4={} mixed={} shapes={}",
+            counts[0], counts[1], counts[2], counts[3], counts[4], counts[MIXED], counts[SHAPES]
         );
     }
 }
