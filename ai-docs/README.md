@@ -4,7 +4,7 @@ This is the active documentation entrypoint. The [compatibility principles](../A
 
 ## Target and read order
 
-Read [RC3_MIGRATION_PLAN.md](RC3_MIGRATION_PLAN.md) for the active target, source review, implementation sequence, evidence and outstanding checks. The authority is Tidecoin `v1.0.0rc3`, `ffed4e92e60ff2de30361648a71cba64531f9077`. `node-parity/NODE_REVISION` enforces that revision in required tests. Work remains on `v2`.
+Read [RC3_MIGRATION_PLAN.md](RC3_MIGRATION_PLAN.md) for the active target, source review, implementation sequence, evidence and outstanding checks. The authority is Tidecoin `v1.0.0rc3`, `ffed4e92e60ff2de30361648a71cba64531f9077`. `node-parity/NODE_REVISION` enforces that revision in required tests. Active development uses `main`. The former `v2` history was promoted to `main` on 2026-11-18. The retired main history is preserved by tag `archive/main-before-v2-2026-11-18`.
 
 The rc2 [review](RC2_COMPATIBILITY_REVIEW.md) and [plan](RC2_MIGRATION_PLAN.md) are historical baseline records. Their old status, wrapped-v1 and Falcon encoding descriptions must not override rc3 source or executable comparisons. Older audits below retain their original revision and are inventories, not independent current compatibility claims.
 
