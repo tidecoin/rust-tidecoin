@@ -39,6 +39,11 @@ for encoded in [
     "BG9Iw+FdZGtyeYCHjpWcoxYdAQAA7/8wswQkKzU4QEdOVVxjbWVf2N/m7fT7AgkQF2pxeH+GjZSboqmwt77FzNPa4eh2fVN0MTNyF2pxeH+GjXF4f4aNlJuiqbC3vsXM09rh6O8=",
 ]:
     seeds.append(base64.b64decode(encoded))
+# Extra kind-3 comparisons use three independent hash modes and paired edits.
+for layout in range(6):
+    for edit in range(4):
+        seeds.append(bytes([3, 0, 0, 0, 0, 0, 0]) + b"MX"
+                     + bytes([layout, edit, edit + 1, edit + 2, edit, 0, 1, 0]))
 for i, seed in enumerate(seeds):
     (root / f"seed-{i:04d}").write_bytes(seed)
 print(f"wrote {len(seeds)} deterministic oracle seeds to {root}")

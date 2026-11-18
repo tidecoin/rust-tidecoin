@@ -155,6 +155,9 @@ required native oracle gate.
 
 ## Validation commands
 
+After updating the oracle source, rerun the CMake build in the directory that
+supplies `TIDECOIN_NODE_VALIDATION_ORACLE`. Cargo uses that executable as built.
+
 ```sh
 export TIDECOIN_NODE_REPO=/path/to/tidecoin
 export TIDECOIN_NODE_PARITY_REQUIRED=1
@@ -387,7 +390,7 @@ package policy. Miri and constant-time properties are outside this review.
 | Area | Remaining work |
 | --- | --- |
 | Broader script combinations | Structured, valid multi-operation scripts with nested branches, alternate-stack use and several signature checks. The arbitrary-script generator stops at 2,048 bytes; larger boundaries use fixed patterns. |
-| Complete signed transactions | More combinations of schemes, input forms, hash modes and activation context than the current signed templates, with several mutations at once instead of one. Connect serialized weight and fee checks to those transactions. |
+| Complete signed transactions | The [mixed-input comparison](#mixed-input-signed-transactions-2026-11-18) covers three-input single-key spends. Other input counts, multisig in mixed transactions and more complex witness scripts remain open. |
 | Block comparisons | Generated combinations of witness commitments, coinbase data, merkle structure, weight, sigops and contextual boundaries against the original-node block oracle. |
 | Decoder and API combinations | Incremental and chunked decoding and every public entry point. The transaction comparison currently decodes complete byte slices. |
 | Mutation testing outside the interpreter | Sighash and context handling, witness recognition, transaction decoding, block checks and fee arithmetic. |
@@ -591,5 +594,66 @@ workspace Clippy, formatting, Rust 1.94.1 all-target checks and the
 `consensus-core` no-default-feature build pass.
 
 Limits: this is digest-level coverage of one input per generated transaction.
-Complete signed transactions with modes chosen per input and several changes at
-once remain open, as does mutation testing of `sighash.rs`.
+The mixed-input follow-up below checks signatures across all three inputs in
+single-key layouts. Mutation testing of `sighash.rs` remains open.
+
+### Mixed-input signed transactions (2026-11-18)
+
+The required node suite compares whole three-input spends against pinned rc3.
+Each executed signing script pushes one fixed public key and runs `OP_CHECKSIG`.
+The first post-activation layout covers all 216 independent assignments of the
+six hash modes to legacy, witness-v0 and native witness-v1 inputs. Five more
+layouts cover six assignments each. Across the post-activation layouts all five
+PQ schemes sign in each script version, with both bare/P2SH and native/wrapped
+v0 forms. Testnet heights 999 and 1000 select the flags on either side of the
+AuxPoW transition. The historical layout uses Falcon-512 legacy signing and
+wrapped v0. Each key and signing RNG here belongs to the reproducible test corpus.
+
+Each positive must pass the original verifier at every input. Paired edits change
+a previous amount and an output, move an input with its previous output and change
+a sequence, change an outpoint and append an output, or remove both witness
+signatures. Tests pin which inputs succeed, the exact errors, and the change in
+outcomes when the same bytes are verified across activation. The product
+transaction verifier shares its cache across inputs and must return the first
+original-node error in input order. The existing kind-3 fuzzer retains its
+original comparison and can also select independent modes, paired edits and an
+era switch. Its seed generator supplies 24 entries for this path.
+
+Across 180 cases and six fee rates, the standalone oracle decodes the signed
+bytes with witness. The tests compare Rust `weight()`, `vsize()` and
+`FeeRate::mul_by_vsize` with the node's `GetTransactionWeight`,
+`GetVirtualTransactionSize` and `CFeeRate::GetFee`, respectively.
+For the fee actually paid, the test itself sums the supplied previous output
+amounts and subtracts the transaction's output total. It checks this fixture
+calculation against `Consensus::CheckTxInputs` using the same synthetic
+non-coinbase coins. Rust UTXO lookup, chainstate and relay admission remain
+outside this comparison.
+
+The required rc3 all-target/all-feature workspace run passed 1,899 tests
+with zero failures or ignored tests. Strict workspace Clippy, formatting,
+MSRV 1.94.1 checks on the fuzz package and its expanded-code check passed.
+The final ASan differential smoke run (seed 44) completed 19,986 runs in
+101 seconds without a mismatch or sanitizer error. That count includes all
+driver modes reached from the corpus.
+
+A 25-minute ASan campaign against the pinned rc3 node (seed 45) then started from
+24,529 entries: the saved digest-campaign corpus plus the current seed script,
+of which 24 reach the mixed path. It completed 591,203 runs (including the initial
+corpus pass) with no mismatch or sanitizer error, ending at 2,900 corpus entries
+and coverage 12,524. The driver's opt-in counters (`TIDECOIN_FUZZ_MODE_STATS`)
+print completed runs per mode every 256 runs, because libFuzzer reports only the
+total. The last report, 99 runs before the end, recorded:
+
+| Kind | Path | Completed runs |
+| --- | --- | --- |
+| 0 | Generated scripts | 405,925 |
+| 1 | Wire decoding | 62,396 |
+| 2 | Fixed-shape v1 digests | 14,676 |
+| 3 | Signed templates | 63,725 |
+| 4 | Generated-transaction digests | 44,382 |
+| 3 + `MX` | Mixed signed transactions | 11,277 |
+
+Mixed runs are a subset of kind 3 and each verifies two complete transactions.
+They received about 2% of runs from this corpus, which is dominated by older
+script-execution entries; a corpus seeded mainly with mixed entries would focus
+a later campaign.

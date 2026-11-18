@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 //! Identical-context comparisons with the original pinned C++ interpreter.
+pub mod mixed;
+
 use consensus_core as core;
 use node_parity::{NodeParityError, ScriptError, SpentOutput, TidecoinNodeHarness};
 use tidecoin::hashes::{hash160, sha256, sha512};
@@ -197,6 +199,15 @@ pub fn script_case(mode: u8, script: Vec<u8>, arguments: Vec<Vec<u8>>, bits: u32
 /// Compare errors as well as acceptance, and repeat each low-level interpreter.
 /// Infrastructure/context failures panic instead of being counted as script rejection.
 pub fn compare(node: &TidecoinNodeHarness, case: &Case) {
+    compare_each_input(node, case, |_, _| {});
+}
+
+/// Compare all verification APIs, optionally pinning the expected result per input.
+fn compare_each_input(
+    node: &TidecoinNodeHarness,
+    case: &Case,
+    mut check: impl FnMut(usize, Result<(), ScriptError>),
+) {
     let bytes = encoding::encode_to_vec(&case.tx);
     let tx_hex = hex(&bytes);
     let outputs: Vec<_> = case
@@ -225,6 +236,7 @@ pub fn compare(node: &TidecoinNodeHarness, case: &Case) {
             case.flags,
             &outputs,
         ));
+        check(index, node_result);
         let make_spend = || {
             core::SpendContext::new(
                 output.script_pubkey.as_bytes(),
@@ -661,7 +673,7 @@ pub fn compare_random_sighashes(node: &TidecoinNodeHarness, data: &[u8]) {
 /// Valid mixed legacy/v0/v1 spends reach real cryptography before mutation.
 /// Deterministic key seeds belong only to this test corpus, never production.
 pub fn signed_cases(node: &TidecoinNodeHarness) -> Vec<Case> {
-    use tidecoin::{PqScheme, PqSchemeCryptoExt, PqSignature};
+    use tidecoin::{PqScheme, PqSchemeCryptoExt};
     let schemes = [PqScheme::Falcon512, PqScheme::MlDsa44, PqScheme::Falcon1024];
     let keys: Vec<_> = schemes
         .into_iter()
@@ -669,82 +681,98 @@ pub fn signed_cases(node: &TidecoinNodeHarness) -> Vec<Case> {
             scheme.generate_keypair_from_seed(&vec![73; scheme.deterministic_seed_len()]).unwrap()
         })
         .collect();
-    let scripts: Vec<_> =
-        keys.iter().map(|(pk, _)| [push(&pk.to_prefixed_bytes()), vec![0xac]].concat()).collect();
-    let mut cases = Vec::new();
-    for mode in [
-        core::TxSighashType::All,
-        core::TxSighashType::None,
-        core::TxSighashType::Single,
-        core::TxSighashType::AllPlusAnyoneCanPay,
-        core::TxSighashType::NonePlusAnyoneCanPay,
-        core::TxSighashType::SinglePlusAnyoneCanPay,
-    ] {
-        let mut case = script_case(0, scripts[0].clone(), vec![], core::VERIFY_ALL_TIDECOIN);
-        for (index, kind) in [(1, 2), (2, 3)] {
-            let part = script_case(kind, scripts[index].clone(), vec![], case.flags);
-            case.tx.inputs.push(part.tx.inputs[0].clone());
-            case.spent.push(part.spent[0].clone());
-            case.tx.inputs[index].previous_output.vout = index as u32;
-            case.spent[index].amount = Amount::from_sat_u32(100 + index as u32);
-            case.tx.outputs.push(case.tx.outputs[0].clone());
-        }
-        // Each input's script with its real signature: a successful CHECKSIG.
-        case.eval.clear();
-        for index in 0..3 {
-            let mut cache = core::SighashCache::new_with_spent_outputs(
-                &case.tx,
-                core::SpentOutputs::from_txouts(case.spent.clone()),
-            )
-            .unwrap();
-            let mut signature = if index == 2 {
-                let hash = cache
-                    .p2wsh512_signature_hash(index, &scripts[index], case.spent[index].amount, mode)
-                    .unwrap();
-                PqSignature::sign_msg64(&hash.to_byte_array(), &keys[index].1)
-                    .unwrap()
-                    .as_bytes()
-                    .to_vec()
-            } else {
-                let hash = if index == 0 {
-                    cache
-                        .legacy_signature_hash(index, &scripts[index], mode.to_u32())
-                        .unwrap()
-                        .to_byte_array()
-                } else {
-                    cache
-                        .p2wsh_signature_hash(
-                            index,
-                            &scripts[index],
-                            case.spent[index].amount,
-                            mode,
-                        )
-                        .unwrap()
-                        .to_byte_array()
-                };
-                PqSignature::sign_msg32(&hash, &keys[index].1).unwrap().as_bytes().to_vec()
-            };
-            signature.push(mode.to_u32() as u8);
-            case.eval.push(EvalCase {
-                input: index,
-                script: scripts[index].clone(),
-                stack: vec![signature.clone()],
-            });
-            if index == 0 {
-                case.tx.inputs[index].script_sig = ScriptSigBuf::from_bytes(push(&signature));
-            } else {
-                case.tx.inputs[index].witness =
-                    Witness::from(vec![signature, scripts[index].clone()]);
-            }
-        }
-        compare(node, &case);
-        // Positive corpus controls must actually pass, not merely agree on rejection.
+    let cases = sign_layout(&keys, [0, 2, 3], core::VERIFY_ALL_TIDECOIN, [1; 3]);
+    for case in &cases {
+        compare_each_input(node, case, |_, verdict| verdict.unwrap());
         core::verify_transaction_inputs(
             &case.tx,
             core::SpentOutputs::from_txouts(case.spent.clone()),
             case.flags,
         )
         .unwrap();
+    }
+    cases
+}
+
+/// For a fixed transaction and ordered prevouts, the three signatures are
+/// independent of each other's scriptSigs and witnesses. Sign each mode once.
+fn sign_layout(
+    keys: &[(tidecoin::PqPublicKey, tidecoin::PqSecretKey)],
+    forms: [u8; 3],
+    bits: u32,
+    output_sats: [u32; 3],
+) -> Vec<Case> {
+    use core::TxSighashType::*;
+    use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+    use tidecoin::PqSignature;
+    let scripts: Vec<_> =
+        keys.iter().map(|(pk, _)| [push(&pk.to_prefixed_bytes()), vec![0xac]].concat()).collect();
+    let mut base = script_case(forms[0], scripts[0].clone(), vec![], bits);
+    base.eval.clear();
+    for index in 1..3 {
+        let part = script_case(forms[index], scripts[index].clone(), vec![], bits);
+        base.tx.inputs.push(part.tx.inputs[0].clone());
+        base.spent.push(part.spent[0].clone());
+        base.tx.inputs[index].previous_output.vout = index as u32;
+        base.spent[index].amount = Amount::from_sat_u32(100 + index as u32);
+        base.tx.outputs.push(base.tx.outputs[0].clone());
+    }
+    for (out, sats) in base.tx.outputs.iter_mut().zip(output_sats) {
+        out.amount = Amount::from_sat_u32(sats);
+    }
+    let mut cache = core::SighashCache::new_with_spent_outputs(
+        &base.tx,
+        core::SpentOutputs::from_txouts(base.spent.clone()),
+    )
+    .unwrap();
+    // Test-only keys and randomness: keep every signed byte (including nonces)
+    // reproducible for corpus replay. Advance one stream across all signatures.
+    let mut rng = ChaCha20Rng::from_seed(sha256::Hash::hash(&scripts.concat()).to_byte_array());
+    let mut cases = Vec::new();
+    for mode in
+        [All, None, Single, AllPlusAnyoneCanPay, NonePlusAnyoneCanPay, SinglePlusAnyoneCanPay]
+    {
+        let mut case = base.clone();
+        for (index, &form) in forms.iter().enumerate() {
+            let script = &scripts[index];
+            let amount = base.spent[index].amount;
+            let key = &keys[index].1;
+            let sig = match form {
+                3 => {
+                    let h = cache.p2wsh512_signature_hash(index, script, amount, mode).unwrap();
+                    PqSignature::sign_msg64_with_rng(&h.to_byte_array(), key, &mut rng)
+                }
+                _ => {
+                    let msg = if form <= 1 {
+                        cache
+                            .legacy_signature_hash(index, script, mode.to_u32())
+                            .unwrap()
+                            .to_byte_array()
+                    } else {
+                        cache
+                            .p2wsh_signature_hash(index, script, amount, mode)
+                            .unwrap()
+                            .to_byte_array()
+                    };
+                    if bits & core::VERIFY_PQ_STRICT == 0 {
+                        PqSignature::sign_msg32_legacy_with_rng(&msg, key, &mut rng)
+                    } else {
+                        PqSignature::sign_msg32_with_rng(&msg, key, &mut rng)
+                    }
+                }
+            }
+            .unwrap();
+            let mut signature = sig.as_bytes().to_vec();
+            signature.push(mode.to_u32() as u8);
+            case.eval.push(EvalCase {
+                input: index,
+                script: script.clone(),
+                stack: vec![signature.clone()],
+            });
+            let signed = script_case(form, script.clone(), vec![signature], bits);
+            case.tx.inputs[index].script_sig = signed.tx.inputs[0].script_sig.clone();
+            case.tx.inputs[index].witness = signed.tx.inputs[0].witness.clone();
+        }
         cases.push(case);
     }
     cases
@@ -800,6 +828,40 @@ pub fn run(node: &TidecoinNodeHarness, data: &[u8]) {
                 cases[payload.first().copied().unwrap_or(0) as usize % cases.len()].clone();
             mutate_signed(&mut case, payload.get(1..).unwrap_or(&[]));
             compare(node, &case);
+            // The original kind-3 comparison still runs on every input. Its
+            // mutation uses only the first six payload bytes.
+            if let Some(extra) = payload.get(6..).and_then(|tail| tail.strip_prefix(b"MX")) {
+                mixed::fuzz(node, extra);
+                record_mode(MIXED);
+            }
         }
+    }
+    record_mode(usize::from(kind));
+}
+
+/// Index of the mixed signed-transaction path in the mode counters.
+const MIXED: usize = 5;
+
+/// Completed comparisons per driver kind (0–4) and mixed signed transactions.
+/// With `TIDECOIN_FUZZ_MODE_STATS` set, every 256 completed runs print one
+/// `mode-stats` line; libFuzzer itself reports only the total across modes.
+fn record_mode(mode: usize) {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+    static COUNTS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ENABLED.get_or_init(|| std::env::var_os("TIDECOIN_FUZZ_MODE_STATS").is_some()) {
+        return;
+    }
+    COUNTS[mode].fetch_add(1, Relaxed);
+    if mode == MIXED {
+        return;
+    }
+    let counts: Vec<u64> = COUNTS.iter().map(|count| count.load(Relaxed)).collect();
+    let runs: u64 = counts[..MIXED].iter().sum();
+    if runs.is_multiple_of(256) {
+        eprintln!(
+            "mode-stats runs={runs} kind0={} kind1={} kind2={} kind3={} kind4={} mixed={}",
+            counts[0], counts[1], counts[2], counts[3], counts[4], counts[MIXED]
+        );
     }
 }

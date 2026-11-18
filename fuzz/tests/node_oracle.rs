@@ -1020,3 +1020,140 @@ fn signature_before_truncated_push_reaches_the_same_error() {
         }
     }
 }
+
+#[test]
+fn mixed_signed_inputs_match_rc3() {
+    use node_parity::ScriptError;
+    use tidecoin_fuzz::differential::mixed;
+
+    let Some(node) = TidecoinNodeHarness::optional_from_env() else { return };
+    std::thread::Builder::new()
+        .stack_size(32 << 20)
+        .spawn(move || {
+            for layout in 0..mixed::LAYOUTS {
+                // All 216 triples in the first layout; every mode at every input in the others.
+                let count = if layout == 0 { 216 } else { 6 };
+                for n in 0..count {
+                    let modes = if layout == 0 {
+                        [n % 6, n / 6 % 6, n / 36]
+                    } else {
+                        [n, (n + 1) % 6, (n + 2) % 6]
+                    };
+                    let case = mixed::signed(layout, modes);
+                    mixed::compare_signed(&node, &case, |index, verdict| {
+                        assert_eq!(
+                            verdict,
+                            Ok(()),
+                            "positive layout={layout} modes={modes:?} input={index}"
+                        );
+                    });
+                }
+
+                // ALL / NONE / SINGLE|ANYONECANPAY. Only ALL commits to output 1.
+                // Changing spent amount 0 also tests v1's ANYONECANPAY isolation.
+                let baseline = mixed::signed(layout, [0, 1, 5]);
+                let mut changed = baseline.clone();
+                mixed::mutate(&mut changed, 0, 0, 1);
+                mixed::compare_signed(&node, &changed, |i, result| {
+                    assert_eq!(result, [Err(ScriptError::EvalFalse), Ok(()), Ok(())][i]);
+                });
+
+                // ACP|NONE ignores both edits in legacy; ACP|SINGLE at input 1
+                // commits to output 1. V1 NONE commits to spent amount 0, while
+                // historical v0 NONE at input 2 only commits to its own amount.
+                let mut other = mixed::signed(layout, [4, 5, 1]);
+                mixed::mutate(&mut other, 0, 0, 1);
+                mixed::compare_signed(&node, &other, |i, result| {
+                    let expected = if i == 0 || (i == 2 && layout == mixed::LAYOUTS - 1) {
+                        Ok(())
+                    } else {
+                        Err(ScriptError::EvalFalse)
+                    };
+                    assert_eq!(result, expected, "spent/output edit layout={layout} input={i}");
+                });
+                for edit in [1, 2, 3] {
+                    let mut changed = baseline.clone();
+                    mixed::mutate(&mut changed, edit, 0, 1);
+                    mixed::compare_signed(&node, &changed, |i, result| {
+                        let expected = if (edit == 3 && i == 0) || (edit != 3 && i == 2) {
+                            Ok(())
+                        } else {
+                            Err(ScriptError::EvalFalse)
+                        };
+                        assert_eq!(result, expected, "layout={layout} edit={edit} input={i}");
+                    });
+                }
+                let mut opposite_era = baseline;
+                opposite_era.flags = mixed::boundary_flags(layout == mixed::LAYOUTS - 1);
+                mixed::compare_signed(&node, &opposite_era, |i, result| {
+                    // Post-activation v1 is ordinary script with unexpected witness
+                    // before activation. Only Falcon-512 can authorize base/v0 there.
+                    let expected = if layout == mixed::LAYOUTS - 1 {
+                        Ok(()) // These particular historical Falcon signatures pass strict verification.
+                    } else if i == 2 {
+                        Err(ScriptError::WitnessUnexpected)
+                    } else if (layout + i).is_multiple_of(mixed::LAYOUTS - 1) {
+                        Ok(())
+                    } else {
+                        Err(ScriptError::EvalFalse)
+                    };
+                    assert_eq!(result, expected, "cross-era layout={layout} input={i}");
+                });
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn mixed_signed_wire_weight_and_fees_match_rc3() {
+    let Some(_) = TidecoinNodeHarness::optional_from_env() else { return };
+    std::thread::Builder::new()
+        .stack_size(32 << 20)
+        .spawn(check_wire_costs)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn check_wire_costs() {
+    use node_parity::validation;
+    use serde_json::json;
+    use tidecoin::FeeRate;
+    use tidecoin_fuzz::differential::{hex, mixed};
+
+    for layout in 0..mixed::LAYOUTS {
+        let mut requests = Vec::new();
+        let mut expected = Vec::new();
+        for mode in 0..6 {
+            let original = mixed::signed(layout, [mode, (mode + 1) % 6, (mode + 2) % 6]);
+            for edit in 0..5 {
+                let mut case = original.clone();
+                if edit < 4 {
+                    mixed::mutate(&mut case, edit, 0, 1);
+                }
+                let bytes = tidecoin_consensus_encoding::encode_to_vec(&case.tx);
+                let spent: Vec<_> = case
+                    .spent
+                    .iter()
+                    .map(|out| {
+                        json!({
+                            "script":hex(out.script_pubkey.as_bytes()), "amount":out.amount.to_sat()
+                        })
+                    })
+                    .collect();
+                let rate = [0, 1, 999, 1000, 1001, 3702][usize::from(mode)];
+                requests.push(
+                    json!({"op":"signed_tx_cost", "tx":hex(&bytes), "spent":spent, "rate":rate}),
+                );
+                let paid = case.spent.iter().map(|o| o.amount.to_sat()).sum::<u64>()
+                    - case.tx.outputs.iter().map(|o| o.amount.to_sat()).sum::<u64>();
+                let size = case.tx.vsize() as u64;
+                expected.push(json!({"weight":case.tx.weight().to_wu(), "vsize":size,
+                        "paid_fee":paid, "rate_fee":FeeRate::from_sat_per_kvb(rate).mul_by_vsize(size).unwrap().to_sat()}));
+            }
+        }
+        assert_eq!(validation::run(&requests).unwrap(), expected, "layout={layout}");
+    }
+}

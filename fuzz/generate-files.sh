@@ -22,9 +22,10 @@ publish = false
 cargo-fuzz = true
 
 [features]
-node-oracle = ["dep:node_parity", "dep:consensus_core"]
+node-oracle = ["dep:node_parity", "dep:consensus_core", "dep:rand_chacha"]
 
 [dependencies]
+rand_chacha = { version = "0.3.1", optional = true }
 node_parity = { package = "tidecoin-node-parity", path = "../node-parity", optional = true }
 consensus_core = { package = "tidecoin-consensus-core", path = "../consensus-core", optional = true }
 consensus = { path = "../consensus" }

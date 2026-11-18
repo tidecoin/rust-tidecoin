@@ -98,6 +98,33 @@ static UniValue Run(const UniValue& request, const fs::path& datadir)
     const std::string op = request["op"].get_str();
     const auto& p = params.GetConsensus();
     BlockValidationState state;
+    if (op == "signed_tx_cost") {
+        DataStream stream{ParseHex(request["tx"].get_str())};
+        CMutableTransaction decoded;
+        stream >> TX_WITH_WITNESS(decoded);
+        if (!stream.empty()) throw DecodeError("trailing transaction bytes");
+        const CTransaction tx{decoded};
+        const auto& spent = request["spent"].getValues();
+        if (spent.size() != tx.vin.size()) throw DecodeError("spent output count");
+        CCoinsView base;
+        CCoinsViewCache coins{&base};
+        for (size_t i = 0; i < spent.size(); ++i) {
+            const auto script = ParseHex(spent[i]["script"].get_str());
+            coins.AddCoin(tx.vin[i].prevout, Coin{CTxOut{spent[i]["amount"].getInt<CAmount>(),
+                CScript{script.begin(), script.end()}}, 1, false}, false);
+        }
+        TxValidationState tx_state;
+        CAmount paid_fee{0};
+        if (!Consensus::CheckTxInputs(tx, tx_state, coins, 2, paid_fee))
+            throw std::runtime_error(tx_state.ToString());
+        const auto vsize = GetVirtualTransactionSize(tx);
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("weight", GetTransactionWeight(tx));
+        out.pushKV("vsize", vsize);
+        out.pushKV("paid_fee", paid_fee);
+        out.pushKV("rate_fee", CFeeRate{request["rate"].getInt<CAmount>()}.GetFee(vsize));
+        return out;
+    }
     if (op == "pq_estimate") {
         const auto bytes = ParseHex(request["pubkey"].get_str());
         const CPubKey pubkey{bytes};
