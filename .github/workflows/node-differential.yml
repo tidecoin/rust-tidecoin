@@ -21,7 +21,7 @@ jobs:
       CFLAGS: '-fsanitize=address -fno-omit-frame-pointer'
       CXXFLAGS: '-fsanitize=address -fno-omit-frame-pointer'
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Read pinned versions
@@ -29,7 +29,7 @@ jobs:
         run: |
           echo "node=$(cat node-parity/NODE_REVISION)" >> "$GITHUB_OUTPUT"
           echo "rust=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["metadata"]["rbmt"]["toolchains"]["nightly"])')" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: tidecoin/tidecoin
           ref: ${{ steps.pins.outputs.node }}
