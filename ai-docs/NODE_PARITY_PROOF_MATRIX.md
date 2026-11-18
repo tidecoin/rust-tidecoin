@@ -149,8 +149,9 @@ hash. Both source transaction corpora are unchanged. The policy corpus is still
 policy header/implementation, descriptor implementation/tests, ephemeral dust
 and TRUC functional tests. Reviewed changes include cluster/reorg behavior and
 PQHD/wsh512 descriptor fixes; these hashes do not claim that the Rust stateless
-cases cover those new stateful/descriptor features. PSBT/descriptor work remains
-phase 5. Existing real-chain fixtures retain their historical provenance.
+cases cover those new stateful/descriptor features. Future PSBT/descriptor work
+is tracked in the [wallet roadmap](WALLET_API_ROADMAP.md) under the active rc3
+plan. Existing real-chain fixtures retain their historical provenance.
 
 ## Provenance Partitions
 

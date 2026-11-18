@@ -8,6 +8,9 @@ Read [RC3_MIGRATION_PLAN.md](RC3_MIGRATION_PLAN.md) for the active target, sourc
 
 The rc2 [review](RC2_COMPATIBILITY_REVIEW.md) and [plan](RC2_MIGRATION_PLAN.md) are historical baseline records. Their old status, wrapped-v1 and Falcon encoding descriptions must not override rc3 source or executable comparisons. Older audits below retain their original revision and are inventories, not independent current compatibility claims.
 
+The [ordered compatibility follow-up](RC3_MIGRATION_PLAN.md#ordered-compatibility-follow-up)
+records the next five work areas, their source references and completion criteria.
+
 ## Scope and priorities
 
 1. Review original implementations and callers; preserve node behavior.

@@ -385,15 +385,81 @@ mismatch remains. The comparison covers script verification with
 caller-supplied spent outputs. It does not cover UTXO-backed checks, mempool or
 package policy. Miri and constant-time properties are outside this review.
 
-**Remaining follow-up.** The interpreter-focused work above is complete. Still open:
+### Ordered compatibility follow-up
 
-| Area | Remaining work |
-| --- | --- |
-| Broader script combinations | Structured, valid multi-operation scripts with nested branches, alternate-stack use and several signature checks. The arbitrary-script generator stops at 2,048 bytes; larger boundaries use fixed patterns. |
-| Complete signed transactions | The [mixed-input comparison](#mixed-input-signed-transactions-2026-11-18) covers three-input single-key spends; [signed shapes](#signed-shapes-input-counts-script-mixes-and-error-order-2026-11-18) add 1, 2 and 4 inputs, SINGLE without a matching output, and multisig with a branched witness script in one transaction. Mixed PQ schemes within these shapes, larger multisig and further script forms remain open. |
-| Block comparisons | Generated combinations of witness commitments, coinbase data, merkle structure, weight, sigops and contextual boundaries against the original-node block oracle. |
-| Decoder and API combinations | Incremental and chunked decoding and every public entry point. The transaction comparison currently decodes complete byte slices. |
-| Mutation testing outside the interpreter | Sighash and context handling, witness recognition, transaction decoding, block checks and fee arithmetic. |
+The next work proceeds in the order below against pinned rc3
+`ffed4e92e60ff2de30361648a71cba64531f9077`. All five areas remain open.
+Campaigns in this follow-up run locally. Recurring CI campaigns are deferred
+at the user's request (2026-11-18).
+
+For each area, review original implementations and callers before selecting
+cases. Record the source revision, commands, test cases, results and remaining
+limits here, and update the proof matrix with the executable evidence. Resolve
+Rust discrepancies through regressions and shared implementations. Apply the
+node-review condition in AGENTS.md if a clear node defect could put funds at risk.
+
+1. **Measure sighash test sensitivity.** Start mutation testing with
+   `consensus-core/src/sighash.rs`, using the original-node digest and signed
+   transaction comparisons. Exercise output selection, amounts, script-code
+   serialization, all supported hash modes, ANYONECANPAY, spent-output ordering
+   and cache reuse. Review every surviving mutation to determine whether it can
+   change an observable result. For each meaningful survivor, derive a case from
+   rc3 `SignatureHash`, `SignatureHash512` and their callers, then require the
+   Rust and node results to agree. Record equivalent or unreachable survivors
+   with reasons and keep untested or timed-out mutations visible. Completion
+   requires an accounted-for mutation report and regressions for discovered
+   gaps. Extend this method to context handling, witness recognition, decoding,
+   block checks and fee arithmetic as those areas are reviewed.
+
+2. **Expand signed transaction combinations.** Build on the existing
+   three-input scheme rotations and the one-, two- and four-input signed shapes.
+   Add mixed eligible PQ schemes to multisig and branched witness scripts,
+   larger multisig arrangements, and independently selected hash modes within
+   those scripts. Cover native and wrapped forms supported by rc3, including
+   native-only witness v1 signing. Review `script/sign.cpp`, `VerifyScript`,
+   `VerifyWitnessProgram` and signature-checking callers. Start each layout
+   with valid signed inputs, then make controlled edits and pin each input's
+   exact result and the transaction API's first error. Completion requires
+   recorded coverage by scheme, script form, hash mode and activation context,
+   deterministic comparisons and seeds for the local signed-path driver.
+
+3. **Generate complex scripts with valid executions.** Add nested branches,
+   alternate-stack operations and several signature checks in one script.
+   Construct valid executions that reach those operations before applying
+   mutations. Combine script-size, element-size, stack-depth and operation-count
+   boundaries using rc3 `EvalScript` and `VerifyWitnessProgram` as references.
+   The current arbitrary-script generator stops at 2,048 bytes and uses fixed
+   patterns for larger limits. Extend generated coverage deliberately and record
+   its bounds. Completion requires full-stack or exact-error comparisons where
+   the oracle exposes them, signed execution cases, and reproducible boundary
+   seeds with their expected results.
+
+4. **Combine block rules in original-node comparisons.** Extend existing block
+   sanity and contextual checks with generated combinations of transaction
+   ordering, coinbase contents, merkle structure, witness commitments, weight
+   and sigops. Use the original `CheckBlock` and `ContextualCheckBlock` callers
+   through the standalone oracle. Include individually acceptable transactions
+   whose combined block exceeds a limit, plus competing failures that expose
+   check order. Completion requires passing baseline blocks, controlled failing
+   variants and exact observable results against rc3, with supplied chain
+   context recorded for replay. UTXO-backed block connection remains future
+   work described in the chain-connect design.
+
+5. **Extend decoding across APIs and chunk boundaries.** Inventory the public
+   byte, reader and incremental transaction decoding entry points and their
+   documented consumption and sanity-check contracts. Feed equivalent bytes
+   through each applicable API, splitting within CompactSize fields, scripts,
+   witness items and transaction fields. Cover truncation, noncanonical lengths,
+   witness markers/flags, trailing bytes and repeated decoder calls. Compare
+   completed decoding and rejection with the original exact node decoder.
+   Check incremental progress and consumed bytes against the Rust API contract,
+   then compare the reconstructed transaction and downstream validation with
+   rc3. Completion requires an API coverage table and deterministic cases for
+   chunk boundaries, with any differing API contracts explicitly recorded.
+
+The [wallet roadmap](WALLET_API_ROADMAP.md) and
+[chain-connect design](CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md) describe future
+implementation surfaces beyond this compatibility follow-up.
 
 ### Borrowed outputs and typed erasure (2026-11-17)
 

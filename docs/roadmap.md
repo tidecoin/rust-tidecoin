@@ -1,14 +1,18 @@
 # Tidecoin repository roadmap
 
-The rc2 protocol-library checkpoint is validated locally; hosted CI remains
-to be verified after publication of these changes. The next implementation
-milestone is Tidecoin-native PSBT and wallet interoperability. See the
-[migration evidence](../ai-docs/RC2_MIGRATION_PLAN.md).
+The active compatibility target is Tidecoin node `v1.0.0rc3`,
+`ffed4e92e60ff2de30361648a71cba64531f9077`. The
+[rc3 migration plan](../ai-docs/RC3_MIGRATION_PLAN.md) owns current evidence
+and status.
 
-The [migration plan](../ai-docs/RC2_MIGRATION_PLAN.md) defines this sequence:
-documentation and contracts, node oracle/regressions, spent-output context and
-v1 hashing, remaining consensus/policy boundaries, required CI and provenance,
-then PSBT and wallet signing.
+The next work is the [ordered compatibility follow-up](../ai-docs/RC3_MIGRATION_PLAN.md#ordered-compatibility-follow-up).
+It covers sighash mutation testing, expanded signed transactions, complex valid
+scripts, combined block rules and decoding across public APIs. The plan records
+scope and completion criteria for each step.
+
+Future wallet and PSBT work is described in the
+[wallet roadmap](../ai-docs/WALLET_API_ROADMAP.md). Stateful block connection is
+described in the [chain-connect design](../ai-docs/CHAIN_CONNECT_VALIDATION_CRATE_SPEC.md).
 
 Current high-value architectural goals:
 
@@ -21,7 +25,7 @@ Current high-value architectural goals:
 
 ## RC cycle
 
-The node's `v1.0.0rc2` version identifies the compatibility target, not the Rust
-crate version. Rust release readiness requires the migration's recorded gates
-and explicit API migration documentation. Full chainstate and mempool acceptance
-remain outside the protocol-library claim.
+The pinned node revision identifies the compatibility target. Rust release
+readiness follows the migration's recorded validation and explicit API migration
+documentation. Full chainstate and mempool acceptance require the future
+stateful implementation and its own original-node comparisons.

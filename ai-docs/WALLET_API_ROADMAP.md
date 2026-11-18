@@ -1,16 +1,16 @@
 # Wallet API Roadmap
 
-Status: active wallet-facing roadmap; implementation follows the rc2 migration.
+Status: future wallet-facing work under the pinned rc3 compatibility target.
 
 This document tracks Rust crate work that is useful to wallets, mobile clients,
 and application developers. It is separate from the consensus and node-parity
 docs because wallet ergonomics should compose existing protocol primitives
 instead of changing consensus boundaries.
 
-The [rc2 migration plan](RC2_MIGRATION_PLAN.md) controls dependencies and gates.
-PSBT design can start now; shipping wallet signing requires corrected consensus
-and previous-output handling. The [review](RC2_COMPATIBILITY_REVIEW.md)
-records why the existing verification APIs are not yet an rc2 acceptance oracle.
+The [rc3 migration plan](RC3_MIGRATION_PLAN.md) owns the target, dependencies,
+evidence and current implementation priorities. Its ordered compatibility
+follow-up precedes this wallet work. Review rc3 signing and PSBT callers before
+implementing each API slice.
 
 ## Current Foundation
 
@@ -25,21 +25,23 @@ The crate already has most low-level pieces needed by a wallet:
 - `pqhd(...)` descriptor/key-expression parsing and deterministic key derivation
 - public script and transaction verification APIs for validating built spends
 
-Retain these primitives, while correcting their rc2-sensitive validation and
-signing behavior before using them as the wallet acceptance standard.
+Compose these primitives and retain their original-node comparisons when
+adding wallet-facing behavior.
 
 ## Priority 1: PSBT and signing contracts
 
-There is no full Rust PSBT API today. Phase 5 of the migration plan defines the
-implementation slices and node interoperability gates:
+The full Rust PSBT API remains future work. The planned implementation includes
+the following areas.
 
 - PSBT parsing/serialization, unknown fields and PQHD origin metadata
 - consistent previous-output records and authenticated script commitments
 - public declarations, combine semantics and explicit signing consent
-- native/wrapped v1 signing with complete non-ANYONECANPAY context
+- native v1 signing with complete non-ANYONECANPAY context
+- native/wrapped v0 finalization matching rc3 script commitments
 - legacy external-signing data requirements
 - final verification, extraction, per-input analysis and conditional cleanup
-- `sh(wsh512(...))` descriptor support alongside existing wrappers
+- top-level `wsh512(...)` descriptors and rejection of wrapped v1 signing
+- invalid, excluded and unknown partials under an immutable selected-era context
 
 Keep historical legacy/v0 consensus validity distinct from new-signature and
 relay policy. Node fixtures and round trips are required for these contracts.
@@ -116,8 +118,7 @@ Reference:
 
 Wallet-facing APIs are ready only when:
 
-- phase 4 establishes rc2 protocol compatibility and phase 5 passes the relevant
-  PSBT/signing interoperability gates
+- relevant rc3 PSBT/signing interoperability cases pass against the pinned node
 - they compose existing transaction/script/address/PQ primitives instead of
   duplicating them
 - fee and dust behavior is tied to existing policy helpers
