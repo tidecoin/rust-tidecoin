@@ -732,8 +732,14 @@ mod tests {
     use super::*;
 
     fn script_code(script: &[u8]) -> Vec<u8> {
-        let mut out = Vec::new();
-        encode_legacy_script_code(script, &mut out).unwrap();
+        // CompactSize needs at most nine bytes. Slice writes also work when
+        // tidecoin-io's alloc feature is disabled.
+        let capacity = script.len() + 9;
+        let mut out = alloc::vec![0; capacity];
+        let mut writer = out.as_mut_slice();
+        encode_legacy_script_code(script, &mut writer).unwrap();
+        let written = capacity - writer.len();
+        out.truncate(written);
         out
     }
 
