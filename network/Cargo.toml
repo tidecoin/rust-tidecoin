@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin-network-kind"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin"
@@ -18,7 +18,7 @@ std = ["alloc", "internals/std"]
 alloc = ["internals/alloc", "serde?/alloc"]
 
 [dependencies]
-internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.1", default-features = false }
 
 arbitrary = { version = "1.4.1", optional = true }
 serde = { version = "1.0.195", default-features = false, features = [ "derive" ], optional = true }

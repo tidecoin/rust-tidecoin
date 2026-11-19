@@ -2,7 +2,9 @@
 
 All notable Tidecoin-specific changes for hashes are documented here.
 
-## Unreleased
+## Unreleased — 0.21.0
+
+- Breaking: custom HMAC engines must implement Zeroize for erasure. Include typed erasure and safe SipHash reads.
 
 - Replaced SipHash unchecked byte reads with checked slices and indexing. The
   SipHash module forbids unsafe code; reference vectors also cover every two-part input split.
@@ -12,6 +14,9 @@ All notable Tidecoin-specific changes for hashes are documented here.
   engines must supply their own implementation. HKDF stores and clears the PRK
   as bytes, so erasure and drop never overwrite a custom hash object's layout.
   This does not guarantee removal of compiler-created copies.
+
+## 0.20.0 — published 2026-04-30
+
 - Reoriented the hash utility crate for Tidecoin workspace ownership.
 - Kept hash newtypes, hex formatting, and encoding integrations available to primitives, p2p, and consensus layers.
 - Preserved the low-level no-std boundary so hashing remains independent from protocol validation.

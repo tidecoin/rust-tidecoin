@@ -2,7 +2,11 @@
 
 All notable Tidecoin-specific changes for protocol primitives are documented here.
 
-## Unreleased
+## Unreleased — 0.103.0
+
+- Breaking dependency update: public hash types use tidecoin_hashes 0.21. Include rc3 witness recognition and signature-size estimation modes.
+
+## 0.102.0 — published 2026-04-30
 
 - Made this crate the canonical home for Tidecoin transaction, block, script, witness, locktime, and header primitives.
 - Centralized primitive serialization through `tidecoin-consensus-encoding`.

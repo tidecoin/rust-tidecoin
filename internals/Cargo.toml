@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin-internals"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin"

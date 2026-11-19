@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin-p2p-messages"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin"
@@ -10,7 +10,8 @@ keywords = ["tidecoin", "peer-to-peer"]
 readme = "README.md"
 edition = "2021"
 rust-version = "1.94.1"
-exclude = ["tests", "contrib"]
+# Unit tests in src/ include these data files; exclude only integration-test sources.
+exclude = ["tests/*.rs", "contrib"]
 
 [features]
 default = ["std"]
@@ -19,15 +20,15 @@ arbitrary = ["dep:arbitrary", "primitives/arbitrary"]
 serde = ["dep:serde", "hashes/serde", "primitives/serde"]
 
 [dependencies]
-chacha20-poly1305 = { package = "tidecoin-chacha20-poly1305", path = "../chacha20_poly1305", version = "0.1.2", default-features = false, features = ["alloc"] }
-encoding = { package = "tidecoin-consensus-encoding", version = "0.1.0", path = "../consensus_encoding", default-features = false, features = ["alloc"] }
-hashes = { package = "tidecoin_hashes", version = "0.20.0", path = "../hashes", default-features = false, features = ["hex"] }
-network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.0", default-features = false }
-primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc", "hex"] }
+chacha20-poly1305 = { package = "tidecoin-chacha20-poly1305", path = "../chacha20_poly1305", version = "0.1.3", default-features = false, features = ["alloc"] }
+encoding = { package = "tidecoin-consensus-encoding", version = "0.1.1", path = "../consensus_encoding", default-features = false, features = ["alloc"] }
+hashes = { package = "tidecoin_hashes", version = "0.21.0", path = "../hashes", default-features = false, features = ["hex"] }
+network = { package = "tidecoin-network-kind", path = "../network", version = "0.1.1", default-features = false }
+primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.103.0", default-features = false, features = ["alloc", "hex"] }
 hex-stable = { package = "hex-conservative", version = "1.0.0", default-features = false, features = ["alloc"] }
-internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false, features = ["hex"] }
-io = { package = "tidecoin-io", version = "0.5.0", path = "../io", default-features = false }
-units = { package = "tidecoin-units", path = "../units", version = "0.3.0", default-features = false }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.1", default-features = false, features = ["hex"] }
+io = { package = "tidecoin-io", version = "0.6.0", path = "../io", default-features = false }
+units = { package = "tidecoin-units", path = "../units", version = "0.3.1", default-features = false }
 zeroize = { version = "1.8", default-features = false }
 
 arbitrary = { version = "1.4.1", optional = true }

@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin-chacha20-poly1305"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin"

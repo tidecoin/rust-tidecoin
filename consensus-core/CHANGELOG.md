@@ -2,7 +2,9 @@
 
 All notable Tidecoin-specific changes for the shared consensus engine are documented here.
 
-## Unreleased
+## Unreleased — 0.2.0
+
+- Breaking: fallible spent-output/precompute APIs and updated public dependency types. Include rc3 witness rules, sighash/interpreter fixes and Falcon 0.5.0 verification.
 
 - Adopt published `tide-fn-dsa-vrfy` 0.5.0. Legacy Falcon-512 now rejects norm
   equality at 43,533,782, matching rc3. Delegate historical decoding and format
@@ -26,6 +28,9 @@ All notable Tidecoin-specific changes for the shared consensus engine are docume
   now passes an earlier signature check, so execution reaches `BAD_OPCODE` as in
   the node instead of reporting a signature failure first. The interpreter
   already removed separators, so well-formed scripts are unaffected.
+
+## 0.1.0 — published 2026-04-30
+
 - Added the shared Tidecoin consensus engine crate used by both public adapters and tests.
 - Moved Tidecoin script, witness, flag, error, and verification semantics into the lower-level consensus runtime.
 - Added the post-quantum verification facade required by Tidecoin witness validation.

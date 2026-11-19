@@ -24,6 +24,8 @@ Keep consensus, relay policy, new signing and PSBT-finalization contracts separa
 
 ## Evidence and follow-up inventories
 
+- [RELEASE_PREPARATION.md](RELEASE_PREPARATION.md): published-versus-prepared package versions, dependency order and release validation.
+
 - [NODE_PARITY_PROOF_MATRIX.md](NODE_PARITY_PROOF_MATRIX.md): tested surfaces, original-source oracle boundaries and limits.
 - [VALIDATION_FIX_BACKLOG.md](VALIDATION_FIX_BACKLOG.md), [NODE_CONSENSUS_SETTINGS_AUDIT.md](NODE_CONSENSUS_SETTINGS_AUDIT.md), [PROTOCOL_NODE_PARITY_READINESS.md](PROTOCOL_NODE_PARITY_READINESS.md): earlier audit inventories; apply the current rc3 plan before relying on old findings.
 - [WALLET_API_ROADMAP.md](WALLET_API_ROADMAP.md): future wallet/API work.

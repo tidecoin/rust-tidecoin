@@ -2,7 +2,11 @@
 
 All notable Tidecoin-specific changes for the public Tidecoin crate are documented here.
 
-## Unreleased
+## Unreleased — 0.34.0-beta.1
+
+- Include unit-test data in release archives so extracted library tests compile.
+
+- Breaking prerelease: updated public dependencies, owned Address conversions, CoinbaseRef, spent-output validation and rc3 signing/policy/PQHD integration. Includes Falcon 0.5.0.
 
 - Upgrade Falcon signing/key generation to published 0.5.0 packages, alongside
   the shared verifier fix for the legacy norm boundary. Normal signing explicitly
@@ -21,6 +25,8 @@ All notable Tidecoin-specific changes for the public Tidecoin crate are document
   `Coinbase::assume_coinbase_ref(&tx)`. The view borrows without cloning, and
   `Coinbase::as_coinbase_ref()` exposes the same view from an owned coinbase.
 - Forbid unsafe code in this crate; CI also checks expanded dependency macros.
+
+## 0.33.0-beta — published 2026-04-30
 
 - Reoriented the crate around Tidecoin-native transaction, block, script, address, network, and post-quantum key surfaces.
 - Routed consensus validation through the shared Tidecoin consensus runtime and node-parity harness instead of inherited validation dependencies.

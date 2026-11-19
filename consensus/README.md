@@ -2,6 +2,13 @@
 
 Pure-Rust Tidecoin consensus verification crate.
 
+This adapter is workspace-only (`publish = false`). It supports byte-oriented
+verification tests and fuzz targets. The main `tidecoin` crate uses
+`tidecoin-consensus-core` directly and does not require this adapter to be
+published. The unrelated crates.io package named `consensus` is not this crate.
+Any future standalone release needs a Tidecoin-specific package name and an
+API and packaging review.
+
 ## Status
 
 - Legacy, P2SH, witness-v0, and Tidecoin witness-v1-512 validation are implemented.

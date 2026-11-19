@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin-consensus-core"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin"
@@ -18,11 +18,11 @@ serde = ["hashes/serde", "hex", "internals/serde"]
 hex = ["hashes/hex"]
 
 [dependencies]
-encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", version = "0.1.0", default-features = false }
-hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.20.0", default-features = false }
-internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.0", default-features = false }
-io = { package = "tidecoin-io", path = "../io", version = "0.5.0", default-features = false, features = ["hashes"] }
-primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.102.0", default-features = false, features = ["alloc"] }
+encoding = { package = "tidecoin-consensus-encoding", path = "../consensus_encoding", version = "0.1.1", default-features = false }
+hashes = { package = "tidecoin_hashes", path = "../hashes", version = "0.21.0", default-features = false }
+internals = { package = "tidecoin-internals", path = "../internals", version = "0.5.1", default-features = false }
+io = { package = "tidecoin-io", path = "../io", version = "0.6.0", default-features = false, features = ["hashes"] }
+primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.103.0", default-features = false, features = ["alloc"] }
 fips204 = { version = "0.4", default-features = false, features = ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"] }
 tide-fn-dsa-vrfy = { version = "0.5.0", default-features = false }
 

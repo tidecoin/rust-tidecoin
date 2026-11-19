@@ -4,6 +4,9 @@ All notable Tidecoin-specific changes for the standalone consensus adapter are d
 
 ## Unreleased
 
+- Marked the adapter as workspace-only with `publish = false` and removed the
+  documentation URL pointing to the unrelated crates.io package. Workspace
+  verification tests and fuzz targets continue to use the local adapter.
 - Changed `Utxo` to `Utxo<'a>` with a borrowed `script_pubkey: &'a [u8]`.
   Removed the raw pointer, separate length and C representation. Verification
   remains safe to call; callers now borrow scripts directly. Amount and ordered
