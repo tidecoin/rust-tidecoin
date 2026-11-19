@@ -10,61 +10,17 @@ use fips204::traits::{SerDes, Verifier};
 use primitives::PqScheme;
 use tide_fn_dsa_vrfy::{FalconProfile, VerifyingKey as TideVerifyingKey, VerifyingKeyStandard};
 
-// rc3 src/pq/falcon512.c preserves the 0.18.3 compressed decoder for legacy
-// verification: negative zero and unused final bits are accepted, but extra
-// bytes, truncation and magnitudes above 2047 are not. Clear only those two
-// encoding differences before using the existing legacy arithmetic verifier.
-// This does not change the nonce, coefficients, norm bound or message hashing.
-fn canonical_falcon(signature: &[u8], logn: u8) -> Option<Vec<u8>> {
-    if signature.first() != Some(&(0x30 + logn)) || signature.len() <= 41 {
-        return None;
-    }
-    let body = &signature[41..];
-    let mut bit = 0usize;
-    let mut zero_signs = Vec::new();
-    for _ in 0..(1usize << logn) {
-        let sign_bit = bit;
-        let mut low = 0u16;
-        for _ in 0..8 {
-            low = (low << 1) | u16::from((body.get(bit / 8)? >> (7 - bit % 8)) & 1);
-            bit += 1;
-        }
-        let mut magnitude = low & 127;
-        loop {
-            let stop = (body.get(bit / 8)? >> (7 - bit % 8)) & 1;
-            bit += 1;
-            if stop != 0 {
-                break;
-            }
-            magnitude += 128;
-            if magnitude > 2047 {
-                return None;
-            }
-        }
-        if magnitude == 0 && low & 128 != 0 {
-            zero_signs.push(sign_bit);
-        }
-    }
-    if bit.div_ceil(8) != body.len() {
-        return None;
-    }
-    let mut canonical = signature.to_vec();
-    for sign in zero_signs {
-        canonical[41 + sign / 8] &= !(1 << (7 - sign % 8));
-    }
-    if !bit.is_multiple_of(8) {
-        *canonical.last_mut()? &= 0xff << (8 - bit % 8);
-    }
-    Some(canonical)
-}
-
 /// Format-only rc3 relay check; malformed full buffers are not classified as
 /// noncanonical legacy encodings. The caller separately verifies signatures.
 pub fn is_noncanonical_legacy_falcon512(signature: &[u8]) -> bool {
-    canonical_falcon(signature, 9).is_some_and(|canonical| canonical != signature)
+    tide_fn_dsa_vrfy::is_noncanonical_legacy_falcon512(signature)
 }
 
 /// A verification-only post-quantum public key.
+///
+/// Construction checks the scheme and byte length. Falcon verification decodes
+/// the key before checking the signature, returning [`PqError::BackendFailure`]
+/// for an invalid key encoding even when the signature is also malformed.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PqPublicKey {
     scheme: PqScheme,
@@ -173,16 +129,9 @@ impl PqSignature {
     fn verify_message(&self, msg: &[u8], pk: &PqPublicKey) -> Result<(), PqError> {
         match pk.scheme() {
             PqScheme::Falcon512 | PqScheme::Falcon1024 => {
-                let logn = if pk.scheme() == PqScheme::Falcon512 { 9 } else { 10 };
-                // rc3 removes PQClean's padded-size exception for both schemes.
-                if canonical_falcon(self.as_bytes(), logn)
-                    .is_none_or(|canonical| canonical != self.as_bytes())
-                {
-                    return Err(PqError::VerificationFailed);
-                }
                 let vk =
                     VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-                if vk.verify_falcon(FalconProfile::PqClean, self.as_bytes(), msg) {
+                if vk.verify_falcon(FalconProfile::TidecoinStrict, self.as_bytes(), msg) {
                     Ok(())
                 } else {
                     Err(PqError::VerificationFailed)
@@ -235,8 +184,7 @@ impl PqSignature {
             return self.verify_message(msg, pk);
         }
         let vk = VerifyingKeyStandard::decode(pk.as_bytes()).ok_or(PqError::BackendFailure)?;
-        let canonical = canonical_falcon(self.as_bytes(), 9).ok_or(PqError::VerificationFailed)?;
-        if vk.verify_falcon(FalconProfile::TidecoinLegacyFalcon512, &canonical, msg) {
+        if vk.verify_falcon(FalconProfile::TidecoinLegacyFalcon512, self.as_bytes(), msg) {
             Ok(())
         } else {
             Err(PqError::VerificationFailed)
@@ -313,5 +261,128 @@ mod tests {
         let err =
             PqPublicKey::from_prefixed_slice(&[PqScheme::Falcon512.prefix(), 1, 2]).unwrap_err();
         assert_eq!(err, PqError::InvalidKeyLength { expected: 897, got: 2 });
+    }
+    fn unhex(value: &str) -> Vec<u8> {
+        value
+            .as_bytes()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| {
+                let digit = |b: u8| (b as char).to_digit(16).unwrap() as u8;
+                (digit(pair[0]) << 4) | digit(pair[1])
+            })
+            .collect()
+    }
+
+    #[test]
+    fn falcon_rc3_verification_vectors() {
+        let mut count = 0;
+        for line in include_str!("../tests/data/falcon-rc3.txt").lines() {
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+            let fields: Vec<_> = line.split_whitespace().collect();
+            assert_eq!(fields.len(), 8);
+            let label = fields[0];
+            let message = unhex(fields[1]);
+            let raw_key = unhex(fields[2]);
+            let scheme = match raw_key[0] {
+                9 => PqScheme::Falcon512,
+                10 => PqScheme::Falcon1024,
+                _ => panic!("unexpected fixture degree"),
+            };
+            let key = PqPublicKey::from_scheme_and_bytes(scheme, &raw_key).unwrap();
+            let signature = PqSignature::from_slice(&unhex(fields[3]));
+            // The node legacy switch applies only to Falcon-512.
+            let strict = fields[5] == "true";
+            let legacy = if scheme == PqScheme::Falcon512 { fields[4] == "true" } else { strict };
+            let results = match message.len() {
+                32 => {
+                    let msg = message.as_slice().try_into().unwrap();
+                    [
+                        signature.verify_msg32(msg, &key).is_ok(),
+                        signature.verify_msg32_legacy(msg, &key).is_ok(),
+                        signature.verify_msg32_allow_legacy(msg, &key).is_ok(),
+                    ]
+                }
+                64 => {
+                    let msg = message.as_slice().try_into().unwrap();
+                    [
+                        signature.verify_msg64(msg, &key).is_ok(),
+                        signature.verify_msg64_legacy(msg, &key).is_ok(),
+                        signature.verify_msg64_allow_legacy(msg, &key).is_ok(),
+                    ]
+                }
+                _ => panic!("unexpected message width"),
+            };
+            assert_eq!(results, [strict, legacy, strict || legacy], "{label}");
+            assert_eq!(
+                is_noncanonical_legacy_falcon512(signature.as_bytes()),
+                fields[7] == "true",
+                "{label}"
+            );
+            // Changed-message and malformed-key controls. Synthetic norm fixtures
+            // need not bind uniquely to a key after an arbitrary coefficient edit.
+            let mut wrong_message = message.clone();
+            wrong_message[0] ^= 1;
+            assert!(
+                signature.verify_message_allow_legacy(&wrong_message, &key).is_err(),
+                "{label}"
+            );
+            let mut wrong_key = raw_key.clone();
+            wrong_key[0] = 0xff;
+            let wrong_key = PqPublicKey::from_scheme_and_bytes(scheme, &wrong_key).unwrap();
+            assert!(
+                signature.verify_message_allow_legacy(&message, &wrong_key).is_err(),
+                "{label}"
+            );
+            if strict || legacy {
+                let mut wrong_header = signature.as_bytes().to_vec();
+                wrong_header[0] = 0xff;
+                let mut overflow = signature.as_bytes().to_vec();
+                // A zero low part followed by 16 unary zero bits exceeds 2047.
+                overflow[41..44].fill(0);
+                for malformed in [
+                    &[][..],
+                    &wrong_header,
+                    &overflow,
+                    &signature.as_bytes()[..signature.as_bytes().len() - 1],
+                    &[signature.as_bytes(), &[0]].concat(),
+                    &[signature.as_bytes(), &[1]].concat(),
+                ] {
+                    let malformed = PqSignature::from_slice(malformed);
+                    assert!(
+                        malformed.verify_message_allow_legacy(&message, &key).is_err(),
+                        "{label}"
+                    );
+                    assert!(!is_noncanonical_legacy_falcon512(malformed.as_bytes()), "{label}");
+                }
+            }
+            count += 1;
+        }
+        assert_eq!(count, 37);
+    }
+
+    #[test]
+    fn falcon_invalid_key_precedes_invalid_signature() {
+        for scheme in [PqScheme::Falcon512, PqScheme::Falcon1024] {
+            let key =
+                PqPublicKey::from_scheme_and_bytes(scheme, &alloc::vec![0xff; scheme.pubkey_len()])
+                    .unwrap();
+            let signature = PqSignature::from_slice(&[]);
+            assert_eq!(signature.verify_msg32(&[0; 32], &key), Err(PqError::BackendFailure));
+            assert_eq!(signature.verify_msg32_legacy(&[0; 32], &key), Err(PqError::BackendFailure));
+            assert_eq!(
+                signature.verify_msg32_allow_legacy(&[0; 32], &key),
+                Err(PqError::BackendFailure)
+            );
+            assert_eq!(signature.verify_msg64(&[0; 64], &key), Err(PqError::BackendFailure));
+            assert_eq!(signature.verify_msg64_legacy(&[0; 64], &key), Err(PqError::BackendFailure));
+            assert_eq!(
+                signature.verify_msg64_allow_legacy(&[0; 64], &key),
+                Err(PqError::BackendFailure)
+            );
+        }
     }
 }

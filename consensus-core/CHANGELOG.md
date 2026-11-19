@@ -4,6 +4,17 @@ All notable Tidecoin-specific changes for the shared consensus engine are docume
 
 ## Unreleased
 
+- Adopt published `tide-fn-dsa-vrfy` 0.5.0. Legacy Falcon-512 now rejects norm
+  equality at 43,533,782, matching rc3. Delegate historical decoding and format
+  classification to the backend and use `TidecoinStrict` for strict verification.
+  Remove the duplicate encoding normalizer; retain exact consumption and allow
+  valid signatures above local signing budgets.
+- Falcon verification now decodes the public key before checking signature
+  encoding. If both are malformed, direct strict verification returns
+  `BackendFailure` instead of `VerificationFailed`. Explicit legacy verification
+  already used that ordering. Script acceptance/error mapping is unchanged
+  except rejection of the previously accepted legacy norm-equality case.
+
 - `SighashCache::legacy_signature_hash` now serializes script code like node
   `SignatureHash`: `OP_CODESEPARATOR` at instruction boundaries is removed, and
   at a malformed push the written bytes stop where node `GetScriptOp` stops.

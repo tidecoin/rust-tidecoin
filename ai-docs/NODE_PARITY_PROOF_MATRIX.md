@@ -42,6 +42,12 @@ A later digest comparison found a tenth discrepancy, in legacy script-code
 serialization; see
 [signature hash comparison](RC3_MIGRATION_PLAN.md#signature-hash-comparison-2026-11-18).
 
+The Falcon 0.5.0 consumer upgrade fixes another discrepancy: legacy norm
+equality at 43,533,782 was accepted by the old backend. Permanent public-API
+fixtures and original-node comparisons cover that endpoint, both strict bounds,
+historical encodings and signatures above local signing limits. Validation status
+is recorded in the [migration plan](RC3_MIGRATION_PLAN.md#falcon-050-consumer-integration-2026-11-19).
+
 ## Retained and updated differential suites
 
 Historical `rc2` filenames retain regression provenance; required runs now use
@@ -49,6 +55,7 @@ the rc3 pin and updated source-derived expectations.
 
 | Surface | Evidence | Oracle boundary |
 | --- | --- | --- |
+| Falcon 0.5.0 strict/legacy/fallback verification, norm endpoints, encoding and public wrapper | `consensus-core/tests/data/falcon-rc3.txt`, `falcon_rc3_verification_vectors`, `falcon_050_vectors_match_original_node_and_public_apis`, `falcon_encoding_policy_and_error_order_match_node` | Original `pq::Verify/Verify64` and script interpreter; registry backend, no consumer normalization. |
 | V1 SHA-512 commitments, six modes, ordered spent outputs, missing context, SINGLE boundaries and cache invalidation | `consensus/tests/tidecoin_rc2_context.rs`, `tidecoin/tests/rc2_spent_output_context.rs` | Original `SignatureHash512` and interpreter; independent digest vector in `tidecoin_rc2_oracle.rs`. |
 | Activation, native/wrapped v1, ordinary preactivation scripts, independent flags, scheme eligibility | `consensus/tests/tidecoin_rc2_rules.rs` | Original C++ interpreter and PQ routines. |
 | All 256 legacy/v0 hash bytes, defined v1 modes, error ordering, NULLFAIL and multisig | same rules suite and context suite | Original C++ interpreter; preserves historical legacy/v0 semantics. |

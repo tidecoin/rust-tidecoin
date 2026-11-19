@@ -661,7 +661,9 @@ impl PqSignature {
                 return bounded_falcon_signature(
                     sk.scheme().max_sig_len(),
                     sk.scheme().local_signing_max_sig_len(),
-                    |sig| signing_key.sign_falcon(rng, FalconProfile::PqClean, msg, sig).ok(),
+                    |sig| {
+                        signing_key.sign_falcon(rng, FalconProfile::TidecoinStrict, msg, sig).ok()
+                    },
                 );
             }
             PqScheme::MlDsa44 => {
@@ -1164,8 +1166,8 @@ mod tests {
     fn completed_falcon_retry_advances_randomness_and_returns_a_valid_signature() {
         with_signing_test_stack(|| {
             for (scheme, profile) in [
-                (PqScheme::Falcon512, FalconProfile::PqClean),
-                (PqScheme::Falcon1024, FalconProfile::PqClean),
+                (PqScheme::Falcon512, FalconProfile::TidecoinStrict),
+                (PqScheme::Falcon1024, FalconProfile::TidecoinStrict),
                 (PqScheme::Falcon512, FalconProfile::TidecoinLegacyFalcon512),
             ] {
                 let (pk, sk) = deterministic_keypair(scheme, 0x96);

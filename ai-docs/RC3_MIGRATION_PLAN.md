@@ -39,6 +39,89 @@ in those callers must still be inspected for effects on exposed Rust contracts.
 Do not infer full-node or PSBT compatibility from the library gate. Preserve
 mainnet activation settings and the node's deferred design decisions.
 
+## Falcon 0.5.0 consumer integration (2026-11-19)
+
+Implementation complete; local validation recorded below. Consumer package
+versions are unchanged. Hosted CI for the integration commit is pending.
+
+- Adopted registry `tide-fn-dsa-{comm,kgen,sign,vrfy}` 0.5.0 without old-version
+  duplicates or local path/Git patches. Local Cargo.lock checksums match the
+  published release record; Cargo.lock remains ignored by repository policy.
+- Removed `canonical_falcon`. Strict verification/signing explicitly use
+  `TidecoinStrict`; legacy verification receives the original bytes and uses
+  `TidecoinLegacyFalcon512`. The classifier delegates to the backend. Interpreter
+  activation, relay-only canonicality and sighash-byte handling are unchanged.
+- Preserved larger signing buffers, the 666/1280 output budget, advancing RNG
+  retries and actual-length serialization. The legacy backend's internal nonce
+  behavior is unchanged. No PQHD expansion or deterministic mapping changed.
+- Key decoding now precedes signature validation in direct strict Falcon APIs.
+  Invalid key plus malformed signature returns `BackendFailure`; a regression
+  and both changelogs record this deliberate public error-precedence change.
+  Script verification maps both backend failures to signature failure as before.
+
+### Permanent regressions and original-node comparison
+
+Before changing dependencies, `falcon_rc3_verification_vectors` reproduced the
+legacy equality defect: norm 43,533,782 was accepted by both explicit legacy and
+strict-with-legacy fallback APIs. After the upgrade both reject it. The below
+and above endpoints agree with rc3. This is a Rust dependency mismatch, not a
+node logic defect.
+
+`consensus-core/tests/data/falcon-rc3.txt` contains the crate's 36 published
+fixtures plus a combined negative-zero/unused-bits case. Fixture provenance is
+in the adjacent README. The ordinary core test needs no C++ checkout and checks
+strict/legacy/fallback, both message widths, classification, changed messages,
+malformed keys, truncation, appended bytes, headers and coefficient overflow.
+Strict endpoints for both Falcon degrees and valid 745/1449-byte strict
+signatures prevent accidental verification caps at local signing budgets.
+
+The product node test compares all 37 rows and six edits per row (259 cases)
+with original `pq::Verify/Verify64`, then checks strict/legacy/fallback public
+wrappers. Another 50 script comparisons cover CHECKSIG/CHECKMULTISIG, sighash
+stripping, canonicality/strict flags, NULLFAIL and invalid-hash-type precedence.
+Existing classifier-to-C and signed activation comparisons remain in
+`consensus/tests/tidecoin_rc2_rules.rs`. Repeated bounded signing now covers both
+32/64-byte messages in normal and Falcon-512 legacy modes, with original-node
+acceptance and changed-message rejection for all schemes.
+
+### Local validation
+
+All node comparisons use required mode with
+`TIDECOIN_NODE_REPO=/home/yaroslav/dev/tidecoin/tidecoin`,
+`TIDECOIN_NODE_PARITY_REQUIRED=1` and
+`TIDECOIN_NODE_VALIDATION_ORACLE=target/node-oracle/tidecoin-validation-oracle`
+(absolute oracle path in the actual commands). Rebuilt the oracle with
+`cmake --build target/node-oracle --target tidecoin-validation-oracle -j 2`.
+The source remains pinned to `ffed4e92e60ff2de30361648a71cba64531f9077`.
+
+| Check | Result |
+| --- | --- |
+| Rust 1.94.1 `cargo test --workspace --all-targets` | 1,821 passed, 0 failed/ignored |
+| Rust 1.94.1 `cargo test --workspace --all-features --all-targets` | 1,905 passed, 0 failed/ignored |
+| Rust 1.99.1 all-features workspace suite | 1,905 passed, 0 failed/ignored |
+| Forced scalar: core `--features tide-fn-dsa-vrfy/no_avx2 --lib` | 40 passed |
+| Forced scalar: product `--features tidecoin-node-validation,tide-fn-dsa-sign/no_avx2,tide-fn-dsa-kgen/no_avx2 --lib` | 351 passed |
+| Strict workspace Clippy, default/all features | Passed on Rust 1.94.1 and 1.99.1 |
+| Rust 1.94.1 workspace all-targets/all-features build | Passed |
+| Workspace no-default-features build; core no-default-features library tests | Passed; 40 core tests |
+| Rust 1.99.1 core no-default-features build for `thumbv7m-none-eabi` | Passed |
+| Workspace doctests | 83 passed, 2 previously ignored |
+| Expanded-code check, core and product, libraries/tests/features | Passed on pinned nightly |
+| Formatting and whitespace | Passed |
+
+Default dispatch ran on an AVX2-capable x86_64 host; explicit `no_avx2` runs
+exercise the scalar path through the consumer. Key-generation/PQHD comparisons
+check exact bytes, and the complete suites include historical/modern WIF and
+key validity, script/witness/transaction matrices and signed fuzz-driver
+regressions. No additional timed fuzz campaign was run for this upgrade.
+
+This establishes the listed consumer behavior; it does not establish full node
+or PSBT parity. No complete Rust PSBT API exists. Native Windows/macOS consumer
+execution was not run locally; the crate release's native CI is separate
+backend evidence. Existing repository CI must pass before a consumer release.
+No release tag currently exists in this repository (only the archive tag), and
+no tag or publication is part of this implementation checkpoint.
+
 ## Findings and evidence
 
 The full workspace gate passed **1,803 tests across 106 test targets**, and the

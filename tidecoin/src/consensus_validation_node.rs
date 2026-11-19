@@ -1971,6 +1971,187 @@ mod tests {
         key_io_txcreatesignv1_p2pkh_legacy_wif_verifies();
     }
 
+    // These repository-owned fixtures also run without a node in consensus-core.
+    // Read at runtime here because the node-only suite already requires a source checkout.
+    fn falcon_compatibility_vectors() -> String {
+        fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../consensus-core/tests/data/falcon-rc3.txt"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn falcon_050_vectors_match_original_node_and_public_apis() {
+        require_node_harness!();
+        let vectors = falcon_compatibility_vectors();
+        let mut count = 0;
+        for line in vectors.lines().filter(|line| !line.starts_with('#') && !line.is_empty()) {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            let label = fields[0];
+            let msg = parse_hex_bytes(fields[1]);
+            let raw_key = parse_hex_bytes(fields[2]);
+            let scheme = if raw_key[0] == 9 { PqScheme::Falcon512 } else { PqScheme::Falcon1024 };
+            let pk = PqPublicKey::from_prefixed_slice(&[&[scheme.prefix()][..], &raw_key].concat())
+                .unwrap();
+            let raw_signature = parse_hex_bytes(fields[3]);
+            let strict = fields[5] == "true";
+            let legacy = if scheme == PqScheme::Falcon512 { fields[4] == "true" } else { strict };
+            for variant in 0..7 {
+                let mut signature = raw_signature.clone();
+                let mut message = msg.clone();
+                let mut public_key = pk.clone();
+                match variant {
+                    0 => {}
+                    1 => {
+                        message[0] ^= 1;
+                    }
+                    2 => {
+                        signature.pop();
+                    }
+                    3 => {
+                        signature.push(0);
+                    }
+                    4 => {
+                        signature.push(1);
+                    }
+                    5 => {
+                        signature[0] = 0xff;
+                    }
+                    6 => {
+                        let mut malformed_key = raw_key.clone();
+                        malformed_key[0] = 0xff;
+                        public_key = PqPublicKey::from_prefixed_slice(
+                            &[&[scheme.prefix()][..], &malformed_key].concat(),
+                        )
+                        .unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+                let sig = PqSignature::from_slice(&signature);
+                let node_strict = node_verify_message(scheme, &message, &sig, &public_key, false);
+                let node_legacy = node_verify_message(scheme, &message, &sig, &public_key, true);
+                if variant == 0 {
+                    assert_eq!([node_strict, node_legacy], [strict, legacy], "{label}");
+                }
+                let actual = match message.len() {
+                    32 => {
+                        let msg = message.as_slice().try_into().unwrap();
+                        [
+                            sig.verify_msg32(msg, &public_key).is_ok(),
+                            sig.verify_msg32_legacy(msg, &public_key).is_ok(),
+                            sig.verify_msg32_allow_legacy(msg, &public_key).is_ok(),
+                        ]
+                    }
+                    64 => {
+                        let msg = message.as_slice().try_into().unwrap();
+                        [
+                            sig.verify_msg64(msg, &public_key).is_ok(),
+                            sig.verify_msg64_legacy(msg, &public_key).is_ok(),
+                            sig.verify_msg64_allow_legacy(msg, &public_key).is_ok(),
+                        ]
+                    }
+                    _ => panic!("unexpected message width"),
+                };
+                assert_eq!(
+                    actual,
+                    [node_strict, node_legacy, node_strict || node_legacy],
+                    "{label}, variant {variant}"
+                );
+            }
+            count += 1;
+        }
+        assert_eq!(count, 37);
+    }
+
+    #[test]
+    fn falcon_encoding_policy_and_error_order_match_node() {
+        require_node_harness!();
+        let vectors = falcon_compatibility_vectors();
+        for line in vectors.lines().filter(|line| {
+            matches!(
+                line.split_whitespace().next(),
+                Some("orig" | "tail" | "negzero" | "negzero-tail" | "appendzero")
+            )
+        }) {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            let label = fields[0];
+            let key = [&[PqScheme::Falcon512.prefix()][..], &parse_hex_bytes(fields[2])].concat();
+            for multisig in [false, true] {
+                let script = if multisig {
+                    ScriptPubKeyBuf::builder()
+                        .push_int(1)
+                        .unwrap()
+                        .push_slice(push_bytes(&key))
+                        .push_int(1)
+                        .unwrap()
+                        .push_opcode(OP_CHECKMULTISIG)
+                        .into_script()
+                } else {
+                    ScriptPubKeyBuf::builder()
+                        .push_slice(push_bytes(&key))
+                        .push_opcode(OP_CHECKSIG)
+                        .into_script()
+                };
+                for (flags, hash_type, expected) in [
+                    (VERIFY_NONE, 1, ScriptError::EvalFalse),
+                    (
+                        consensus_core::VERIFY_FALCON_CANONICAL,
+                        1,
+                        if fields[7] == "true" {
+                            ScriptError::SigFalconEncoding
+                        } else {
+                            ScriptError::EvalFalse
+                        },
+                    ),
+                    (
+                        consensus_core::VERIFY_FALCON_CANONICAL | VERIFY_NULLFAIL,
+                        1,
+                        if fields[7] == "true" {
+                            ScriptError::SigFalconEncoding
+                        } else {
+                            ScriptError::NullFail
+                        },
+                    ),
+                    (
+                        consensus_core::VERIFY_FALCON_CANONICAL | VERIFY_PQ_STRICT,
+                        1,
+                        ScriptError::EvalFalse,
+                    ),
+                    (
+                        consensus_core::VERIFY_FALCON_CANONICAL | VERIFY_DEFINED_HASHTYPE,
+                        0,
+                        ScriptError::SigHashType,
+                    ),
+                ] {
+                    let mut signature = parse_hex_bytes(fields[3]);
+                    signature.push(hash_type);
+                    let mut builder = ScriptSigBuf::builder();
+                    if multisig {
+                        builder = builder.push_int(0).unwrap();
+                    }
+                    let mut tx = tx_template(1);
+                    tx.inputs[0].script_sig =
+                        builder.push_slice(push_bytes(&signature)).into_script();
+                    let node = verify_script_input(&script, 0, Amount::ZERO, &tx, flags);
+                    let rust = consensus_core::verify_script_input(
+                        &tx,
+                        0,
+                        consensus_core::SpendContext::new(script.as_bytes(), None, 0, true),
+                        flags,
+                    )
+                    .map_err(TidecoinValidationError::from);
+                    assert_eq!(
+                        node,
+                        Err(TidecoinValidationError::Script(expected)),
+                        "{label}, multi={multisig}, flags={flags}"
+                    );
+                    assert_eq!(rust, node, "{label}, multi={multisig}, flags={flags}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn pq_seed_keygen_matches_node_for_all_schemes() {
         require_node_harness!();
@@ -2050,25 +2231,37 @@ mod tests {
                     if legacy && scheme != PqScheme::Falcon512 {
                         continue;
                     }
-                    let mut previous = None;
-                    for _ in 0..4 {
-                        let sig = if legacy {
-                            PqSignature::sign_msg64_legacy_with_rng(
-                                &[0x57; 64],
-                                &sk,
-                                &mut rand_core::OsRng,
-                            )
-                            .unwrap()
-                        } else {
-                            PqSignature::sign_msg64(&[0x57; 64], &sk).unwrap()
-                        };
-                        assert!(sig.len() <= scheme.local_signing_max_sig_len());
-                        assert!(node_verify_message(scheme, &[0x57; 64], &sig, &pk, legacy));
-                        assert!(!node_verify_message(scheme, &[0x58; 64], &sig, &pk, legacy));
-                        if let Some(prior) = previous {
-                            assert_ne!(sig, prior);
+                    for width in [32, 64] {
+                        let mut previous = None;
+                        for _ in 0..4 {
+                            let sig = match (width, legacy) {
+                                (32, false) => PqSignature::sign_msg32(&[0x57; 32], &sk),
+                                (32, true) => PqSignature::sign_msg32_legacy(&[0x57; 32], &sk),
+                                (64, false) => PqSignature::sign_msg64(&[0x57; 64], &sk),
+                                (64, true) => PqSignature::sign_msg64_legacy(&[0x57; 64], &sk),
+                                _ => unreachable!(),
+                            }
+                            .unwrap();
+                            assert!(sig.len() <= scheme.local_signing_max_sig_len());
+                            assert!(node_verify_message(
+                                scheme,
+                                &[0x57; 64][..width],
+                                &sig,
+                                &pk,
+                                legacy
+                            ));
+                            assert!(!node_verify_message(
+                                scheme,
+                                &[0x58; 64][..width],
+                                &sig,
+                                &pk,
+                                legacy
+                            ));
+                            if let Some(prior) = previous {
+                                assert_ne!(sig, prior);
+                            }
+                            previous = Some(sig);
                         }
-                        previous = Some(sig);
                     }
                 }
             }

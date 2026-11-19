@@ -4,6 +4,14 @@ All notable Tidecoin-specific changes for the public Tidecoin crate are document
 
 ## Unreleased
 
+- Upgrade Falcon signing/key generation to published 0.5.0 packages, alongside
+  the shared verifier fix for the legacy norm boundary. Normal signing explicitly
+  selects `TidecoinStrict`; preserve local output budgets, advancing RNG retries,
+  actual-length serialization, deterministic keys and PQHD derivation.
+- Direct strict Falcon verification reports `BackendFailure` for an invalid key
+  encoding even if the signature is also malformed; the shared-core changelog
+  records this error-precedence clarification.
+
 - Removed `Address::as_unchecked()`; use `to_unchecked()` instead. Removed
   `Address<NetworkUnchecked>::assume_checked_ref()`; use `assume_checked()`
   instead. Addresses are `Copy`; these value conversions do not change
