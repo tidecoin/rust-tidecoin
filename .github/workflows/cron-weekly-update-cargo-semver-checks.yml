@@ -1,7 +1,5 @@
 name: Update cargo-semver-checks
 on:
-  schedule:
-    - cron: "0 0 * * 6" # runs every Saturday at 00:00
   workflow_dispatch: # allows manual triggering
 permissions: {}
 jobs:

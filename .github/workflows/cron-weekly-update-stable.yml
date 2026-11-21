@@ -1,7 +1,5 @@
 name: Update Stable rustc
 on:
-  schedule:
-    - cron: "0 0 * * 5" # runs every Friday at 00:00 (generally rust releases on Thursday)
   workflow_dispatch: # allows manual triggering
 permissions: {}
 jobs:
