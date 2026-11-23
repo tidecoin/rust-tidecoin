@@ -1,15 +1,15 @@
 # Wallet API Roadmap
 
-Status: future wallet-facing work under the pinned rc3 compatibility target.
+Status: future wallet-facing work under the pinned rc4 compatibility target.
 
 This document tracks Rust crate work that is useful to wallets, mobile clients,
 and application developers. It is separate from the consensus and node-parity
 docs because wallet ergonomics should compose existing protocol primitives
 instead of changing consensus boundaries.
 
-The [rc3 migration plan](RC3_MIGRATION_PLAN.md) owns the target, dependencies,
-evidence and current implementation priorities. Its ordered compatibility
-follow-up precedes this wallet work. Review rc3 signing and PSBT callers before
+The [rc4 migration plan](RC4_MIGRATION_PLAN.md) owns the target, dependencies,
+evidence and current implementation priorities. The linked ordered compatibility
+follow-up precedes this wallet work. Review rc4 signing and PSBT callers before
 implementing each API slice.
 
 ## Current Foundation
@@ -37,7 +37,7 @@ the following areas.
 - consistent previous-output records and authenticated script commitments
 - public declarations, combine semantics and explicit signing consent
 - native v1 signing with complete non-ANYONECANPAY context
-- native/wrapped v0 finalization matching rc3 script commitments
+- native/wrapped v0 finalization matching rc4 script commitments
 - legacy external-signing data requirements
 - final verification, extraction, per-input analysis and conditional cleanup
 - top-level `wsh512(...)` descriptors and rejection of wrapped v1 signing
@@ -56,6 +56,15 @@ Goal:
 This is the corrected form of the earlier "wallet-facing transaction builder"
 idea. The crate already has transaction-building ingredients; the missing piece
 is the user-facing composition layer.
+
+The rc4 source review adds construction requirements from `wallet/spend.cpp`:
+complete CompactSize count accounting including change; fee reconciliation
+without changing recipients unless subtraction was requested; exact-WU input
+budget comparisons; and assembled maximum-weight checks using the final parent
+context. A preview must use actual scripts, ancestor fees and available solving
+data without reserving change or modifying wallet state. See the
+[rc4 source dispositions](RC4_MIGRATION_PLAN.md#source-review-and-rust-disposition).
+These remain future wallet work, not capabilities of the sizing primitives.
 
 Initial scope:
 
@@ -118,7 +127,7 @@ Reference:
 
 Wallet-facing APIs are ready only when:
 
-- relevant rc3 PSBT/signing interoperability cases pass against the pinned node
+- relevant rc4 PSBT/signing interoperability cases pass against the pinned node
 - they compose existing transaction/script/address/PQ primitives instead of
   duplicating them
 - fee and dust behavior is tied to existing policy helpers

@@ -2,7 +2,11 @@
 
 All notable Tidecoin-specific changes for the node-parity harness are documented here.
 
-## Unreleased — 0.2.0
+## 0.2.1 — 2026-11-23
+
+- Pin Tidecoin v1.0.0rc4 (78aca4a6b6) and add serialization-only transaction/input weight comparisons using the original C++ functions.
+
+## 0.2.0
 
 - Breaking: expanded public error enums and original-node comparison interfaces. Pin rc3 and package the current oracle support.
 

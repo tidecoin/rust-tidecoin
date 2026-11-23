@@ -4,9 +4,11 @@ This repository is currently maintained as the Tidecoin Rust workspace.
 
 ## Node compatibility
 
-The active `v2` target is Tidecoin `v1.0.0rc3`
-(`ffed4e92e60ff2de30361648a71cba64531f9077`). This is not a published Rust
-workspace release. The [migration plan](../ai-docs/RC3_MIGRATION_PLAN.md)
+The active `main` target is Tidecoin `v1.0.0rc4`
+(`78aca4a6b656f43a1efe4b43cf884214219b6c09`), used by `tidecoin`
+0.34.0-beta.2 and `tidecoin-node-parity` 0.2.1. The preceding
+`tidecoin` 0.34.0-beta.1 release at `882df93` was validated against rc3.
+The [migration plan](../ai-docs/RC4_MIGRATION_PLAN.md)
 records original-source comparisons, check results and remaining limits.
 Full-node acceptance and PSBT interoperability are not claimed.
 
@@ -61,17 +63,14 @@ Dependency versions are tracked in the workspace manifests. Lockfiles are local 
 artifacts for this library workspace; prefer committed `version` or pinned `git` dependencies for
 reproducibility, and do not commit local developer overrides as external path dependencies.
 
-The Falcon verifier uses the published `tide-fn-dsa-vrfy` 0.4.1 release (minimum
-version), containing the rc2 verification fixes from source revision
-`522f179ae3fdbcf180854f17a41de520013e9ec6`. Signing and key generation use their
-existing registry 0.4.0 releases; all three share the registry common crate.
-No Git dependency, publishing credential or local Falcon checkout is needed.
-This dependency publication does not publish the rust-tidecoin workspace itself.
-
-The shared Rust facade applies rc3 decoding rules around that registry verifier:
-legacy negative zero and unused final bits are normalized without changing the
-signed coefficients; strict verification rejects all trailing padding. These
-rules and local signing bounds are tested against the pinned original node.
+Falcon verification, signing and key generation use the published
+`tide-fn-dsa-{vrfy,sign,kgen}` 0.5.0 packages and their shared common crate.
+Verification uses the explicit `TidecoinStrict` and `TidecoinLegacyFalcon512`
+profiles; the Rust facade no longer normalizes historical signatures itself.
+The legacy profile accepts historical negative zero/final bits while rejecting
+norm equality at 43,533,782 and appended bytes, matching the pinned node.
+Strict verification rejects padding and accepts valid signatures above the local
+signing budgets. No local Falcon checkout or Git dependency is required.
 
 
 PQ input estimates support `PqSignatureSize::LocalSigning` and `Maximum` through
@@ -81,3 +80,11 @@ limits; this does not select consensus flags. For node-style fees, round the tot
 predicted weight to virtual bytes, then call `FeeRate::mul_by_vsize`. Dust now
 rounds fees upward like rc3, and weight-based fee arithmetic preserves fractional
 rates instead of truncating them before multiplication.
+
+Rc4 changes wallet funding, explicit input-budget checks and GUI previews. The
+library's complete-transaction weight predictions already account for count
+widths, change and mixed witnesses; the rc4 plan records the new comparisons.
+Wallet funding, parent-dependent construction limits and previews are not
+implemented here. `TxInExt::segwit_weight` matches the node's input-budget
+convention, including one empty witness-count byte for a legacy input; compare
+budgets in WU before vsize rounding.

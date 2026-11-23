@@ -1,5 +1,9 @@
 # rc3 compatibility migration
 
+Historical migration record. The active target is now rc4; see
+[RC4_MIGRATION_PLAN.md](RC4_MIGRATION_PLAN.md). The ordered follow-up below
+remains the broader research backlog.
+
 Status: initial rc3 checkpoint passed local and main hosted CI (2026-11-16).
 The signing/fee follow-up below passes local gates; its hosted CI is pending.
 Initial Miri status is recorded with its run link below.

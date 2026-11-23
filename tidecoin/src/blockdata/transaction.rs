@@ -90,6 +90,9 @@ internal_macros::define_extension_trait! {
         ///
         /// This always takes into account the witness, even when empty (in which
         /// case 1WU for the witness length `00` is included).
+        /// This matches the node's `GetTransactionInputWeight` convention, also
+        /// used for explicit wallet input-weight budgets in rc4. Compare such
+        /// budgets in weight units before rounding to virtual bytes.
         ///
         /// Keep in mind that when adding a TxIn to a transaction, the total weight of the transaction
         /// might increase more than `TxIn::segwit_weight`. This happens when:
@@ -624,6 +627,14 @@ pub fn effective_value(
 /// fee output you can use the return value of [`Transaction::script_pubkey_lens`] method directly
 /// as the second argument.
 ///
+/// Include every prospective output, including change. Adding or removing change
+/// can change the encoded output-count width as well as the output bytes. The
+/// input and output counts are computed from the complete iterators.
+///
+/// This function calculates weight only. It does not select coins, adjust change
+/// or recipient amounts, add ancestor fees, or enforce wallet transaction-weight
+/// limits. Those require the caller's funding and chain context.
+///
 /// # Usage
 ///
 /// When signing a transaction one doesn't know the signature before knowing the transaction fee and
@@ -976,6 +987,11 @@ impl InputWeightPrediction {
 
     /// Computes the signature, prevout (txid, index), and sequence weights of this weight
     /// prediction.
+    ///
+    /// A non-witness prediction excludes the empty witness-stack byte. When a
+    /// transaction mixes legacy and witness inputs, [`predict_weight`] adds that
+    /// byte for each legacy input. This differs from the node's explicit wallet
+    /// input-weight budget convention, which always includes it.
     ///
     /// This function's internal arithmetic saturates at u32::MAX, so the return value of this
     /// function may be inaccurate for extremely large witness predictions.

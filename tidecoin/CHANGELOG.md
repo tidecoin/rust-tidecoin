@@ -2,7 +2,11 @@
 
 All notable Tidecoin-specific changes for the public Tidecoin crate are documented here.
 
-## Unreleased — 0.34.0-beta.1
+## 0.34.0-beta.2 — 2026-11-23
+
+- Revalidate against Tidecoin rc4. Add original-node comparisons for count/change and mixed-input size boundaries and document exact input-weight conventions. Existing sizing behavior is preserved; no wallet-funding API is introduced.
+
+## 0.34.0-beta.1
 
 - Include unit-test data in release archives so extracted library tests compile.
 

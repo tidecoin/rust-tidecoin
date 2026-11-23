@@ -1,13 +1,21 @@
 # Node Parity Proof Matrix
 
-Status: rc3 migration evidence; see the active plan for completed checks.
+Status: rc4 local migration checks pass, including the retained differential suites.
+Historical campaign results keep their original node revision. See the active
+plan for results and limits.
 
 This matrix is subordinate to [README.md](README.md). It maps stateless and
 caller-context Rust validation to evidence against C++ node
-`ffed4e92e60ff2de30361648a71cba64531f9077` (`v1.0.0rc3`). The
-[active migration record](RC3_MIGRATION_PLAN.md)
+`78aca4a6b656f43a1efe4b43cf884214219b6c09` (`v1.0.0rc4`). The
+[active migration record](RC4_MIGRATION_PLAN.md)
 owns commands, results and CI status. Passing these cases is a bounded
 compatibility checkpoint, not proof of every possible input.
+
+## rc4 additions
+
+| Surface | Original-source comparison and limit |
+| --- | --- |
+| Complete input/output count widths, marginal change output, mixed PQ schemes and witness forms, local/external size modes, exact input WU and fee rounding | `tidecoin/tests/rc4_fee_accounting.rs` calls the original node's `GetTransactionWeight`, `GetVirtualTransactionSize`, `GetTransactionInputWeight` and `CFeeRate::GetFee` through `tx_weight`. Synthetic satisfactions test sizing only; wallet selection, change reconciliation, explicit-budget rejection and ancestor limits remain outside Rust's implemented API. Validation status is recorded in the rc4 plan. |
 
 ## rc3 additions
 
@@ -50,8 +58,8 @@ is recorded in the [migration plan](RC3_MIGRATION_PLAN.md#falcon-050-consumer-in
 
 ## Retained and updated differential suites
 
-Historical `rc2` filenames retain regression provenance; required runs now use
-the rc3 pin and updated source-derived expectations.
+Historical `rc2`/`rc3` filenames retain regression provenance; required runs now use
+the rc4 pin and updated source-derived expectations.
 
 | Surface | Evidence | Oracle boundary |
 | --- | --- | --- |

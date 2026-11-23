@@ -1,15 +1,15 @@
 # PSBT
 
 A complete Rust PSBT API remains future work. Its target is Tidecoin node
-`v1.0.0rc3`, commit `ffed4e92e60ff2de30361648a71cba64531f9077`.
+`v1.0.0rc4`, commit `78aca4a6b656f43a1efe4b43cf884214219b6c09`.
 
 The [wallet roadmap](../ai-docs/WALLET_API_ROADMAP.md) records planned format
 handling, previous-output integrity, signing consent, combining, finalization,
 analysis, external-signing data requirements and PQHD origins. The
-[rc3 migration plan](../ai-docs/RC3_MIGRATION_PLAN.md) owns source-review evidence
+[rc4 migration plan](../ai-docs/RC4_MIGRATION_PLAN.md) owns source-review evidence
 and current priorities.
 
-Rc3 uses native-only witness-v1 signing and top-level `wsh512(...)`
+Rc4 retains native-only witness-v1 signing and top-level `wsh512(...)`
 descriptors. Future PSBT APIs must preserve selected-era eligibility, complete
 non-ANYONECANPAY v1 context, full previous transactions for legacy finals,
 exact wrapped-v0 final pushes and classification of invalid, excluded and

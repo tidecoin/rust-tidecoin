@@ -59,19 +59,19 @@ it is deliberately building on the lower-level shared engine.
 
 ## Consensus-sensitive changes
 
-The active protocol-library target is Tidecoin `v1.0.0rc3`,
-node `ffed4e92e60ff2de30361648a71cba64531f9077`. Validation covers the
+The active protocol-library target is Tidecoin `v1.0.0rc4`,
+node `78aca4a6b656f43a1efe4b43cf884214219b6c09`. Validation covers the
 script, caller-context, header/PoW and stateless policy surfaces listed in the
 [proof matrix](ai-docs/NODE_PARITY_PROOF_MATRIX.md). Full chainstate/mempool
 acceptance and Rust PSBT interoperability remain outside that claim.
 
-CI targets `main`, `test-ci/**` branches and pull requests. Its `Required rc3 node parity` job
+CI targets `main`, `test-ci/**` branches and pull requests. Its `Required rc4 node parity` job
 checks out `node-parity/NODE_REVISION`, fails on unavailable/mismatched oracle
 configuration, and runs workspace tests, product node parity, Clippy and feature
-checks. Hosted verification remains pending; `main` currently has no branch
-protection or enforced status checks. The `Miri` and `Fuzz` workflows run only
+checks. Hosted verification for the rc4 migration remains pending. The `Miri`
+and `Fuzz` workflows run only
 when started manually from the Actions tab. See [node compatibility](docs/supported-versions.md) and
-the [migration evidence](ai-docs/RC3_MIGRATION_PLAN.md).
+the [migration evidence](ai-docs/RC4_MIGRATION_PLAN.md).
 
 Pure-Rust validation is checked against the real Tidecoin node. Consensus-sensitive changes should
 be treated as node-parity-sensitive engineering work and verified with the Tidecoin fixture and
@@ -93,7 +93,7 @@ checks it before skipping any crate. Dependencies, other feature combinations,
 other targets and doctest bodies are outside this expansion claim.
 Building the original
 C++ validation oracle is documented in the
-[migration evidence](ai-docs/RC3_MIGRATION_PLAN.md#validation-commands).
+[migration evidence](ai-docs/RC4_MIGRATION_PLAN.md#validation-commands).
 
 ## Minimum Supported Rust Version (MSRV)
 

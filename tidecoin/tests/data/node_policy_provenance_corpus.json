@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_node_commit": "ffed4e92e60ff2de30361648a71cba64531f9077",
+  "source_node_commit": "78aca4a6b656f43a1efe4b43cf884214219b6c09",
   "source_files": {
     "consensus_h": {
       "path": "src/consensus/consensus.h",

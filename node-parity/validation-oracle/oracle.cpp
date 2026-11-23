@@ -98,12 +98,25 @@ static UniValue Run(const UniValue& request, const fs::path& datadir)
     const std::string op = request["op"].get_str();
     const auto& p = params.GetConsensus();
     BlockValidationState state;
-    if (op == "signed_tx_cost") {
+    if (op == "signed_tx_cost" || op == "tx_weight") {
         DataStream stream{ParseHex(request["tx"].get_str())};
         CMutableTransaction decoded;
         stream >> TX_WITH_WITNESS(decoded);
         if (!stream.empty()) throw DecodeError("trailing transaction bytes");
         const CTransaction tx{decoded};
+        const auto vsize = GetVirtualTransactionSize(tx);
+        UniValue out{UniValue::VOBJ};
+        out.pushKV("weight", GetTransactionWeight(tx));
+        out.pushKV("vsize", vsize);
+        out.pushKV("rate_fee", CFeeRate{request["rate"].getInt<CAmount>()}.GetFee(vsize));
+        if (op == "tx_weight") {
+            // Serialization-only sizing, including synthetic maximum satisfactions.
+            // No wallet funding, script acceptance or UTXO validity is implied.
+            UniValue weights{UniValue::VARR};
+            for (const auto& input : tx.vin) weights.push_back(GetTransactionInputWeight(input));
+            out.pushKV("input_weights", weights);
+            return out;
+        }
         const auto& spent = request["spent"].getValues();
         if (spent.size() != tx.vin.size()) throw DecodeError("spent output count");
         CCoinsView base;
@@ -117,12 +130,7 @@ static UniValue Run(const UniValue& request, const fs::path& datadir)
         CAmount paid_fee{0};
         if (!Consensus::CheckTxInputs(tx, tx_state, coins, 2, paid_fee))
             throw std::runtime_error(tx_state.ToString());
-        const auto vsize = GetVirtualTransactionSize(tx);
-        UniValue out{UniValue::VOBJ};
-        out.pushKV("weight", GetTransactionWeight(tx));
-        out.pushKV("vsize", vsize);
         out.pushKV("paid_fee", paid_fee);
-        out.pushKV("rate_fee", CFeeRate{request["rate"].getInt<CAmount>()}.GetFee(vsize));
         return out;
     }
     if (op == "pq_estimate") {

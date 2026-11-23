@@ -32,7 +32,7 @@ jobs:
         run: python3 contrib/check-expanded-safety.py
 
   NodeParity:
-    name: Required rc3 node parity
+    name: Required rc4 node parity
     runs-on: ubuntu-24.04
     permissions:
       contents: read

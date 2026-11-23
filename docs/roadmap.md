@@ -1,8 +1,8 @@
 # Tidecoin repository roadmap
 
-The active compatibility target is Tidecoin node `v1.0.0rc3`,
-`ffed4e92e60ff2de30361648a71cba64531f9077`. The
-[rc3 migration plan](../ai-docs/RC3_MIGRATION_PLAN.md) owns current evidence
+The active compatibility target is Tidecoin node `v1.0.0rc4`,
+`78aca4a6b656f43a1efe4b43cf884214219b6c09`. The
+[rc4 migration plan](../ai-docs/RC4_MIGRATION_PLAN.md) owns current evidence
 and status.
 
 The next work is the [ordered compatibility follow-up](../ai-docs/RC3_MIGRATION_PLAN.md#ordered-compatibility-follow-up).

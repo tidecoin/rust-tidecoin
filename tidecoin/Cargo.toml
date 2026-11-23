@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin"
-version = "0.34.0-beta.1"
+version = "0.34.0-beta.2"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin/"
@@ -39,7 +39,7 @@ network = { package = "tidecoin-network-kind", path = "../network", version = "0
 p2p_messages = { package = "tidecoin-p2p-messages", path = "../p2p", version = "0.2.0", default-features = false, optional = true }
 primitives = { package = "tidecoin-primitives", path = "../primitives", version = "0.103.0", default-features = false, features = ["alloc", "hex"] }
 units = { package = "tidecoin-units", path = "../units", version = "0.3.1", default-features = false, features = ["alloc"] }
-node_parity = { package = "tidecoin-node-parity", path = "../node-parity", version = "0.2.0", optional = true }
+node_parity = { package = "tidecoin-node-parity", path = "../node-parity", version = "0.2.1", optional = true }
 tide-fn-dsa-kgen = { version = "0.5.0", default-features = false }
 tide-fn-dsa-sign = { version = "0.5.0", default-features = false }
 rand_core = { version = "0.6", default-features = false }

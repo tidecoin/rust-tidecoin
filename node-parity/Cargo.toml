@@ -1,6 +1,6 @@
 [package]
 name = "tidecoin-node-parity"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Tidecoin Foundation <falcon1024@protonmail.com>"]
 license = "CC0-1.0"
 repository = "https://github.com/tidecoin/rust-tidecoin"
